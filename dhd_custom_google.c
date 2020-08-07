@@ -31,7 +31,11 @@
 #include <linux/err.h>
 #include <linux/gpio.h>
 #include <linux/skbuff.h>
+#if defined(CONFIG_WIFI_CONTROL_FUNC)
 #include <linux/wlan_plat.h>
+#else
+#include <dhd_linux.h>
+#endif
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>

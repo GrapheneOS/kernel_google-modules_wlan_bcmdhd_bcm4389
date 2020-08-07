@@ -70,6 +70,9 @@ struct wifi_platform_data {
 	int (*set_power)(int val);
 	int (*set_reset)(int val);
 	int (*set_carddetect)(int val);
+#ifdef DHD_COREDUMP
+	int (*set_coredump)(const char *buf, int buf_len, const char *info);
+#endif
 	void *(*mem_prealloc)(int section, unsigned long size);
 	int (*get_mac_addr)(unsigned char *buf);
 #ifdef BCMSDIO
