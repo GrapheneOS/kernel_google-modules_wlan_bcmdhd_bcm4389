@@ -587,7 +587,7 @@ DRIVER_TYPE ?= $(CONFIG_BCMDHD)
 # Chip dependent feature
 #########################
 
-ifneq ($(filter y, $(CONFIG_BCM4389))),)
+ifneq ($(filter y, $(CONFIG_BCM4389)),)
   #6GHz support
   DHDCFLAGS += -DWL_6G_BAND
 endif
@@ -757,6 +757,13 @@ ifneq ($(CONFIG_ARCH_HISI),)
 	DHDCFLAGS += -DWL_EVENT_ENAB
 endif
 
+ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
+# Add chip specific suffix to the output in case of customer release
+ifneq ($(filter y, $(CONFIG_BCM4389)),)
+        BCM_WLAN_CHIP_SUFFIX = 4389
+endif
+endif
+
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG
 EXTRA_CFLAGS += -DDHD_COMPILED=\"$(BCMDHD_ROOT)\"
 EXTRA_CFLAGS += -I$(BCMDHD_ROOT)/include/ -I$(BCMDHD_ROOT)/
@@ -824,8 +831,8 @@ ifneq ($(filter -DDHD_EVENT_LOG_FILTER, $(DHDCFLAGS)),)
 DHDOFILES += dhd_event_log_filter.o
 endif
 
-bcmdhd-objs := $(DHDOFILES)
-obj-$(DRIVER_TYPE)   += bcmdhd.o
+bcmdhd$(BCM_WLAN_CHIP_SUFFIX)-objs := $(DHDOFILES)
+obj-$(DRIVER_TYPE)   += bcmdhd$(BCM_WLAN_CHIP_SUFFIX).o
 ccflags-y := $(KBUILD_CFLAGS)
 ccflags-y += $(EXTRA_CFLAGS)
 
