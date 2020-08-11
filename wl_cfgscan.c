@@ -309,7 +309,7 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool updat
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	log_conn_event_t *event_data = NULL;
 	tlv_log *tlv_data = NULL;
-	u32 alloc_len, tlv_len;
+	u32 alloc_len;
 	u32 payload_len;
 	s32 mgmt_type;
 	s32 signal;
@@ -421,20 +421,14 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool updat
 
 	if (DBG_RING_ACTIVE(dhdp, DHD_EVENT_RING_ID) &&
 			(cfg->sched_scan_req && !cfg->scan_request)) {
-		alloc_len = sizeof(log_conn_event_t) + IEEE80211_MAX_SSID_LEN + sizeof(uint16) +
+		alloc_len = sizeof(log_conn_event_t) + (3 * sizeof(tlv_log)) +
+			IEEE80211_MAX_SSID_LEN + sizeof(uint16) +
 			sizeof(int16);
 		event_data = (log_conn_event_t *)MALLOCZ(dhdp->osh, alloc_len);
 		if (!event_data) {
 			WL_ERR(("%s: failed to allocate the log_conn_event_t with "
 				"length(%d)\n", __func__, alloc_len));
 			goto out_err;
-		}
-		tlv_len = 3 * sizeof(tlv_log);
-		event_data->tlvs = (tlv_log *)MALLOCZ(cfg->osh, tlv_len);
-		if (!event_data->tlvs) {
-			WL_ERR(("%s: failed to allocate the log_conn_event_t with "
-				"length(%d)\n", __func__, tlv_len));
-			goto free_evt_data;
 		}
 
 		payload_len = sizeof(log_conn_event_t);
@@ -464,8 +458,6 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool updat
 
 		dhd_os_push_push_ring_data(dhdp, DHD_EVENT_RING_ID,
 			event_data, payload_len);
-		MFREE(dhdp->osh, event_data->tlvs, tlv_len);
-free_evt_data:
 		MFREE(dhdp->osh, event_data, alloc_len);
 	}
 
@@ -3523,7 +3515,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	struct cfg80211_ssid *hidden_ssid_list = NULL;
 	log_conn_event_t *event_data = NULL;
 	tlv_log *tlv_data = NULL;
-	u32 alloc_len = 0, tlv_len = 0;
+	u32 alloc_len = 0;
 	u32 payload_len;
 	int ssid_cnt = 0;
 	int i;
@@ -3572,21 +3564,11 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	}
 
 	if (DBG_RING_ACTIVE(dhdp, DHD_EVENT_RING_ID)) {
-		alloc_len = sizeof(log_conn_event_t) + DOT11_MAX_SSID_LEN;
-		event_data = (log_conn_event_t *)MALLOC(cfg->osh, alloc_len);
+		alloc_len = sizeof(log_conn_event_t) + sizeof(tlv_log) + DOT11_MAX_SSID_LEN;
+		event_data = (log_conn_event_t *)MALLOCZ(cfg->osh, alloc_len);
 		if (!event_data) {
 			WL_ERR(("%s: failed to allocate log_conn_event_t with "
 						"length(%d)\n", __func__, alloc_len));
-			return -ENOMEM;
-		}
-		bzero(event_data, alloc_len);
-		event_data->tlvs = NULL;
-		tlv_len = sizeof(tlv_log);
-		event_data->tlvs = (tlv_log *)MALLOC(cfg->osh, tlv_len);
-		if (!event_data->tlvs) {
-			WL_ERR(("%s: failed to allocate log_tlv with "
-					"length(%d)\n", __func__, tlv_len));
-			MFREE(cfg->osh, event_data, alloc_len);
 			return -ENOMEM;
 		}
 	}
@@ -3677,7 +3659,6 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 
 exit:
 	if (event_data) {
-		MFREE(cfg->osh, event_data->tlvs, tlv_len);
 		MFREE(cfg->osh, event_data, alloc_len);
 	}
 	return ret;
@@ -4014,7 +3995,7 @@ wl_cfgscan_update_v3_schedscan_results(struct bcm_cfg80211 *cfg, struct net_devi
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	log_conn_event_t *event_data = NULL;
 	tlv_log *tlv_data = NULL;
-	u32 alloc_len = 0, tlv_len = 0;
+	u32 alloc_len = 0;
 	int channel_req = 0;
 	u32 payload_len;
 
@@ -4048,20 +4029,12 @@ wl_cfgscan_update_v3_schedscan_results(struct bcm_cfg80211 *cfg, struct net_devi
 		request->wiphy = wiphy;
 
 		if (DBG_RING_ACTIVE(dhdp, DHD_EVENT_RING_ID)) {
-			alloc_len = sizeof(log_conn_event_t) + DOT11_MAX_SSID_LEN +
-				sizeof(uint16) + sizeof(int16);
+			alloc_len = sizeof(log_conn_event_t) + (3 * sizeof(tlv_log)) +
+				DOT11_MAX_SSID_LEN + sizeof(uint16) + sizeof(int16);
 			event_data = (log_conn_event_t *)MALLOCZ(cfg->osh, alloc_len);
 			if (!event_data) {
 				WL_ERR(("%s: failed to allocate the log_conn_event_t with "
 					"length(%d)\n", __func__, alloc_len));
-				err = -ENOMEM;
-				goto out_err;
-			}
-			tlv_len = 3 * sizeof(tlv_log);
-			event_data->tlvs = (tlv_log *)MALLOCZ(cfg->osh, tlv_len);
-			if (!event_data->tlvs) {
-				WL_ERR(("%s: failed to allocate the tlv_log with "
-					"length(%d)\n", __func__, tlv_len));
 				err = -ENOMEM;
 				goto out_err;
 			}
@@ -4172,9 +4145,6 @@ out_err:
 	}
 
 	if (event_data) {
-		if (event_data->tlvs) {
-			MFREE(cfg->osh, event_data->tlvs, tlv_len);
-		}
 		MFREE(cfg->osh, event_data, alloc_len);
 	}
 
@@ -4203,7 +4173,7 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	int n_pfn_results = 0;
 	log_conn_event_t *event_data = NULL;
 	tlv_log *tlv_data = NULL;
-	u32 alloc_len = 0, tlv_len = 0;
+	u32 alloc_len = 0;
 	u32 payload_len;
 	u8 tmp_buf[DOT11_MAX_SSID_LEN + 1];
 
@@ -4246,19 +4216,12 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			request->wiphy = wiphy;
 
 			if (DBG_RING_ACTIVE(dhdp, DHD_EVENT_RING_ID)) {
-				alloc_len = sizeof(log_conn_event_t) + DOT11_MAX_SSID_LEN +
-					sizeof(uint16) + sizeof(int16);
-				event_data = (log_conn_event_t *)MALLOC(cfg->osh, alloc_len);
+				alloc_len = sizeof(log_conn_event_t) + (3 * sizeof(tlv_log)) +
+					DOT11_MAX_SSID_LEN + sizeof(uint16) + sizeof(int16);
+				event_data = (log_conn_event_t *)MALLOCZ(cfg->osh, alloc_len);
 				if (!event_data) {
 					WL_ERR(("%s: failed to allocate the log_conn_event_t with "
 						"length(%d)\n", __func__, alloc_len));
-					goto out_err;
-				}
-				tlv_len = 3 * sizeof(tlv_log);
-				event_data->tlvs = (tlv_log *)MALLOC(cfg->osh, tlv_len);
-				if (!event_data->tlvs) {
-					WL_ERR(("%s: failed to allocate the tlv_log with "
-						"length(%d)\n", __func__, tlv_len));
 					goto out_err;
 				}
 			}
@@ -4399,19 +4362,12 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			request->wiphy = wiphy;
 
 			if (DBG_RING_ACTIVE(dhdp, DHD_EVENT_RING_ID)) {
-				alloc_len = sizeof(log_conn_event_t) + DOT11_MAX_SSID_LEN +
-					sizeof(uint16) + sizeof(int16);
+				alloc_len = sizeof(log_conn_event_t) + (3 * sizeof(tlv_log)) +
+					DOT11_MAX_SSID_LEN + sizeof(uint16) + sizeof(int16);
 				event_data = (log_conn_event_t *)MALLOC(cfg->osh, alloc_len);
 				if (!event_data) {
 					WL_ERR(("%s: failed to allocate the log_conn_event_t with "
 						"length(%d)\n", __func__, alloc_len));
-					goto out_err;
-				}
-				tlv_len = 3 * sizeof(tlv_log);
-				event_data->tlvs = (tlv_log *)MALLOC(cfg->osh, tlv_len);
-				if (!event_data->tlvs) {
-					WL_ERR(("%s: failed to allocate the tlv_log with "
-						"length(%d)\n", __func__, tlv_len));
 					goto out_err;
 				}
 			}
@@ -4554,9 +4510,6 @@ out_err:
 	}
 
 	if (event_data) {
-		if (event_data->tlvs) {
-			MFREE(cfg->osh, event_data->tlvs, tlv_len);
-		}
 		MFREE(cfg->osh, event_data, alloc_len);
 	}
 	return err;
