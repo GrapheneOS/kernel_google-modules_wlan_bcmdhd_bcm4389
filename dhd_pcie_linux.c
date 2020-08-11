@@ -102,6 +102,10 @@ unsigned char gpio_direction = 0;
 #define OOB_PORT "ttyUSB0"
 #endif /* PCIE_OOB */
 
+#ifndef BCMPCI_DEV_ID
+#define BCMPCI_DEV_ID PCI_ANY_ID
+#endif
+
 #ifdef FORCE_TPOWERON
 extern uint32 tpoweron_scale;
 #endif /* FORCE_TPOWERON */
@@ -223,8 +227,8 @@ dhdpcie_access_cap(struct pci_dev *pdev, int cap, uint offset, bool is_ext, bool
 	uint32 writeval);
 
 static struct pci_device_id dhdpcie_pci_devid[] __devinitdata = {
-	{ vendor: 0x14e4,
-	device: PCI_ANY_ID,
+	{ vendor: VENDOR_BROADCOM,
+	device: BCMPCI_DEV_ID,
 	subvendor: PCI_ANY_ID,
 	subdevice: PCI_ANY_ID,
 	class: PCI_CLASS_NETWORK_OTHER << 8,

@@ -761,6 +761,7 @@ ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
 # Add chip specific suffix to the output in case of customer release
 ifneq ($(filter y, $(CONFIG_BCM4389)),)
         BCM_WLAN_CHIP_SUFFIX = 4389
+        DHDCFLAGS += -DBCMPCI_DEV_ID=0x4441
 endif
 endif
 
