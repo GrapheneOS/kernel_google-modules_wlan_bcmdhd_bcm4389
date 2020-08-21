@@ -1596,13 +1596,13 @@ wl_android_set_band(struct net_device *dev, char *command)
 	return error;
 }
 
-#ifdef WBTEXT
+#if defined(WES_SUPPORT) && defined(WBTEXT)
 static bool wl_android_check_wbtext_support(struct net_device *dev)
 {
 	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
 	return dhdp->wbtext_support;
 }
-#endif /* WBTEXT */
+#endif /* WES_SUPPORT && WBTEXT */
 
 #ifdef CUSTOMER_HW4_PRIVATE_CMD
 #ifdef ROAM_API
