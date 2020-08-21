@@ -128,40 +128,51 @@ enum wl_cfgp2p_status {
 /* dword align allocation */
 #define WLC_IOCTL_MAXLEN 8192
 
+#if defined(CUSTOMER_DBG_PREFIX_ENABLE)
+#define USER_PREFIX_CFGP2P		"[cfgp2p][wlan] "
+#define CFGP2P_ERROR_TEXT		USER_PREFIX_CFGP2P
+#define CFGP2P_INFO_TEXT		USER_PREFIX_CFGP2P
+#define CFGP2P_ACTION_TEXT		USER_PREFIX_CFGP2P
+#define CFGP2P_DEBUG_TEXT		USER_PREFIX_CFGP2P
+#else
 #ifdef CUSTOMER_HW4_DEBUG
 #define CFGP2P_ERROR_TEXT		"CFGP2P-INFO2) "
 #else
 #define CFGP2P_ERROR_TEXT		"CFGP2P-ERROR) "
 #endif /* CUSTOMER_HW4_DEBUG */
+#define CFGP2P_INFO_TEXT		"CFGP2P-INFO) "
+#define CFGP2P_ACTION_TEXT		"CFGP2P-ACTION) "
+#define CFGP2P_DEBUG_TEXT		"CFGP2P-DEBUG) "
+#endif /* defined(CUSTOMER_DBG_PREFIX_ENABLE) */
 
 #ifdef DHD_LOG_DUMP
 #define CFGP2P_ERR(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_ERR) {				\
-			pr_info(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
 			pr_cont args;					\
-			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
-			dhd_log_dump_get_timestamp(), __func__);	\
+			DHD_LOG_DUMP_WRITE_TS_FN;	\
 			DHD_LOG_DUMP_WRITE args;	\
 		}									\
 	} while (0)
 #define	CFGP2P_INFO(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_INFO) {				\
-			pr_info("CFGP2P-INFO) %s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_INFO_TEXT "%s : ", __func__);	\
 			pr_cont args;					\
-			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
-			dhd_log_dump_get_timestamp(), __func__);	\
+			DHD_LOG_DUMP_WRITE_TS_FN;	\
 			DHD_LOG_DUMP_WRITE args;	\
 		}									\
 	} while (0)
 #define	CFGP2P_ACTION(args)								\
 	do {									\
 		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
-			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_ACTION_TEXT "%s :", __func__);	\
 			pr_cont args;					\
-			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
-			dhd_log_dump_get_timestamp(), __func__);	\
+			DHD_LOG_DUMP_WRITE_TS_FN;	\
 			DHD_LOG_DUMP_WRITE args;	\
 		}									\
 	} while (0)
@@ -169,21 +180,24 @@ enum wl_cfgp2p_status {
 #define CFGP2P_ERR(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_ERR) {				\
-			pr_info(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
 			pr_cont args;					\
 		}									\
 	} while (0)
 #define	CFGP2P_INFO(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_INFO) {				\
-			pr_info("CFGP2P-INFO) %s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_INFO_TEXT "%s : ", __func__);	\
 			pr_cont args;					\
 		}									\
 	} while (0)
 #define	CFGP2P_ACTION(args)								\
 	do {									\
 		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
-			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_ACTION_TEXT "%s :", __func__);	\
 			pr_cont args;					\
 		}									\
 	} while (0)
@@ -192,7 +206,8 @@ enum wl_cfgp2p_status {
 #define	CFGP2P_DBG(args)								\
 	do {									\
 		if (wl_dbg_level & WL_DBG_DBG) {			\
-			printk(KERN_DEBUG "CFGP2P-DEBUG) %s :", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFGP2P_DEBUG_TEXT "%s :", __func__);	\
 			pr_cont args;					\
 		}									\
 	} while (0)

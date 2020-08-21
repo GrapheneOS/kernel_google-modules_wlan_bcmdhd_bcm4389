@@ -228,6 +228,14 @@ static const bcmevent_name_str_t bcmevent_names[] = {
 	BCMEVENT_NAME(WLC_E_ROAM_CACHE_UPDATE),
 	BCMEVENT_NAME(WLC_E_AP_BCN_DRIFT),
 	BCMEVENT_NAME(WLC_E_PFN_SCAN_ALLGONE_EXT),
+#ifdef WL_CLIENT_SAE
+	BCMEVENT_NAME(WLC_E_AUTH_START),
+#endif /* WL_CLIENT_SAE */
+#ifdef WL_TWT
+	BCMEVENT_NAME(WLC_E_TWT_SETUP),
+	BCMEVENT_NAME(WLC_E_TWT_TEARDOWN),
+	BCMEVENT_NAME(WLC_E_TWT_INFO_FRM)
+#endif /* WL_TWT */
 };
 
 const char *bcmevent_get_name(uint event_type)

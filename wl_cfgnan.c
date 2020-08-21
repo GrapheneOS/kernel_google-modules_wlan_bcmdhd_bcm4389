@@ -4670,9 +4670,13 @@ wl_cfgnan_handle_ranging_ind(struct bcm_cfg80211 *cfg,
 	uint8 rtt_invalid_state;
 	dhd_pub_t *dhd = (struct dhd_pub *)(cfg->pub);
 	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
+	rtt_geofence_cfg_t* geofence_cfg = &rtt_status->geofence_cfg;
 	int err_at = 0;
 
 	WL_DBG(("Trigger range response\n"));
+	WL_INFORM_MEM(("Geofence Session: Ssn Cnt %d, Target Cnt %d, Cur Idx %d\n",
+		geofence_cfg->geofence_sessions_cnt, geofence_cfg->geofence_target_cnt,
+		geofence_cfg->cur_target_idx));
 
 	/* Check if ranging is allowed */
 	rtt_invalid_state = dhd_rtt_invalid_states(ndev, peer_addr);
@@ -8470,29 +8474,38 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				goto exit;
 			}
 #ifdef RTT_SUPPORT
-		} else if (txs->type == WL_NAN_FRM_TYPE_RNG_RESP) {
+		} else if ((txs->type == WL_NAN_FRM_TYPE_RNG_RESP) ||
+			(txs->type == WL_NAN_FRM_TYPE_RNG_REQ)) {
 			xtlv = (bcm_xtlv_t *)(txs->opt_tlvs);
 			if (txs->opt_tlvs_len && xtlv->id == WL_NAN_XTLV_RNG_TXS) {
-				wl_nan_range_txs_t* txs_rng_resp = (wl_nan_range_txs_t*)xtlv->data;
-				nan_ranging_inst_t *rng_inst =
-					wl_cfgnan_get_rng_inst_by_id(cfg, txs_rng_resp->range_id);
-				if (rng_inst &&
-					NAN_RANGING_SETUP_IS_IN_PROG(rng_inst->range_status)) {
-					/* Unset ranging set up in progress */
-					dhd_rtt_update_geofence_sessions_cnt(dhd, FALSE,
-						&rng_inst->peer_addr);
-					if (txs->status == WL_NAN_TXS_SUCCESS) {
-						/* range set up is over, move range in progress */
-						rng_inst->range_status =
-							NAN_RANGING_SESSION_IN_PROGRESS;
-						 /* Increment geofence session count */
-						dhd_rtt_update_geofence_sessions_cnt(dhd,
-							TRUE, NULL);
-						WL_DBG(("Txs for range resp, rng_id = %d\n",
-							rng_inst->range_id));
-					} else {
-						wl_cfgnan_reset_remove_ranging_instance(cfg,
-							rng_inst);
+				wl_nan_range_txs_t* txs_rng = (wl_nan_range_txs_t*)xtlv->data;
+				WL_INFORM_MEM(("TXS for type %s(%d), status %d rng_id %d\n",
+					nan_frm_type_to_str(txs->type), txs->type,
+					txs->status, txs_rng->range_id));
+				if (txs->type == WL_NAN_FRM_TYPE_RNG_RESP) {
+					nan_ranging_inst_t *rng_inst =
+						wl_cfgnan_get_rng_inst_by_id
+							(cfg, txs_rng->range_id);
+					if (rng_inst &&
+						NAN_RANGING_SETUP_IS_IN_PROG
+							(rng_inst->range_status)) {
+						/* Unset ranging set up in progress */
+						dhd_rtt_update_geofence_sessions_cnt(dhd, FALSE,
+							&rng_inst->peer_addr);
+						if (txs->status == WL_NAN_TXS_SUCCESS) {
+							/*
+							 * range set up is over,
+							 * move range in progress
+							 */
+							rng_inst->range_status =
+								NAN_RANGING_SESSION_IN_PROGRESS;
+							/* Increment geofence session count */
+							dhd_rtt_update_geofence_sessions_cnt(dhd,
+								TRUE, NULL);
+						} else {
+							wl_cfgnan_reset_remove_ranging_instance(cfg,
+								rng_inst);
+						}
 					}
 				}
 			} else {

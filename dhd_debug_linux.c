@@ -165,7 +165,6 @@ exit:
 			schedule_delayed_work(d_work, ring_info->interval);
 		}
 	}
-
 	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	return;
@@ -203,7 +202,7 @@ dhd_os_start_logging(dhd_pub_t *dhdp, char *ring_name, int log_level,
 	if (!VALID_RING(ring_id))
 		return BCME_UNSUPPORTED;
 
-	DHD_DBGIF(("%s , log_level : %d, time_intval : %d, threshod %d Bytes\n",
+	DHD_INFO(("%s , log_level : %d, time_intval : %d, threshod %d Bytes\n",
 		__FUNCTION__, log_level, time_intval, threshold));
 
 	/* change the configuration */
@@ -243,7 +242,7 @@ dhd_os_reset_logging(dhd_pub_t *dhdp)
 
 	/* Stop all rings */
 	for (ring_id = DEBUG_RING_ID_INVALID + 1; ring_id < DEBUG_RING_ID_MAX; ring_id++) {
-		DHD_DBGIF(("%s: Stop ring buffer %d\n", __FUNCTION__, ring_id));
+		DHD_INFO(("%s: Stop ring buffer %d\n", __FUNCTION__, ring_id));
 
 		ring_info = &os_priv[ring_id];
 		/* cancel any pending work */
@@ -352,6 +351,16 @@ dhd_os_push_push_ring_data(dhd_pub_t *dhdp, int ring_id, void *data, int32 data_
 			}
 		}
 	}
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+	else if (ring_id == FW_VERBOSE_RING_ID || ring_id == DRIVER_LOG_RING_ID ||
+			ring_id == ROAM_STATS_RING_ID) {
+		msg_hdr.type = DBG_RING_ENTRY_DATA_TYPE;
+		msg_hdr.flags |= DBG_RING_ENTRY_FLAGS_HAS_TIMESTAMP;
+		msg_hdr.timestamp = local_clock();
+		msg_hdr.timestamp = DIV_U64_BY_U32(msg_hdr.timestamp, NSEC_PER_MSEC);
+		msg_hdr.len = strlen(data);
+	}
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 	ret = dhd_dbg_push_to_ring(dhdp, ring_id, &msg_hdr, event_data);
 	if (ret) {
 		DHD_ERROR(("%s : failed to push data into the ring (%d) with ret(%d)\n",
@@ -428,7 +437,9 @@ dhd_os_dbg_get_feature(dhd_pub_t *dhdp, int32 *features)
 	/* XXX : we need to find a way to get the features for dbg */
 	*features = 0;
 #ifdef DEBUGABILITY
+#ifndef DEBUGABILITY_DISABLE_MEMDUMP
 	*features |= DBG_MEMORY_DUMP_SUPPORTED;
+#endif /* !DEBUGABILITY_DISABLE_MEMDUMP */
 	if (FW_SUPPORTED(dhdp, logtrace)) {
 		*features |= DBG_CONNECT_EVENT_SUPPORTED;
 		*features |= DBG_VERBOSE_LOG_SUPPORTED;

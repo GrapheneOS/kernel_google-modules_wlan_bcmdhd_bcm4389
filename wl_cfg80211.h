@@ -79,9 +79,16 @@ struct wl_ibss;
  */
 #define WL_5G_SOFTAP_ONLY_ON_DEF_CHAN
 
+#ifndef WL_CLIENT_SAE
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SAE))
 #define WL_SAE
-#endif
+#endif /* LINUX_VERSION_CODE >= (4, 17, 0) && !(WL_SAE) */
+#else
+#ifdef WL_SAE
+#error "WL_SAE is for dongle-offload and WL_CLIENT_SAE is for wpa_supplicant. \
+	Please choose only one."
+#endif /* WL_SAE */
+#endif /* !WL_CLIENT_SAE */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SCAN_TYPE))
 #define WL_SCAN_TYPE
@@ -229,12 +236,32 @@ struct wl_ibss;
 extern void dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
 extern char *dhd_log_dump_get_timestamp(void);
+extern char *dhd_dbg_get_system_timestamp(void);
 #ifndef _DHD_LOG_DUMP_DEFINITIONS_
 #define DHD_LOG_DUMP_WRITE(fmt, ...) \
 	dhd_log_dump_write(DLD_BUF_TYPE_GENERAL, NULL, 0, fmt, ##__VA_ARGS__)
 #define DHD_LOG_DUMP_WRITE_EX(fmt, ...) \
 	dhd_log_dump_write(DLD_BUF_TYPE_SPECIAL, NULL, 0, fmt, ##__VA_ARGS__)
+#define DHD_LOG_DUMP_WRITE_PRSRV(fmt, ...) \
+	dhd_log_dump_write(DLD_BUF_TYPE_PRESERVE, NULL, 0, fmt, ##__VA_ARGS__)
 #endif /* !_DHD_LOG_DUMP_DEFINITIONS_ */
+
+#ifndef DHD_LOG_DUMP_RING_DEFINITIONS
+#define DHD_PREFIX_TS "[%s]: ", dhd_log_dump_get_timestamp()
+#define DHD_PREFIX_TS_FN "[%s] %s: ", dhd_log_dump_get_timestamp(), __func__
+
+#define DHD_LOG_DUMP_WRITE_TS		DHD_LOG_DUMP_WRITE(DHD_PREFIX_TS)
+#define DHD_LOG_DUMP_WRITE_TS_FN	DHD_LOG_DUMP_WRITE(DHD_PREFIX_TS_FN)
+
+#define DHD_LOG_DUMP_WRITE_EX_TS	DHD_LOG_DUMP_WRITE_EX(DHD_PREFIX_TS)
+#define DHD_LOG_DUMP_WRITE_EX_TS_FN	DHD_LOG_DUMP_WRITE_EX(DHD_PREFIX_TS_FN)
+
+#define DHD_LOG_DUMP_WRITE_PRSRV_TS	DHD_LOG_DUMP_WRITE_PRSRV(DHD_PREFIX_TS)
+#define DHD_LOG_DUMP_WRITE_PRSRV_TS_FN	DHD_LOG_DUMP_WRITE_PRSRV(DHD_PREFIX_TS_FN)
+
+#define DHD_LOG_DUMP_WRITE_ROAM_TS	DHD_LOG_DUMP_WRITE(DHD_PREFIX_TS)
+#define DHD_LOG_DUMP_WRITE_ROAM_TS_FN	DHD_LOG_DUMP_WRITE(DHD_PREFIX_TS_FN)
+#endif /* DHD_LOG_DUMP_RING_DEFINITIONS */
 #endif /* DHD_LOG_DUMP */
 
 /* Data Element Definitions */
@@ -359,6 +386,21 @@ extern char *dhd_log_dump_get_timestamp(void);
 /* 0 invalidates all debug messages.  default is 1 */
 #define WL_DBG_LEVEL 0xFF
 
+#if defined(CUSTOMER_DBG_SYSTEM_TIME) && defined(DHD_DEBUGABILITY_LOG_DUMP_RING)
+#define WL_DBG_PRINT_SYSTEM_TIME \
+	pr_cont("[%s]", dhd_dbg_get_system_timestamp())
+#else
+#define WL_DBG_PRINT_SYSTEM_TIME
+#endif /* defined(CUSTOMER_DBG_SYSTEM_TIME) && defined(DHD_DEBUGABILITY_LOG_DUMP_RING) */
+
+#if defined(CUSTOMER_DBG_PREFIX_ENABLE)
+#define USER_PREFIX_CFG80211		"[cfg80211][wlan] "
+#define CFG80211_INFO_TEXT		USER_PREFIX_CFG80211
+#define CFG80211_ERROR_TEXT		USER_PREFIX_CFG80211
+#define CFG80211_SCAN_TEXT		USER_PREFIX_CFG80211
+#define CFG80211_TRACE_TEXT		USER_PREFIX_CFG80211
+#define CFG80211_DEBUG_TEXT		USER_PREFIX_CFG80211
+#else
 #define CFG80211_INFO_TEXT		"CFG80211-INFO) "
 /* Samsung want to print INFO2 instead of ERROR
  * because most of case, ERROR message is not a real ERROR.
@@ -369,29 +411,35 @@ extern char *dhd_log_dump_get_timestamp(void);
 #else
 #define CFG80211_ERROR_TEXT		"CFG80211-ERROR) "
 #endif /* CUSTOMER_HW4_DEBUG */
+#define CFG80211_SCAN_TEXT		"CFG80211-SCAN) "
+#define CFG80211_TRACE_TEXT		"CFG80211-TRACE) "
+#define CFG80211_DEBUG_TEXT		"CFG80211-DEBUG) "
+#endif /* defined(CUSTOMER_DBG_PREFIX_ENABLE) */
 
-#if defined(DHD_DEBUG)
+#ifdef DHD_DEBUG
 #ifdef DHD_LOG_DUMP
 #define	WL_ERR(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		pr_info(CFG80211_ERROR_TEXT "%s : ", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		pr_cont args;							\
-		DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+		DHD_LOG_DUMP_WRITE_TS_FN;	\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
 #define WL_ERR_KERN(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		pr_info(CFG80211_ERROR_TEXT "%s : ", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		pr_cont args;							\
 	}	\
 } while (0)
 #define	WL_ERR_MEM(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+		DHD_LOG_DUMP_WRITE_TS_FN;	\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
@@ -401,40 +449,44 @@ do {	\
 #define	WL_DBG_MEM(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_DBG) {	\
-		pr_info(CFG80211_INFO_TEXT "%s : ", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_INFO_TEXT "%s : ", __func__);	\
 		pr_cont args;						\
 	}	\
-	DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+	DHD_LOG_DUMP_WRITE_TS_FN;		\
 	DHD_LOG_DUMP_WRITE args;	\
 } while (0)
 #define	WL_INFORM_MEM(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_INFO) {	\
-		pr_info(CFG80211_INFO_TEXT "%s : ", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_INFO_TEXT "%s : ", __func__);	\
 		pr_cont args;						\
-		DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+		DHD_LOG_DUMP_WRITE_TS_FN;	\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_ERR_EX(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		pr_info(CFG80211_ERROR_TEXT "%s : ", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		pr_cont args;							\
-		DHD_LOG_DUMP_WRITE_EX("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+		DHD_LOG_DUMP_WRITE_EX_TS_FN;	\
 		DHD_LOG_DUMP_WRITE_EX args;	\
 	}	\
 } while (0)
 #define	WL_MEM(args)	\
 do {	\
-	DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+	DHD_LOG_DUMP_WRITE_TS_FN;	\
 	DHD_LOG_DUMP_WRITE args;	\
 } while (0)
 #else
 #define	WL_ERR(args)									\
 do {										\
 	if (wl_dbg_level & WL_DBG_ERR) {				\
-			pr_info(CFG80211_ERROR_TEXT "%s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFG80211_ERROR_TEXT "%s : ", __func__);	\
 			pr_cont args;						\
 		}								\
 } while (0)
@@ -449,7 +501,8 @@ do {										\
 #define	WL_ERR(args)									\
 do {										\
 	if ((wl_dbg_level & WL_DBG_ERR) && net_ratelimit()) {				\
-			pr_info(CFG80211_ERROR_TEXT "%s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFG80211_ERROR_TEXT "%s : ", __func__);	\
 			pr_cont args;						\
 		}								\
 } while (0)
@@ -494,7 +547,8 @@ do {	\
 #define	WL_INFORM(args)									\
 do {										\
 	if (wl_dbg_level & WL_DBG_INFO) {				\
-			pr_info("CFG80211-INFO) %s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFG80211_INFO_TEXT "%s : ", __func__);	\
 			pr_cont args;						\
 		}								\
 } while (0)
@@ -505,7 +559,8 @@ do {										\
 #define	WL_SCAN(args)								\
 do {									\
 	if (wl_dbg_level & WL_DBG_SCAN) {			\
-		pr_info("CFG80211-SCAN) %s :", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_SCAN_TEXT "%s :", __func__);	\
 		pr_cont args;						\
 	}									\
 } while (0)
@@ -515,7 +570,8 @@ do {									\
 #define	WL_TRACE(args)								\
 do {									\
 	if (wl_dbg_level & WL_DBG_TRACE) {			\
-		pr_info("CFG80211-TRACE) %s :", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_TRACE_TEXT "%s :", __func__);	\
 		pr_cont args;						\
 	}									\
 } while (0)
@@ -526,7 +582,8 @@ do {									\
 #define	WL_TRACE_HW4(args)					\
 do {										\
 	if (wl_dbg_level & WL_DBG_ERR) {				\
-			pr_info("CFG80211-TRACE) %s : ", __func__);	\
+			WL_DBG_PRINT_SYSTEM_TIME;				\
+			pr_cont(CFG80211_TRACE_TEXT "%s : ", __func__);	\
 			pr_cont args;						\
 		}								\
 } while (0)
@@ -537,7 +594,8 @@ do {										\
 #define	WL_DBG(args)								\
 do {									\
 	if (wl_dbg_level & WL_DBG_DBG) {			\
-		pr_info("CFG80211-DEBUG) %s :", __func__);	\
+		WL_DBG_PRINT_SYSTEM_TIME;				\
+		pr_cont(CFG80211_DEBUG_TEXT "%s :", __func__);	\
 		pr_cont args;						\
 	}									\
 } while (0)
@@ -644,6 +702,8 @@ do {									\
 
 #define WL_AKM_SUITE_SHA256_1X  0x000FAC05
 #define WL_AKM_SUITE_SHA256_PSK 0x000FAC06
+
+#define WLAN_AKM_SUITE_SAE_SHA256		0x000FAC08
 
 #ifndef WLAN_AKM_SUITE_FILS_SHA256
 #define WLAN_AKM_SUITE_FILS_SHA256		0x000FAC0E
@@ -1814,6 +1874,7 @@ struct bcm_cfg80211 {
 	u32 join_iovar_ver;
 	struct delayed_work ap_work;     /* AP linkup timeout handler */
 	wl_event_idx_t eidx;	/* event state tracker */
+	u32 halpid;
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -2581,6 +2642,7 @@ extern s32 wl_cfg80211_resume_sdo(struct net_device *dev, struct bcm_cfg80211 *c
 #endif
 #ifdef WL_SUPPORT_AUTO_CHANNEL
 #define CHANSPEC_BUF_SIZE	2048
+#define CHANINFO_LIST_BUF_SIZE     (1024 * 4)
 #define CHAN_SEL_IOCTL_DELAY	300
 #define CHAN_SEL_RETRY_COUNT	15
 #define CHANNEL_IS_RADAR(channel)	(((channel & WL_CHAN_RADAR) || \
@@ -2809,8 +2871,6 @@ extern s32 wl_cfg80211_net_attach(struct net_device *primary_ndev);
 extern void wl_print_verinfo(struct bcm_cfg80211 *cfg);
 extern const u8 *wl_find_attribute(const u8 *buf, u16 len, u16 element_id);
 extern int wl_cfg80211_get_concurrency_mode(struct bcm_cfg80211 *cfg);
-int wl_cfg80211_set_he_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
-		s32 bssidx, u32 interface_type, bool set);
 extern s32 wl_cfg80211_config_suspend_events(struct net_device *ndev, bool enable);
 bool wl_cfg80211_check_in_progress(struct net_device *dev);
 #ifdef WES_SUPPORT
@@ -2892,5 +2952,8 @@ extern s32 wl_wps_session_update(struct net_device *ndev, u16 state, const u8 *p
 #endif /* WL_WPS_SYNC */
 extern s32 wl_update_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	const wl_event_msg_t *e, const void *data, s32 item);
-
+#ifdef WL_CLIENT_SAE
+extern s32 wl_handle_auth_event(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	const wl_event_msg_t *e, void *data);
+#endif /* WL_CLIENT_SAE */
 #endif /* _wl_cfg80211_h_ */

@@ -76,6 +76,10 @@
 #include <dhd_event_log_filter.h>
 #endif /* DHD_EVENT_LOG_FILTER */
 
+#ifdef WL_TWT
+#include <802.11ah.h>
+#endif /* WL_TWT */
+
 #ifdef WL_STATIC_IF
 #define WL_BSSIDX_MAX	16
 #endif /* WL_STATIC_IF */
@@ -134,7 +138,6 @@
 #define CMD_SET_CSA       "SETCSA"
 #ifdef WL_SUPPORT_AUTO_CHANNEL
 #define CMD_SET_HAPD_AUTO_CHANNEL	"HAPD_AUTO_CHANNEL"
-#define WLC_ACS_BAND_INVALID	0xffffu
 #endif /* WL_SUPPORT_AUTO_CHANNEL */
 #ifdef CUSTOMER_HW4_PRIVATE_CMD
 #ifdef WL_WTC
@@ -331,11 +334,6 @@ typedef struct android_wifi_af_params {
 #endif /* FCC_PWR_LIMIT_2G */
 #define CUSTOMER_HW4_EN_CONVERT(i)	(i += 1)
 #endif /* CUSTOMER_HW4_PRIVATE_CMD */
-
-#ifdef WL_TWT
-#define CMD_SET_TWT_SETUP      "TWT_SETUP"
-#define CMD_SET_TWT_TEARDOWN         "TWT_TEARDOWN"
-#endif /* WL_TWT */
 
 #ifdef WLFBT
 #define CMD_GET_FTKEY      "GET_FTKEY"
@@ -659,6 +657,14 @@ static const wl_natoe_sub_cmd_t natoe_cmd_list[] = {
 #define CMD_GET_NAN_STATUS	"GET_NAN_STATUS"
 #endif /* WL_NAN */
 
+#ifdef WL_TWT
+#define CMD_TWT_SETUP		"TWT_SETUP"
+#define CMD_TWT_TEARDOWN	"TWT_TEARDOWN"
+#define CMD_TWT_INFO		"TWT_INFO_FRM"
+#define CMD_TWT_STATUS_QUERY	"TWT_STATUS"
+#define CMD_TWT_CAPABILITY	"TWT_CAP"
+#endif /* WL_TWT */
+
 /* drv command info structure */
 typedef struct wl_drv_cmd_info {
 	uint8  *command;        /* pointer to the actual command */
@@ -819,9 +825,11 @@ static int wl_cfg80211_wbtext_estm_enable(struct net_device *dev,
 	char *command, int total_len);
 static int wlc_wbtext_get_roam_prof(struct net_device *ndev, wl_roamprof_band_t *rp,
 	uint8 band, uint8 *roam_prof_ver, uint8 *roam_prof_size);
-static int wl_android_wbtext_enable(struct net_device *dev, int mode);
 #endif /* WBTEXT */
 #ifdef WES_SUPPORT
+#ifdef WBTEXT
+static int wl_android_wbtext_enable(struct net_device *dev, int mode);
+#endif /* WBTEXT */
 /* wl_roam.c */
 extern int get_roamscan_mode(struct net_device *dev, int *mode);
 extern int set_roamscan_mode(struct net_device *dev, int mode);
@@ -1588,8 +1596,6 @@ wl_android_set_band(struct net_device *dev, char *command)
 	return error;
 }
 
-#ifdef CUSTOMER_HW4_PRIVATE_CMD
-#ifdef ROAM_API
 #ifdef WBTEXT
 static bool wl_android_check_wbtext_support(struct net_device *dev)
 {
@@ -1598,6 +1604,8 @@ static bool wl_android_check_wbtext_support(struct net_device *dev)
 }
 #endif /* WBTEXT */
 
+#ifdef CUSTOMER_HW4_PRIVATE_CMD
+#ifdef ROAM_API
 static bool
 wl_android_check_wbtext_policy(struct net_device *dev)
 {
@@ -3234,8 +3242,8 @@ wl_android_default_set_scan_params(struct net_device *dev, char *command, int to
 	char restore_command[WLC_IOCTL_SMLEN];
 
 	while (strlen(restore_params[cnt].command) > 0 && restore_params[cnt].cmd_handler) {
-		sprintf(restore_command, "%s %d", restore_params[cnt].command,
-			restore_params[cnt].parameter);
+		snprintf(restore_command, WLC_IOCTL_SMLEN, "%s %d",
+			restore_params[cnt].command, restore_params[cnt].parameter);
 		if (restore_params[cnt].cmd_type == RESTORE_TYPE_PRIV_CMD) {
 			error = restore_params[cnt].cmd_handler(dev, restore_command);
 		}  else if (restore_params[cnt].cmd_type == RESTORE_TYPE_PRIV_CMD_WITH_LEN) {
@@ -4142,6 +4150,7 @@ static int wl_android_wbtext(struct net_device *dev, char *command, int total_le
 	return error;
 }
 
+#ifdef WES_SUPPORT
 static int
 wl_android_wbtext_enable(struct net_device *dev, int mode)
 {
@@ -4160,6 +4169,7 @@ wl_android_wbtext_enable(struct net_device *dev, int mode)
 
 	return error;
 }
+#endif /* WES_SUPPORT */
 
 static int wl_cfg80211_wbtext_btm_timer_threshold(struct net_device *dev,
 	char *command, int total_len)
@@ -7059,7 +7069,7 @@ wl_android_ch_res_rl(struct net_device *dev, bool change)
 	int error = 0;
 	s32 srl = 7;
 	s32 lrl = 4;
-	printk("wl_android_ch_res_rl: enter\n");
+	DHD_ERROR(("wl_android_ch_res_rl: enter\n"));
 	if (change) {
 		srl = 4;
 		lrl = 2;
@@ -10023,11 +10033,22 @@ static int
 wl_android_set_latency_crt_data(struct net_device *dev, int mode)
 {
 	int ret;
-
+#ifdef DHD_GRO_ENABLE_HOST_CTRL
+	dhd_pub_t *dhdp = NULL;
+#endif /* DHD_GRO_ENABLE_HOST_CTRL */
 	if (mode >= LATENCY_CRT_DATA_MODE_LAST) {
 		return BCME_BADARG;
 	}
-
+#ifdef DHD_GRO_ENABLE_HOST_CTRL
+	dhdp = wl_cfg80211_get_dhdp(dev);
+	if (mode != LATENCY_CRT_DATA_MODE_OFF) {
+		WL_ERR(("Not permitted GRO by framework\n"));
+		dhdp->permitted_gro = FALSE;
+	} else {
+		WL_ERR(("Permitted GRO by framework\n"));
+		dhdp->permitted_gro = TRUE;
+	}
+#endif /* DHD_GRO_ENABLE_HOST_CTRL */
 	ret = wldev_iovar_setint(dev, "latency_critical_data", mode);
 	if (ret != BCME_OK) {
 		WL_ERR(("failed to set latency_critical_data mode %d, error = %d\n",
@@ -10445,7 +10466,7 @@ wl_android_set_softap_ax_mode(struct net_device *dev, const char* cmd_str)
 	}
 
 	WL_INFORM(("HAPD_SET_AX_MODE = %d\n", enable));
-	err = wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_IF_TYPE_AP, (bool)enable);
+	err = wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_HE_FEATURES_HE_AP, (bool)enable);
 	if (err) {
 		WL_ERR(("failed to set softap ax mode(%d)\n", enable));
 
@@ -10455,10 +10476,11 @@ exit :
 }
 
 #ifdef WL_TWT
+
 static int
-wl_android_set_twt_setup(struct net_device *ndev, char *command, int total_len)
+wl_android_twt_setup(struct net_device *ndev, char *command, int total_len)
 {
-	wl_twt_setup_t val;
+	wl_twt_config_t val;
 	s32 bw;
 	char *token, *pos;
 	u8 mybuf[WLC_IOCTL_SMLEN] = {0};
@@ -10466,10 +10488,11 @@ wl_android_set_twt_setup(struct net_device *ndev, char *command, int total_len)
 	u64 twt;
 	uint8 *rem = mybuf;
 	uint16 rem_len = sizeof(mybuf);
+	int32 val32;
 
 	WL_DBG_MEM(("Enter. cmd:%s\n", command));
 
-	if (strlen(command) == strlen(CMD_SET_TWT_SETUP)) {
+	if (strlen(command) == strlen(CMD_TWT_SETUP)) {
 		WL_ERR(("Error, twt_setup cmd  missing params\n"));
 		bw = -EINVAL;
 		goto exit;
@@ -10479,38 +10502,127 @@ wl_android_set_twt_setup(struct net_device *ndev, char *command, int total_len)
 	val.version = WL_TWT_SETUP_VER;
 	val.length = sizeof(val.version) + sizeof(val.length);
 
-	pos = command + sizeof(CMD_SET_TWT_SETUP);
+	/* Default values, Overide Below */
+	val.desc.wake_time_h = 0xFFFFFFFF;
+	val.desc.wake_time_l = 0xFFFFFFFF;
+	val.desc.wake_int_min = 0xFFFFFFFF;
+	val.desc.wake_int_max = 0xFFFFFFFF;
+	val.desc.wake_dur_min = 0xFFFFFFFF;
+	val.desc.wake_dur_max = 0xFFFFFFFF;
+	val.desc.avg_pkt_num  = 0xFFFFFFFF;
 
-	/* Wake Interval */
+	pos = command + sizeof(CMD_TWT_SETUP);
+
+	/* negotiation_type */
 	token = strsep((char**)&pos, " ");
 	if (!token) {
-		WL_ERR(("No Wake Interval present\n"));
+		WL_ERR(("Mandatory param negotiation type not present\n"));
 		bw = -EINVAL;
 		goto exit;
 	}
-	val.desc.wake_int = htod32((u32)bcm_atoi(token));
+	val.desc.negotiation_type  = htod32((u32)bcm_atoi(token));
 
 	/* Wake Duration */
 	token = strsep((char**)&pos, " ");
 	if (!token) {
-		WL_ERR(("No Wake Duration present\n"));
+		WL_ERR(("Mandatory param wake Duration not present\n"));
 		bw = -EINVAL;
 		goto exit;
 	}
 	val.desc.wake_dur = htod32((u32)bcm_atoi(token));
 
-	/* Wake Time parameter */
+	/* Wake interval */
 	token = strsep((char**)&pos, " ");
 	if (!token) {
-		WL_ERR(("Invalid Wake Time parameter\n"));
+		WL_ERR(("Mandaory param Wake Interval not present\n"));
 		bw = -EINVAL;
 		goto exit;
 	}
-	twt = (u64)bcm_atoi(token);
-	val.desc.wake_time_h = htod32((u32)(twt >> 32));
-	val.desc.wake_time_l = htod32((u32)twt);
-	bw = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_SETUP,
-		sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
+	val.desc.wake_int = htod32((u32)bcm_atoi(token));
+
+	/* Wake Time parameter */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("No Wake Time parameter provided, using default\n"));
+	} else {
+		twt = (u64)bcm_atoi(token);
+		val32 = htod32((u32)(twt >> 32));
+		if ((val32 != -1) && ((int32)(htod32((u32)twt)) != -1)) {
+			val.desc.wake_time_h = htod32((u32)(twt >> 32));
+			val.desc.wake_time_l = htod32((u32)twt);
+		}
+	}
+
+	/* Minimum allowed Wake interval */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("No Minimum allowed Wake interval provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.desc.wake_int_min = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* Max Allowed Wake interval */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Maximum allowed Wake interval not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.desc.wake_int_max = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* Minimum allowed Wake duration */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Maximum allowed Wake duration not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.desc.wake_dur_min = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* Maximum allowed Wake duration */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Maximum allowed Wake duration not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.desc.wake_dur_max = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* Average number of packets */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Average number of packets not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.desc.avg_pkt_num  = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* a peer_address */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Average number of packets not provided, using default\n"));
+	} else {
+		/* get peer mac */
+		if (!bcm_ether_atoe(token, &val.peer)) {
+			DHD_ERROR(("%s : Malformed peer addr\n", __FUNCTION__));
+			bw = BCME_ERROR;
+			goto exit;
+		}
+	}
+
+	bw = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_CONFIG,
+			sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
 	if (bw != BCME_OK) {
 		goto exit;
 	}
@@ -10525,7 +10637,513 @@ exit:
 }
 
 static int
-wl_android_set_twt_td(struct net_device *ndev, char *command, int total_len)
+wl_android_twt_display_cap(wl_twt_cap_t *result, char *command, int total_len)
+{
+	int rem_len = 0, bytes_written = 0;
+
+	rem_len = total_len;
+	bytes_written = scnprintf(command, rem_len, "Device TWT Capabilities:\n");
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Requester Support %d, \t",
+			!!(result->device_cap & WL_TWT_CAP_FLAGS_REQ_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Responder Support %d, \t",
+			!!(result->device_cap & WL_TWT_CAP_FLAGS_RESP_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Broadcast TWT Support %d, \t",
+			!!(result->device_cap & WL_TWT_CAP_FLAGS_BTWT_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Flexible TWT Support %d, \t",
+			!!(result->device_cap & WL_TWT_CAP_FLAGS_FLEX_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "TWT Required by peer %d, \n",
+			!!(result->device_cap & WL_TWT_CAP_FLAGS_TWT_REQUIRED));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	/* Peer capabilities */
+	bytes_written = scnprintf(command, rem_len, "\nPeer TWT Capabilities:\n");
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Requester Support %d, \t",
+			!!(result->peer_cap & WL_TWT_CAP_FLAGS_REQ_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Responder Support %d, \t",
+			!!(result->peer_cap & WL_TWT_CAP_FLAGS_RESP_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Broadcast TWT Support %d, \t",
+			!!(result->peer_cap & WL_TWT_CAP_FLAGS_BTWT_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "Flexible TWT Support %d, \t",
+			!!(result->peer_cap & WL_TWT_CAP_FLAGS_FLEX_SUPPORT));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "TWT Required by peer %d, \n",
+			!!(result->peer_cap & WL_TWT_CAP_FLAGS_TWT_REQUIRED));
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	bytes_written = scnprintf(command, rem_len, "\t------------"
+		"---------------------------------------------------\n\n");
+	command += bytes_written;
+	rem_len -= bytes_written;
+	WL_DBG(("Device TWT Capabilities:\n"));
+	WL_DBG(("Requester Support %d, \t",
+		!!(result->device_cap & WL_TWT_CAP_FLAGS_REQ_SUPPORT)));
+	WL_DBG(("Responder Support %d, \t",
+		!!(result->device_cap & WL_TWT_CAP_FLAGS_RESP_SUPPORT)));
+	WL_DBG(("Broadcast TWT Support %d, \t",
+		!!(result->device_cap & WL_TWT_CAP_FLAGS_BTWT_SUPPORT)));
+	WL_DBG(("Flexible TWT Support %d, \t",
+		!!(result->device_cap & WL_TWT_CAP_FLAGS_FLEX_SUPPORT)));
+	WL_DBG(("TWT Required by peer %d, \n",
+		!!(result->device_cap & WL_TWT_CAP_FLAGS_TWT_REQUIRED)));
+	/* Peer capabilities */
+	WL_DBG(("\nPeer TWT Capabilities:\n"));
+	WL_DBG(("Requester Support %d, \t",
+		!!(result->peer_cap & WL_TWT_CAP_FLAGS_REQ_SUPPORT)));
+	WL_DBG(("Responder Support %d, \t",
+		!!(result->peer_cap & WL_TWT_CAP_FLAGS_RESP_SUPPORT)));
+	WL_DBG(("Broadcast TWT Support %d, \t",
+		!!(result->peer_cap & WL_TWT_CAP_FLAGS_BTWT_SUPPORT)));
+	WL_DBG(("Flexible TWT Support %d, \t",
+		!!(result->peer_cap & WL_TWT_CAP_FLAGS_FLEX_SUPPORT)));
+	WL_DBG(("TWT Required by peer %d, \n",
+		!!(result->peer_cap & WL_TWT_CAP_FLAGS_TWT_REQUIRED)));
+	WL_DBG(("\t-----------------------------------------------------------------\n\n"));
+
+	if ((total_len - rem_len) > 0) {
+		return (total_len - rem_len);
+	} else {
+		return BCME_ERROR;
+	}
+}
+
+static int
+wl_android_twt_cap(struct net_device *dev, char *command, int total_len)
+{
+	int ret = BCME_OK;
+	char iovbuf[WLC_IOCTL_SMLEN] = {0, };
+	uint8 *pxtlv = NULL;
+	uint8 *iovresp = NULL;
+	wl_twt_cap_cmd_t cmd_cap;
+	wl_twt_cap_t result;
+
+	uint16 buflen = 0, bufstart = 0;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	bzero(&cmd_cap, sizeof(cmd_cap));
+
+	cmd_cap.version = WL_TWT_CAP_CMD_VERSION_1;
+	cmd_cap.length = sizeof(cmd_cap) - OFFSETOF(wl_twt_cap_cmd_t, peer);
+
+	iovresp = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (iovresp == NULL) {
+		DHD_ERROR(("%s: iov resp memory alloc exited\n", __FUNCTION__));
+		goto exit;
+	}
+
+	buflen = bufstart = WLC_IOCTL_SMLEN;
+	pxtlv = (uint8 *)iovbuf;
+
+	ret = bcm_pack_xtlv_entry(&pxtlv, &buflen, WL_TWT_CMD_CAP,
+			sizeof(cmd_cap), (uint8 *)&cmd_cap, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		DHD_ERROR(("%s : Error return during pack xtlv :%d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	if ((ret = wldev_iovar_getbuf(dev, "twt", iovbuf, bufstart-buflen,
+		iovresp, WLC_IOCTL_MEDLEN, NULL))) {
+		DHD_ERROR(("Getting twt status failed with err=%d \n", ret));
+		goto exit;
+	}
+	if (ret) {
+		DHD_ERROR(("%s : Error return during twt iovar set :%d\n", __FUNCTION__, ret));
+	}
+
+	(void)memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+
+	if (dtoh16(result.version) == WL_TWT_CAP_CMD_VERSION_1) {
+		DHD_ERROR(("capability ver %d, \n", dtoh16(result.version)));
+		ret = wl_android_twt_display_cap(&result, command, total_len);
+		return ret;
+	} else {
+		ret = BCME_UNSUPPORTED;
+		DHD_ERROR(("Version 1 unsupported. ver %d, \n", dtoh16(result.version)));
+		goto exit;
+	}
+
+exit:
+	if (iovresp) {
+		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
+	}
+
+	return ret;
+}
+
+static int
+wl_android_twt_status_display_v1(wl_twt_status_v1_t *status, char *command, int total_len)
+{
+	uint i;
+	wl_twt_sdesc_t *desc = NULL;
+	int rem_len = 0, bytes_written = 0;
+
+	rem_len = total_len;
+
+	DHD_ERROR(("\nNumber of Individual TWTs: %d\n", status->num_fid));
+	bytes_written = scnprintf(command, rem_len,
+			"\nNumber of Individual TWTs: %d\n", status->num_fid);
+	command += bytes_written;
+	rem_len -= bytes_written;
+	bytes_written = scnprintf(command, rem_len,
+			"Number of Broadcast TWTs: %d\n", status->num_bid);
+	command += bytes_written;
+	rem_len -= bytes_written;
+	bytes_written = scnprintf(command, rem_len,
+			"TWT SPPS Enabled %d \t STA Wake Status %d \t Wake Override %d\n",
+			!!(status->status_flags & WL_TWT_STATUS_FLAG_SPPS_ENAB),
+			!!(status->status_flags & WL_TWT_STATUS_FLAG_WAKE_STATE),
+			!!(status->status_flags & WL_TWT_STATUS_FLAG_WAKE_OVERRIDE));
+	command += bytes_written;
+	rem_len -= bytes_written;
+	WL_DBG(("Number of Broadcast TWTs: %d\n", status->num_bid));
+	WL_DBG(("TWT SPPS Enabled %d \t STA Wake Status %d \t Wake Override %d\n",
+		!!(status->status_flags & WL_TWT_STATUS_FLAG_SPPS_ENAB),
+		!!(status->status_flags & WL_TWT_STATUS_FLAG_WAKE_STATE),
+		!!(status->status_flags & WL_TWT_STATUS_FLAG_WAKE_OVERRIDE)));
+	WL_DBG(("\t---------------- Individual TWT list-------------------\n"));
+	bytes_written = scnprintf(command, rem_len,
+			"\t---------------- Individual TWT list-------------------\n");
+	command += bytes_written;
+	rem_len -= bytes_written;
+
+	for (i = 0; i < WL_TWT_MAX_ITWT; i ++) {
+		if ((status->itwt_status[i].state == WL_TWT_ACTIVE) ||
+			(status->itwt_status[i].state == WL_TWT_SUSPEND)) {
+			desc = &status->itwt_status[i].desc;
+			bytes_written = scnprintf(command, rem_len, "\tFlow ID %d \tState %d\t",
+					desc->flow_id,
+					status->itwt_status[i].state);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"peer: "MACF"\n",
+					ETHER_TO_MACF(status->itwt_status[i].peer));
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"Unannounced %d\tTriggered %d\tProtection %d\t"
+					"Info Frame Disabled %d\n",
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED),
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_TRIGGER),
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_PROTECT),
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_INFO_FRM_DISABLED));
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"target wake time: 0x%08x%08x\t",
+					desc->wake_time_h, desc->wake_time_l);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"wake duration: %u\t", desc->wake_dur);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"wake interval: %u\t", desc->wake_int);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"TWT channel: %u\n", desc->channel);
+			command += bytes_written;
+			rem_len -= bytes_written;
+			WL_DBG(("\tFlow ID %d \tState %d\t",
+				desc->flow_id,
+				status->itwt_status[i].state));
+			WL_DBG(("peer: "MACF"\n", ETHER_TO_MACF(status->itwt_status[i].peer)));
+			WL_DBG(("Unannounced %d\tTriggered %d\tProtection %d\t"
+				"Info Frame Disabled %d\n",
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED),
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_TRIGGER),
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_PROTECT),
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_INFO_FRM_DISABLED)));
+			WL_DBG(("target wake time: 0x%08x%08x\t",
+				desc->wake_time_h, desc->wake_time_l));
+			WL_DBG(("wake duration: %u\t", desc->wake_dur));
+			WL_DBG(("wake interval: %u\t", desc->wake_int));
+			WL_DBG(("TWT channel: %u\n", desc->channel));
+		}
+	}
+
+	WL_DBG(("\t---------------- Broadcast TWT list-------------------\n"));
+	bytes_written = scnprintf(command, rem_len,
+			"\t---------------- Broadcast TWT list-------------------\n");
+	command += bytes_written;
+	rem_len -= bytes_written;
+	for (i = 0; i < WL_TWT_MAX_BTWT; i ++) {
+		if ((status->btwt_status[i].state == WL_TWT_ACTIVE) ||
+			(status->btwt_status[i].state == WL_TWT_SUSPEND)) {
+			desc = &status->btwt_status[i].desc;
+			bytes_written = scnprintf(command, rem_len,
+					"Broadcast ID %d \tState %d\t",
+					desc->bid, status->btwt_status[i].state);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"peer: "MACF"\n",
+					ETHER_TO_MACF(status->btwt_status[i].peer));
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"Unannounced %d\tTriggered %d\tProtection %d\t"
+					"Info Frame Disabled %d\t",
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED),
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_TRIGGER),
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_PROTECT),
+					!!(desc->flow_flags & WL_TWT_FLOW_FLAG_INFO_FRM_DISABLED));
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"Frame Recommendation %d\tBTWT Persistence %d\n",
+					desc->frame_recomm, desc->btwt_persistence);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"target wake time: 0x%08x%08x\t",
+					desc->wake_time_h, desc->wake_time_l);
+			command += bytes_written;
+			rem_len -= bytes_written;
+			bytes_written = scnprintf(command, rem_len,
+					"wake duration: %u\t", desc->wake_dur);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"wake interval: %u\t", desc->wake_int);
+			command += bytes_written;
+			rem_len -= bytes_written;
+
+			bytes_written = scnprintf(command, rem_len,
+					"TWT channel: %u\n", desc->channel);
+			command += bytes_written;
+			rem_len -= bytes_written;
+			WL_DBG(("Broadcast ID %d \tState %d\t",
+				desc->bid, status->btwt_status[i].state));
+			WL_DBG(("peer: "MACF"\n", ETHER_TO_MACF(status->btwt_status[i].peer)));
+			WL_DBG(("Unannounced %d\tTriggered %d\tProtection %d\t"
+				"Info Frame Disabled %d\t",
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED),
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_TRIGGER),
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_PROTECT),
+				!!(desc->flow_flags & WL_TWT_FLOW_FLAG_INFO_FRM_DISABLED)));
+			WL_DBG(("Frame Recommendation %d\tBTWT Persistence %d\n",
+				desc->frame_recomm, desc->btwt_persistence));
+			WL_DBG(("target wake time: 0x%08x%08x\t",
+				desc->wake_time_h, desc->wake_time_l));
+			WL_DBG(("wake duration: %u\t", desc->wake_dur));
+			WL_DBG(("wake interval: %u\t", desc->wake_int));
+			WL_DBG(("TWT channel: %u\n", desc->channel));
+		}
+	}
+
+	if ((total_len - rem_len) > 0) {
+		return (total_len - rem_len);
+	} else {
+		return BCME_ERROR;
+	}
+}
+
+static int
+wl_android_twt_status_query(struct net_device *dev, char *command, int total_len)
+{
+	int ret = BCME_OK;
+	char iovbuf[WLC_IOCTL_SMLEN] = {0, };
+	uint8 *pxtlv = NULL;
+	uint8 *iovresp = NULL;
+	wl_twt_status_cmd_v1_t status_cmd;
+	wl_twt_status_v1_t result;
+
+	uint16 buflen = 0, bufstart = 0;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	bzero(&status_cmd, sizeof(status_cmd));
+
+	status_cmd.version = WL_TWT_CMD_STATUS_VERSION_1;
+	status_cmd.length = sizeof(status_cmd) - OFFSETOF(wl_twt_status_cmd_v1_t, peer);
+
+	iovresp = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (iovresp == NULL) {
+		DHD_ERROR(("%s: iov resp memory alloc exited\n", __FUNCTION__));
+		goto exit;
+	}
+
+	buflen = bufstart = WLC_IOCTL_SMLEN;
+	pxtlv = (uint8 *)iovbuf;
+
+	ret = bcm_pack_xtlv_entry(&pxtlv, &buflen, WL_TWT_CMD_STATUS,
+			sizeof(status_cmd), (uint8 *)&status_cmd, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		DHD_ERROR(("%s : Error return during pack xtlv :%d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	if ((ret = wldev_iovar_getbuf(dev, "twt", iovbuf, bufstart-buflen,
+		iovresp, WLC_IOCTL_MEDLEN, NULL))) {
+		DHD_ERROR(("Getting twt status failed with err=%d \n", ret));
+		goto exit;
+	}
+	if (ret) {
+		DHD_ERROR(("%s : Error return during twt iovar set :%d\n", __FUNCTION__, ret));
+	}
+
+	(void)memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+
+	if (dtoh16(result.version) == WL_TWT_CMD_STATUS_VERSION_1) {
+		DHD_ERROR(("status query ver %d, \n", dtoh16(result.version)));
+		ret = wl_android_twt_status_display_v1(&result, command, total_len);
+		return ret;
+	} else {
+		ret = BCME_UNSUPPORTED;
+		DHD_ERROR(("Version 1 unsupported. ver %d, \n", dtoh16(result.version)));
+		goto exit;
+	}
+
+exit:
+	if (iovresp) {
+		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
+	}
+
+	return ret;
+}
+
+static int
+wl_android_twt_info(struct net_device *ndev, char *command, int total_len)
+{
+	wl_twt_info_t val;
+	s32 bw;
+	char *token, *pos;
+	u8 mybuf[WLC_IOCTL_SMLEN] = {0};
+	u8 res_buf[WLC_IOCTL_SMLEN] = {0};
+	u64 twt;
+	uint8 *rem = mybuf;
+	uint16 rem_len = sizeof(mybuf);
+	int32 val32;
+
+	WL_DBG_MEM(("Enter. cmd:%s\n", command));
+
+	if (strlen(command) == strlen(CMD_TWT_INFO)) {
+		WL_ERR(("Error, twt teardown cmd missing params\n"));
+		bw = -EINVAL;
+		goto exit;
+	}
+
+	bzero(&val, sizeof(val));
+	val.version = WL_TWT_INFO_VER;
+	val.length = sizeof(val.version) + sizeof(val.length);
+
+	/* Default values, Overide Below */
+	val.infodesc.flow_id = 0xFF;
+	val.desc.next_twt_h = 0xFFFFFFFF;
+	val.desc.next_twt_l = 0xFFFFFFFF;
+
+	pos = command + sizeof(CMD_TWT_TEARDOWN);
+
+	/* (all TWT) */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Mandatory all TWT type not present\n"));
+		bw = -EINVAL;
+		goto exit;
+	}
+	if (htod32((u32)bcm_atoi(token)) == 1) {
+		val.infodesc.flow_flags |= WL_TWT_INFO_FLAG_ALL_TWT;
+	}
+
+	/* Flow ID */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("flow ID  not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.infodesc.flow_id = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* resume offset */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("resume offset not provided, using default\n"));
+	} else {
+		twt = (u64)bcm_atoi(token);
+		val32 = htod32((u32)(twt >> 32));
+		if ((val32 != -1) && ((int32)(htod32((u32)twt)) != -1)) {
+			val.infodesc.next_twt_h = htod32((u32)(twt >> 32));
+			val.infodesc.next_twt_l = htod32((u32)twt);
+			val.infodesc.flow_flags |= WL_TWT_INFO_FLAG_RESUME;
+		}
+	}
+
+	/* peer_address */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Peer Addr not provided, using default\n"));
+	} else {
+		/* get peer mac */
+		if (!bcm_ether_atoe(token, &val.peer)) {
+			DHD_ERROR(("%s : Malformed peer addr\n", __FUNCTION__));
+			bw = BCME_ERROR;
+			goto exit;
+		}
+	}
+
+	bw = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_INFO,
+		sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
+	if (bw != BCME_OK) {
+		goto exit;
+	}
+
+	bw = wldev_iovar_setbuf(ndev, "twt",
+		mybuf, sizeof(mybuf) - rem_len, res_buf, WLC_IOCTL_SMLEN, NULL);
+	if (bw < 0) {
+		WL_ERR(("twt teardown failed. ret:%d\n", bw));
+	}
+exit:
+	return bw;
+
+}
+
+static int
+wl_android_twt_teardown(struct net_device *ndev, char *command, int total_len)
 {
 	wl_twt_teardown_t val;
 	s32 bw;
@@ -10534,25 +11152,39 @@ wl_android_set_twt_td(struct net_device *ndev, char *command, int total_len)
 	u8 res_buf[WLC_IOCTL_SMLEN] = {0};
 	uint8 *rem = mybuf;
 	uint16 rem_len = sizeof(mybuf);
+	int32 val32;
 
 	WL_DBG_MEM(("Enter. cmd:%s\n", command));
 
-	if (strlen(command) == strlen(CMD_SET_TWT_TEARDOWN)) {
+	if (strlen(command) == strlen(CMD_TWT_TEARDOWN)) {
 		WL_ERR(("Error, twt teardown cmd missing params\n"));
 		bw = -EINVAL;
 		goto exit;
 	}
 
 	bzero(&val, sizeof(val));
-	val.version = WL_TWT_SETUP_VER;
+	val.version = WL_TWT_TEARDOWN_VER;
 	val.length = sizeof(val.version) + sizeof(val.length);
 
-	pos = command + sizeof(CMD_SET_TWT_TEARDOWN);
+	/* Default values, Overide Below */
+	val.teardesc.flow_id = 0xFF;
+	val.teardesc.bid = 0xFF;
+
+	pos = command + sizeof(CMD_TWT_TEARDOWN);
+
+	/* negotiation_type */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Mandatory param negotiation type not present\n"));
+		bw = -EINVAL;
+		goto exit;
+	}
+	val.teardesc.negotiation_type  = htod32((u32)bcm_atoi(token));
 
 	/* (all TWT) */
 	token = strsep((char**)&pos, " ");
 	if (!token) {
-		WL_ERR(("No all TWT present\n"));
+		WL_ERR(("Mandatory all TWT type not present\n"));
 		bw = -EINVAL;
 		goto exit;
 	}
@@ -10561,11 +11193,37 @@ wl_android_set_twt_td(struct net_device *ndev, char *command, int total_len)
 	/* Flow ID */
 	token = strsep((char**)&pos, " ");
 	if (!token) {
-		WL_ERR(("No flow ID present\n"));
-		bw = -EINVAL;
-		goto exit;
+		WL_ERR(("flow ID  not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.teardesc.flow_id = htod32((u32)bcm_atoi(token));
+		}
 	}
-	val.teardesc.flow_id = htod32((u32)bcm_atoi(token));
+
+	/* Broadcas ID */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("flow ID  not provided, using default\n"));
+	} else {
+		val32 = htod32((u32)bcm_atoi(token));
+		if (val32 != -1) {
+			val.teardesc.bid = htod32((u32)bcm_atoi(token));
+		}
+	}
+
+	/* peer_address */
+	token = strsep((char**)&pos, " ");
+	if (!token) {
+		WL_ERR(("Peer Addr not provided, using default\n"));
+	} else {
+		/* get peer mac */
+		if (!bcm_ether_atoe(token, &val.peer)) {
+			DHD_ERROR(("%s : Malformed peer addr\n", __FUNCTION__));
+			bw = BCME_ERROR;
+			goto exit;
+		}
+	}
 
 	bw = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_TEARDOWN,
 		sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
@@ -11467,11 +12125,20 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	}
 #endif	/* SUPPORT_LATENCY_CRITICAL_DATA */
 #ifdef WL_TWT
-	else if (strnicmp(command, CMD_SET_TWT_SETUP, strlen(CMD_SET_TWT_SETUP)) == 0) {
-		bytes_written = wl_android_set_twt_setup(net, command, priv_cmd.total_len);
+	else if (strnicmp(command, CMD_TWT_SETUP, strlen(CMD_TWT_SETUP)) == 0) {
+		bytes_written = wl_android_twt_setup(net, command, priv_cmd.total_len);
 	}
-	else if (strnicmp(command, CMD_SET_TWT_TEARDOWN, strlen(CMD_SET_TWT_TEARDOWN)) == 0) {
-		bytes_written = wl_android_set_twt_td(net, command, priv_cmd.total_len);
+	else if (strnicmp(command, CMD_TWT_TEARDOWN, strlen(CMD_TWT_TEARDOWN)) == 0) {
+		bytes_written = wl_android_twt_teardown(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_TWT_INFO, strlen(CMD_TWT_INFO)) == 0) {
+		bytes_written = wl_android_twt_info(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_TWT_STATUS_QUERY, strlen(CMD_TWT_STATUS_QUERY)) == 0) {
+		bytes_written = wl_android_twt_status_query(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_TWT_CAPABILITY, strlen(CMD_TWT_CAPABILITY)) == 0) {
+		bytes_written = wl_android_twt_cap(net, command, priv_cmd.total_len);
 	}
 #endif /* WL_TWT */
 	else {
@@ -11532,7 +12199,7 @@ void wl_android_post_init(void)
 
 #ifdef ENABLE_4335BT_WAR
 	bcm_bt_unlock(lock_cookie_wifi);
-	printk("wl_android_post_init: btlock released\n");
+	DHD_ERROR(("wl_android_post_init: btlock released\n"));
 #endif /* ENABLE_4335BT_WAR */
 
 	if (!dhd_download_fw_on_driverload) {

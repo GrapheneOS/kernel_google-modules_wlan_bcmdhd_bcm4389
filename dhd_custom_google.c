@@ -31,14 +31,14 @@
 #include <linux/err.h>
 #include <linux/gpio.h>
 #include <linux/skbuff.h>
-#if defined(CONFIG_WIFI_CONTROL_FUNC)
-#include <linux/wlan_plat.h>
-#else
-#include <dhd_linux.h>
-#endif
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>
+#ifdef CONFIG_WIFI_CONTROL_FUNC
+#include <linux/wlan_plat.h>
+#else
+#include <dhd_plat.h>
+#endif /* CONFIG_WIFI_CONTROL_FUNC */
 #include <dhd_dbg.h>
 #include <dhd.h>
 
@@ -393,6 +393,7 @@ dhd_wlan_init(void)
 	if (ret < 0) {
 		DHD_ERROR(("%s: failed to alloc reserved memory,"
 					" ret=%d\n", __FUNCTION__, ret));
+		goto fail;
 	}
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 

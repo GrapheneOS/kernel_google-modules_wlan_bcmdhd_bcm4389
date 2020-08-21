@@ -3109,6 +3109,15 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, volatile void *regs,
 		hnd_gcisem_set_err(GCI_BT_WLAN_REG_ON_WAR_SEM);
 		goto exit;
 	}
+
+	/* WLAN/BT turn On WAR - Remove wlsc_btsc_prisel override after semaphore acquire
+	 * BT sets the override at power up when WL_REG_ON is low - wlsc_btsc_prisel is in
+	 * undefined state when wlan_reg_on is low
+	 */
+	si_gci_chipcontrol(sih, CC_GCI_CHIPCTRL_23,
+		(CC_GCI_CHIPCTRL_23_WLSC_BTSC_PRISEL_FORCE_MASK |
+		CC_GCI_CHIPCTRL_23_WLSC_BTSC_PRISEL_VAL_MASK), 0u);
+
 	if ((hnd_gcisem_release(GCI_BT_WLAN_REG_ON_WAR_SEM) != BCME_OK)) {
 		hnd_gcisem_set_err(GCI_BT_WLAN_REG_ON_WAR_SEM);
 		err_at = 15;
@@ -6973,9 +6982,13 @@ si_sysmem_size(si_t *sih)
 	coreinfo = R_REG(sii->osh, &regs->coreinfo);
 
 	/* Number of ROM banks, SW need to skip the ROM banks. */
-	nrb = (coreinfo & SYSMEM_SRCI_ROMNB_MASK) >> SYSMEM_SRCI_ROMNB_SHIFT;
-
-	nb = (coreinfo & SYSMEM_SRCI_SRNB_MASK) >> SYSMEM_SRCI_SRNB_SHIFT;
+	if (si_corerev(sih) < 12) {
+		nrb = (coreinfo & SYSMEM_SRCI_ROMNB_MASK) >> SYSMEM_SRCI_ROMNB_SHIFT;
+		nb = (coreinfo & SYSMEM_SRCI_SRNB_MASK) >> SYSMEM_SRCI_SRNB_SHIFT;
+	} else {
+		nrb = (coreinfo & SYSMEM_SRCI_NEW_ROMNB_MASK) >> SYSMEM_SRCI_NEW_ROMNB_SHIFT;
+		nb = (coreinfo & SYSMEM_SRCI_NEW_SRNB_MASK) >> SYSMEM_SRCI_NEW_SRNB_SHIFT;
+	}
 	for (i = 0; i < nb; i++)
 		memsize += sysmem_banksize(sii, regs, i + nrb);
 

@@ -863,10 +863,10 @@ void* BCM_ASLR_CODE_FNPTR_RELOCATOR(void *func_ptr);
  */
 #define TIMESTAMP_SUFFIX "<TIMESTAMP>"
 
-#ifdef STK_PRT_MMU
+#ifdef ASLR_STACK
 /* MMU main thread stack data */
 #define BCM_MMU_MTH_STK_DATA(_data) __attribute__ ((__section__ (".mmu_mth_stack." #_data))) _data
-#endif /* STK_PRT_MMU */
+#endif /* ASLR_STACK */
 
 /* Special section for MMU page-tables. */
 #define BCM_MMU_PAGE_TABLE_DATA(_data) \

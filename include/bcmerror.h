@@ -425,7 +425,9 @@ enum {
 	/* Anti-clogging token mismatch */
 	WL_SAE_E_AUTH_ANTI_CLOG_MISMATCH	= -3096,
 	/* SAE PWE method mismatch */
-	WL_SAE_E_AUTH_PWE_MISMATCH              = -3097
+	WL_SAE_E_AUTH_PWE_MISMATCH              = -3097,
+	/* SAE-PK validation failed */
+	WL_SAE_E_AUTH_PK_VALIDATION		= -3098
 };
 
 /*

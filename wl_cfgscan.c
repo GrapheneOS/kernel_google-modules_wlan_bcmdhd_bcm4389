@@ -111,6 +111,11 @@
 	cfg80211_sched_scan_stopped(wiphy);
 #endif /* KERNEL > 4.11.0 */
 
+#ifdef DHD_GET_VALID_CHANNELS
+#define IS_DFS(chaninfo) ((chaninfo & WL_CHAN_RADAR) || \
+	 (chaninfo & WL_CHAN_PASSIVE))
+#endif /* DHD_GET_VALID_CHANNELS */
+
 #if defined(USE_INITIAL_2G_SCAN) || defined(USE_INITIAL_SHORT_DWELL_TIME)
 #define FIRST_SCAN_ACTIVE_DWELL_TIME_MS 40
 bool g_first_broadcast_scan = TRUE;
@@ -1458,11 +1463,10 @@ wl_cfgscan_populate_scan_channels(struct bcm_cfg80211 *cfg,
 #endif /* WL_HOST_BAND_MGMT */
 
 		if (is_p2p_scan) {
-#ifndef WL_P2P_6G
-			if (CHSPEC_IS6G(chanspec)) {
-				continue;
-			}
-#endif /* WL_P2P_6G */
+				if (CHSPEC_IS6G(chanspec)) {
+					continue;
+				}
+
 #ifdef P2P_SKIP_DFS
 			if (CHSPEC_IS5G(chanspec) &&
 				(CHSPEC_CHANNEL(chanspec) >= 52 &&
@@ -5292,3 +5296,73 @@ wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 	WL_DBG_MEM(("channel cnt:%d\n", info->chan_cnt));
 	return BCME_OK;
 }
+
+#ifdef DHD_GET_VALID_CHANNELS
+bool
+wl_cfgscan_is_dfs_set(wifi_band band)
+{
+	switch (band) {
+		case WIFI_BAND_A_DFS:
+		case WIFI_BAND_A_WITH_DFS:
+		case WIFI_BAND_ABG_WITH_DFS:
+		case WIFI_BAND_24GHZ_5GHZ_WITH_DFS_6GHZ:
+			return true;
+		default:
+			return false;
+	}
+	return false;
+}
+
+s32
+wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg, int band,
+	uint16 *list, uint32 *num_channels)
+{
+	s32 err = BCME_OK;
+	uint32 i, freq, list_count, count = 0;
+	struct net_device *dev = bcmcfg_to_prmry_ndev(cfg);
+	uint32 chspec, chaninfo;
+	bool dfs_set = false;
+
+	dfs_set = wl_cfgscan_is_dfs_set(band);
+	err = wldev_iovar_getbuf_bsscfg(dev, "chan_info_list", NULL,
+			0, list, CHANINFO_LIST_BUF_SIZE, 0, &cfg->ioctl_buf_sync);
+	if (err == BCME_UNSUPPORTED) {
+		WL_INFORM(("get chan_info_list, UNSUPPORTED\n"));
+		return err;
+	} else if (err != BCME_OK) {
+		WL_ERR(("get chan_info_list err(%d)\n", err));
+		return err;
+	}
+
+	list_count = ((wl_chanspec_list_v1_t *)list)->count;
+	for (i = 0; i < list_count; i++) {
+		chspec = dtoh32(((wl_chanspec_list_v1_t *)list)->chspecs[i].chanspec);
+		chaninfo = dtoh32(((wl_chanspec_list_v1_t *)list)->chspecs[i].chaninfo);
+		freq = wl_channel_to_frequency(wf_chspec_ctlchan(chspec),
+			CHSPEC_BAND(chspec));
+		if (((band & WIFI_BAND_BG) && CHSPEC_IS2G(chspec)) ||
+				((band & WIFI_BAND_6GHZ) && CHSPEC_IS6G(chspec))) {
+			/* add 2g/6g channels */
+			list[i] = freq;
+			count++;
+		}
+		/* handle 5g separately */
+		if (CHSPEC_IS5G(chspec)) {
+			if (!((band == WIFI_BAND_A_DFS) && IS_DFS(chaninfo)) &&
+				!(band & WIFI_BAND_A)) {
+				/* Not DFS only case nor 5G case */
+				continue;
+			}
+
+			if ((band & WIFI_BAND_A) && !dfs_set && IS_DFS(chaninfo)) {
+				continue;
+			}
+
+			list[i] = freq;
+			count++;
+		}
+	}
+	*num_channels = count;
+	return err;
+}
+#endif /* DHD_GET_VALID_CHANNELS */

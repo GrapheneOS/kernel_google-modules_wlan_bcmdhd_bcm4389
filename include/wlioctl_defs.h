@@ -1048,6 +1048,7 @@
 #define WL_AUTH_OPEN_SYSTEM		0	/* d11 open authentication */
 #define WL_AUTH_SHARED_KEY		1	/* d11 shared authentication */
 #define WL_AUTH_OPEN_SHARED		2	/* try open, then shared if open failed w/rc 13 */
+#define WL_AUTH_SAE_KEY			3	/* d11 sae authentication */
 #define WL_AUTH_FILS_SHARED		4	/* d11 fils shared key authentication */
 #define WL_AUTH_FILS_SHARED_PFS		5	/* d11 fils shared key w/ pfs authentication */
 #define WL_AUTH_FILS_PUBLIC		6	/* d11 fils public key authentication */
@@ -1469,11 +1470,15 @@
 #define WL_EVENTING_MASK_EXT_LEN	ROUNDUP(WLC_E_LAST, NBBY)/NBBY
 
 /* join preference types */
-#define WL_JOIN_PREF_RSSI	1	/* by RSSI */
-#define WL_JOIN_PREF_WPA	2	/* by akm and ciphers */
-#define WL_JOIN_PREF_BAND	3	/* by 802.11 band */
-#define WL_JOIN_PREF_RSSI_DELTA	4	/* by 802.11 band only if RSSI delta condition matches */
-#define WL_JOIN_PREF_TRANS_PREF	5	/* defined by requesting AP */
+#define WL_JOIN_PREF_RSSI	1u	/* by RSSI */
+#define WL_JOIN_PREF_WPA	2u	/* by akm and ciphers */
+#define WL_JOIN_PREF_BAND	3u	/* by 802.11 band */
+#define WL_JOIN_PREF_RSSI_DELTA	4u	/* by 802.11 band only if RSSI delta condition matches */
+#define WL_JOIN_PREF_TRANS_PREF	5u	/* defined by requesting AP */
+#define WL_JOIN_PREF_RSN_PRIO	6u	/* by RSNE/RSNXE related security priority */
+
+/* Join preference RSN priority */
+#define WL_JP_RSN_SAE_PK	1u	/* SAE-PK higher priority over non SAE-PK APs */
 
 /* band preference */
 #define WLJP_BAND_ASSOC_PREF	255	/* use what WLC_SET_ASSOC_PREFER ioctl specifies */
@@ -2420,6 +2425,7 @@
 #define WL_PWRSTATS_TYPE_BCNTRIM_STATS	13 /* struct wl_pwr_bcntrim_stats_t */
 #define WL_PWRSTATS_TYPE_SLICE_INDEX_BAND_INFO	14 /* wl_pwr_slice_index_band_t */
 #define WL_PWRSTATS_TYPE_PSBW_STATS	15 /* struct wl_pwr_psbw_stats_t */
+#define WL_PWRSTATS_TYPE_PM_ACCUMUL	16 /* struct wl_pwr_pm_accum_stats_v1_t */
 
 /* IOV AWD DATA */
 #define AWD_DATA_JOIN_INFO	0

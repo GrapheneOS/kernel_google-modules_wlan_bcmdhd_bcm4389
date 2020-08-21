@@ -145,4 +145,33 @@ extern int wl_android_get_roam_scan_chanlist(struct bcm_cfg80211 *cfg);
 extern s32 wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 	struct net_device *dev, wlcfg_assoc_info_t *info);
 extern void wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg);
+#ifdef DHD_GET_VALID_CHANNELS
+typedef enum {
+	WIFI_BAND_UNSPECIFIED,
+	/* 2.4 GHz */
+	WIFI_BAND_BG = 1,
+	/* 5 GHz without DFS */
+	WIFI_BAND_A = 2,
+	/* 5 GHz DFS only */
+	WIFI_BAND_A_DFS = 4,
+	/* 5 GHz with DFS */
+	WIFI_BAND_A_WITH_DFS = 6,
+	/* 2.4 GHz + 5 GHz; no DFS */
+	WIFI_BAND_ABG = 3,
+	/* 2.4 GHz + 5 GHz with DFS */
+	WIFI_BAND_ABG_WITH_DFS = 7,
+	/* 6GHz */
+	WIFI_BAND_6GHZ = 8,
+	/* 5 GHz no DFS + 6 GHz */
+	WIFI_BAND_5GHZ_6GHZ = 10,
+	/* 2.4 GHz + 5 GHz no DFS + 6 GHz */
+	WIFI_AND_24GHZ_5GHZ_6GHZ = 11,
+	/* 2.4 GHz + 5 GHz with DFS + 6 GHz */
+	WIFI_BAND_24GHZ_5GHZ_WITH_DFS_6GHZ = 15
+} wifi_band;
+
+extern bool wl_cfgscan_is_dfs_set(wifi_band band);
+extern s32 wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg, int band,
+        uint16 *list, uint32 *num_channels);
+#endif /* DHD_GET_VALID_CHANNELS */
 #endif /* _wl_cfgscan_h_ */

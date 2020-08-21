@@ -35,6 +35,12 @@ extern dhd_pub_t* g_dhd_pub;
 #define DHD_NAPI_LATENCY_SIZE (sizeof(uint64) * DHD_NUM_NAPI_LATENCY_ROWS)
 #endif /* DHD_LB_STATS */
 
+#ifdef DHD_REPLACE_LOG_INFO_TO_TRACE
+#define DHD_LB_INFO DHD_TRACE
+#else
+#define DHD_LB_INFO DHD_INFO
+#endif /* DHD_REPLACE_LOG_INFO_TO_TRACE */
+
 void
 dhd_lb_set_default_cpus(dhd_info_t *dhd)
 {
@@ -979,7 +985,7 @@ dhd_napi_poll(struct napi_struct *napi, int budget)
 	napi_latency = (uint32)(OSL_SYSUPTIME_US() - dhd->napi_schedule_time);
 	dhd_lb_stats_update_napi_latency(dhd->napi_latency, napi_latency);
 #endif /* DHD_LB_STATS */
-	DHD_INFO(("%s napi_queue<%d> budget<%d>\n",
+	DHD_LB_INFO(("%s napi_queue<%d> budget<%d>\n",
 		__FUNCTION__, skb_queue_len(&dhd->rx_napi_queue), budget));
 
 	/*
@@ -1001,7 +1007,7 @@ dhd_napi_poll(struct napi_struct *napi, int budget)
 
 		ifid = DHD_PKTTAG_IFID((dhd_pkttag_fr_t *)PKTTAG(skb));
 
-		DHD_INFO(("%s dhd_rx_frame pkt<%p> ifid<%d>\n",
+		DHD_LB_INFO(("%s dhd_rx_frame pkt<%p> ifid<%d>\n",
 			__FUNCTION__, skb, ifid));
 
 		dhd_rx_frame(&dhd->pub, ifid, skb, pkt_count, chan);
@@ -1025,7 +1031,7 @@ dhd_napi_poll(struct napi_struct *napi, int budget)
 	}
 	DHD_LB_STATS_UPDATE_NAPI_HISTO(&dhd->pub, processed);
 
-	DHD_INFO(("%s processed %d\n", __FUNCTION__, processed));
+	DHD_LB_INFO(("%s processed %d\n", __FUNCTION__, processed));
 
 	/*
 	 * Signal napi complete only when no more packets are processed and
@@ -1179,7 +1185,7 @@ dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp)
 		return;
 	}
 
-	DHD_INFO(("%s append napi_queue<%d> pend_queue<%d>\n", __FUNCTION__,
+	DHD_LB_INFO(("%s append napi_queue<%d> pend_queue<%d>\n", __FUNCTION__,
 		skb_queue_len(&dhd->rx_napi_queue), skb_queue_len(&dhd->rx_pend_queue)));
 
 	/* append the producer's queue of packets to the napi's rx process queue */
@@ -1229,7 +1235,7 @@ dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp)
 
 	}
 
-	DHD_INFO(("%s : schedule to curr_cpu : %d, rx_napi_cpu : %d\n",
+	DHD_LB_INFO(("%s : schedule to curr_cpu : %d, rx_napi_cpu : %d\n",
 		__FUNCTION__, curr_cpu, rx_napi_cpu));
 	dhd_work_schedule_on(&dhd->rx_napi_dispatcher_work, rx_napi_cpu);
 	DHD_LB_STATS_INCR(dhd->napi_sched_cnt);
@@ -1245,7 +1251,7 @@ dhd_lb_rx_pkt_enqueue(dhd_pub_t *dhdp, void *pkt, int ifidx)
 {
 	dhd_info_t *dhd = dhdp->info;
 
-	DHD_INFO(("%s enqueue pkt<%p> ifidx<%d> pend_queue<%d>\n", __FUNCTION__,
+	DHD_LB_INFO(("%s enqueue pkt<%p> ifidx<%d> pend_queue<%d>\n", __FUNCTION__,
 		pkt, ifidx, skb_queue_len(&dhd->rx_pend_queue)));
 	DHD_PKTTAG_SET_IFID((dhd_pkttag_fr_t *)PKTTAG(pkt), ifidx);
 	__skb_queue_tail(&dhd->rx_pend_queue, pkt);
@@ -1344,7 +1350,7 @@ dhd_lb_tx_process(dhd_info_t *dhd)
 
 	} while (1);
 
-	DHD_INFO(("%s(): Processed %d packets \r\n", __FUNCTION__, cnt));
+	DHD_LB_INFO(("%s(): Processed %d packets \r\n", __FUNCTION__, cnt));
 
 	return resched;
 }

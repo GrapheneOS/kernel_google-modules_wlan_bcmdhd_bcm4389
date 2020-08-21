@@ -38,6 +38,9 @@
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
 #endif /* CONFIG COMPAT */
+#ifdef CONFIG_HAS_WAKELOCK
+#include <linux/pm_wakeup.h>
+#endif /* CONFIG_HAS_WAKELOCK */
 #include <dngl_stats.h>
 #include <dhd.h>
 #include <dhd_dbg.h>
@@ -111,20 +114,20 @@ typedef struct dhd_info {
 
 	/* Wakelocks */
 #if defined(CONFIG_HAS_WAKELOCK)
-	struct wake_lock wl_wifi;   /* Wifi wakelock */
-	struct wake_lock wl_rxwake; /* Wifi rx wakelock */
-	struct wake_lock wl_ctrlwake; /* Wifi ctrl wakelock */
-	struct wake_lock wl_wdwake; /* Wifi wd wakelock */
-	struct wake_lock wl_evtwake; /* Wifi event wakelock */
-	struct wake_lock wl_pmwake;   /* Wifi pm handler wakelock */
-	struct wake_lock wl_txflwake; /* Wifi tx flow wakelock */
+	struct wakeup_source wl_wifi;   /* Wifi wakelock */
+	struct wakeup_source wl_rxwake; /* Wifi rx wakelock */
+	struct wakeup_source wl_ctrlwake; /* Wifi ctrl wakelock */
+	struct wakeup_source wl_wdwake; /* Wifi wd wakelock */
+	struct wakeup_source wl_evtwake; /* Wifi event wakelock */
+	struct wakeup_source wl_pmwake;   /* Wifi pm handler wakelock */
+	struct wakeup_source wl_txflwake; /* Wifi tx flow wakelock */
 #ifdef BCMPCIE_OOB_HOST_WAKE
-	struct wake_lock wl_intrwake; /* Host wakeup wakelock */
+	struct wakeup_source wl_intrwake; /* Host wakeup wakelock */
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 #ifdef DHD_USE_SCAN_WAKELOCK
-	struct wake_lock wl_scanwake;  /* Wifi scan wakelock */
+	struct wakeup_source wl_scanwake;  /* Wifi scan wakelock */
 #endif /* DHD_USE_SCAN_WAKELOCK */
-	struct wake_lock wl_nanwake; /* NAN wakelock */
+	struct wakeup_source wl_nanwake; /* NAN wakelock */
 #endif /* CONFIG_HAS_WAKELOCK */
 
 	/* net_device interface lock, prevent race conditions among net_dev interface
@@ -350,10 +353,7 @@ typedef struct dhd_info {
 	struct delayed_work edl_dispatcher_work;
 #endif
 #if defined(WLAN_ACCEL_BOOT)
-	int fs_check_retry;
-	struct delayed_work wl_accel_work;
 	bool wl_accel_force_reg_on;
-	bool wl_accel_boot_on_done;
 #endif
 #if defined(BCM_DNGL_EMBEDIMAGE) || defined(BCM_REQUEST_FW)
 #if defined(BCMDBUS)
@@ -460,4 +460,19 @@ void dhd_irq_set_affinity(dhd_pub_t *dhdp, const struct cpumask *cpumask);
 extern uint sssr_enab;
 extern uint fis_enab;
 #endif /* DHD_SSSR_DUMP */
+
+#ifdef CONFIG_HAS_WAKELOCK
+enum {
+	WAKE_LOCK_SUSPEND, /* Prevent suspend */
+	WAKE_LOCK_TYPE_COUNT
+};
+#define dhd_wake_lock_init(wakeup_source, type, name)	wakeup_source_add(wakeup_source)
+#define dhd_wake_lock_destroy(wakeup_source)		wakeup_source_remove(wakeup_source)
+#define dhd_wake_lock(wakeup_source)			__pm_stay_awake(wakeup_source)
+#define dhd_wake_unlock(wakeup_source)			__pm_relax(wakeup_source)
+#define dhd_wake_lock_active(wakeup_source)		((wakeup_source)->active)
+#define dhd_wake_lock_timeout(wakeup_source, timeout)	\
+	__pm_wakeup_event(wakeup_source, jiffies_to_msecs(timeout))
+#endif /* CONFIG_HAS_WAKELOCK */
+
 #endif /* __DHD_LINUX_PRIV_H__ */

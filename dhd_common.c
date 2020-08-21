@@ -142,6 +142,13 @@
 int log_print_threshold = 0;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
 
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+int dbgring_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_INFO_VAL
+		| DHD_EVENT_VAL | DHD_PKT_MON_VAL | DHD_IOVAR_MEM_VAL;
+int dhd_msg_level = DHD_ERROR_VAL | DHD_EVENT_VAL
+	        | DHD_PKT_MON_VAL;
+#else
+int dbgring_msg_level = 0;
 /* For CUSTOMER_HW4/Hikey do not enable DHD_ERROR_MEM_VAL by default */
 int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 	/* For CUSTOMER_HW4 do not enable DHD_IOVAR_MEM_VAL by default */
@@ -149,6 +156,7 @@ int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 	| DHD_IOVAR_MEM_VAL
 #endif
 	| DHD_PKT_MON_VAL;
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 #ifdef NDIS
 extern uint wl_msg_level;
@@ -253,6 +261,10 @@ static void dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 static int dngl_host_event(dhd_pub_t *dhdp, void *pktdata, bcm_dngl_event_msg_t *dngl_event,
 	size_t pktlen);
 #endif /* DNGL_EVENT_SUPPORT */
+
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+static void copy_hang_info_ioctl_timeout(dhd_pub_t *dhd, int ifidx, wl_ioctl_t *ioc);
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 
 #ifdef REPORT_FATAL_TIMEOUTS
 static void dhd_set_join_error(dhd_pub_t *pub, uint32 mask);
@@ -1426,6 +1438,7 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 		}
 #endif /* DHD_WET */
 
+	DHD_ERROR(("%s bufsize: %d free: %d", __FUNCTION__, buflen, strbuf->size));
 	/* return remaining buffer length */
 	return (!strbuf->size ? BCME_BUFTOOSHORT : strbuf->size);
 }
@@ -1754,6 +1767,11 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 		}
 #endif /* DUMP_IOCTL_IOV_LIST */
 #endif /* defined(WL_WLC_SHIM) */
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+		if (ret == -ETIMEDOUT) {
+			copy_hang_info_ioctl_timeout(dhd_pub, ifidx, ioc);
+		}
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 #ifdef DHD_LOG_DUMP
 		if ((ioc->cmd == WLC_GET_VAR || ioc->cmd == WLC_SET_VAR) &&
 				buf != NULL) {
@@ -3447,6 +3465,7 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		dhd_pub->check_trap_rot = *(bool *)arg;
 		break;
 	}
+
 	default:
 		bcmerror = BCME_UNSUPPORTED;
 		break;
@@ -4165,6 +4184,13 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 
 		break;
 
+#ifdef WL_CLIENT_SAE
+		case WLC_E_AUTH_START:
+			DHD_EVENT(("MACEVENT: %s, MAC %s, reason %d\n", event_name,
+				eabuf, (int)reason));
+			break;
+#endif /* WL_CLIENT_SAE */
+
 	case WLC_E_ASSOC:
 	case WLC_E_REASSOC:
 		if (status == WLC_E_STATUS_SUCCESS) {
@@ -4686,6 +4712,46 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		}
 		break;
 
+	case WLC_E_TWT_SETUP:
+		if (datalen >= (sizeof(wl_twt_setup_cplt_t) + sizeof(wl_twt_sdesc_t))) {
+			const wl_twt_setup_cplt_t *setup_cplt =
+				(wl_twt_setup_cplt_t *)event_data;
+			const wl_twt_sdesc_t *sdesc =
+				(const wl_twt_sdesc_t *)&setup_cplt[1];
+			DHD_EVENT(("MACEVENT: %s %d, MAC %s, status %d,"
+				" reason %d, negotiation_type %d, flow_id %d, bid %d\n",
+				event_name, event_type, eabuf, (int)setup_cplt->status,
+				(int)setup_cplt->reason_code, (int)sdesc->negotiation_type,
+				(int)sdesc->flow_id, (int)sdesc->bid));
+		}
+		break;
+	case WLC_E_TWT_TEARDOWN:
+		if (datalen >= (sizeof(wl_twt_teardown_cplt_t) + sizeof(wl_twt_teardesc_t))) {
+			const wl_twt_teardown_cplt_t *td_cplt =
+				(wl_twt_teardown_cplt_t *)event_data;
+			const wl_twt_teardesc_t *teardesc =
+				(const wl_twt_teardesc_t *)&td_cplt[1];
+			DHD_EVENT(("MACEVENT: %s %d, MAC %s, status %d,"
+				" reason %d, negotiation_type %d, flow_id %d, bid %d, all_twt %d\n",
+				event_name, event_type, eabuf, (int)td_cplt->status,
+				(int)td_cplt->reason_code, (int)teardesc->negotiation_type,
+				(int)teardesc->flow_id, (int)teardesc->bid, (int)teardesc->alltwt));
+		}
+		break;
+	case WLC_E_TWT_INFO_FRM:
+		if (datalen >= (sizeof(wl_twt_info_cplt_t) + sizeof(wl_twt_infodesc_t))) {
+			const wl_twt_info_cplt_t *info_cplt =
+				(wl_twt_info_cplt_t *)event_data;
+			const wl_twt_infodesc_t *infodesc =
+				(const wl_twt_infodesc_t *)&info_cplt[1];
+			DHD_EVENT(("MACEVENT: %s %d, MAC %s, status %d,"
+				" reason %d, all_twt %d, flow_id %d\n",
+				event_name, event_type, eabuf, (int)info_cplt->status,
+				(int)info_cplt->reason_code,
+				!!(infodesc->flow_flags & WL_TWT_INFO_FLAG_ALL_TWT),
+				(int)infodesc->flow_id));
+		}
+		break;
 	default:
 		DHD_INFO(("MACEVENT: %s %d, MAC %s, status %d, reason %d, auth %d\n",
 		       event_name, event_type, eabuf, (int)status, (int)reason,
@@ -5720,7 +5786,7 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 
 		/* Parse pattern filter pattern. */
 		rc = wl_pattern_atoh(argv[i],
-			(char *) &pkt_filterp->u.pattern.mask_and_pattern[mask_size]);
+			(char *) &pkt_filterp->u.pattern.mask_and_pattern[rc]);
 
 		if (rc == -1) {
 			DHD_ERROR(("Rejecting: %s\n", argv[i]));
@@ -5734,7 +5800,7 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 
 		pkt_filter.u.pattern.size_bytes = mask_size;
 		buf_len += WL_PKT_FILTER_FIXED_LEN;
-		buf_len += (WL_PKT_FILTER_PATTERN_FIXED_LEN + 2 * mask_size);
+		buf_len += (WL_PKT_FILTER_PATTERN_FIXED_LEN + 2 * rc);
 
 		/* Keep-alive attributes are set in local	variable (keep_alive_pkt), and
 		 * then memcpy'ed into buffer (keep_alive_pktp) since there is no
@@ -5816,15 +5882,16 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 				goto fail;
 			}
 
-			if (*argv[i] == '!') {
+			endptr = argv[i];
+			if (*endptr == '!') {
 				pf_el->match_flags =
 					htod16(WL_PKT_FILTER_MFLAG_NEG);
-				if (++(argv[i]) == NULL) {
+				if (*(++endptr) == '\0') {
 					printf("Pattern not provided\n");
 					goto fail;
 				}
 			}
-			rc = wl_pattern_atoh(argv[i], (char*)&pf_el->mask_and_data[rc]);
+			rc = wl_pattern_atoh(endptr, (char*)&pf_el->mask_and_data[rc]);
 			if ((rc == -1) || (rc > MAX_PKTFLT_FIXED_PATTERN_SIZE)) {
 				printf("Rejecting: %s\n", argv[i]);
 				goto fail;
@@ -9567,6 +9634,75 @@ exit:
 	return ret;
 }
 #endif /* LINUX || DHD_EFI */
+
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+
+static void
+copy_hang_info_ioctl_timeout(dhd_pub_t *dhd, int ifidx, wl_ioctl_t *ioc)
+{
+	int remain_len;
+	int i;
+	int *cnt;
+	char *dest;
+	int bytes_written;
+	uint32 ioc_dwlen = 0;
+
+	if (!dhd || !dhd->hang_info) {
+		DHD_ERROR(("%s dhd=%p hang_info=%p\n",
+			__FUNCTION__, dhd, (dhd ? dhd->hang_info : NULL)));
+		return;
+	}
+
+	cnt = &dhd->hang_info_cnt;
+	dest = dhd->hang_info;
+
+	memset(dest, 0, VENDOR_SEND_HANG_EXT_INFO_LEN);
+	(*cnt) = 0;
+
+	bytes_written = 0;
+	remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
+
+	get_debug_dump_time(dhd->debug_dump_time_hang_str);
+	copy_debug_dump_time(dhd->debug_dump_time_str, dhd->debug_dump_time_hang_str);
+
+	bytes_written += scnprintf(&dest[bytes_written], remain_len, "%d %d %s %d %d %d %d %d %d ",
+			HANG_REASON_IOCTL_RESP_TIMEOUT, VENDOR_SEND_HANG_EXT_INFO_VER,
+			dhd->debug_dump_time_hang_str,
+			ifidx, ioc->cmd, ioc->len, ioc->set, ioc->used, ioc->needed);
+	(*cnt) = HANG_FIELD_IOCTL_RESP_TIMEOUT_CNT;
+
+	clear_debug_dump_time(dhd->debug_dump_time_hang_str);
+
+	/* Access ioc->buf only if the ioc->len is more than 4 bytes */
+	ioc_dwlen = (uint32)(ioc->len / sizeof(uint32));
+	if (ioc_dwlen > 0) {
+		const uint32 *ioc_buf = (const uint32 *)ioc->buf;
+
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
+		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+		bytes_written += scnprintf(&dest[bytes_written], remain_len,
+			"%08x", *(uint32 *)(ioc_buf++));
+		GCC_DIAGNOSTIC_POP();
+		(*cnt)++;
+		if ((*cnt) >= HANG_FIELD_CNT_MAX) {
+			return;
+		}
+
+		for (i = 1; i < ioc_dwlen && *cnt <= HANG_FIELD_CNT_MAX;
+			i++, (*cnt)++) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
+			GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+			bytes_written += scnprintf(&dest[bytes_written], remain_len, "%c%08x",
+				HANG_RAW_DEL, *(uint32 *)(ioc_buf++));
+			GCC_DIAGNOSTIC_POP();
+		}
+	}
+
+	DHD_INFO(("%s hang info len: %d data: %s\n",
+		__FUNCTION__, (int)strlen(dhd->hang_info), dhd->hang_info));
+}
+
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 
 #if defined(DHD_H2D_LOG_TIME_SYNC)
 /*

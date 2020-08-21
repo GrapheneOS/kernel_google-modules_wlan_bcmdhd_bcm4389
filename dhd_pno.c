@@ -3012,7 +3012,7 @@ dhd_pno_get_gscan(dhd_pub_t *dhd, dhd_pno_gscan_cmd_cfg_t type,
 					}
 					for (i = 0; i < nchan; i++) {
 						p[i] = wl_channel_to_frequency(
-							wf_chspec_ctlchan(ch_list[i]),
+							(ch_list[i]),
 							CHSPEC_BAND(ch_list[i]));
 					}
 					ret = p;
@@ -3158,7 +3158,12 @@ _dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 	}
 
 	plbestnet_v1 = (wl_pfn_lscanresults_v1_t *)MALLOC(dhd->osh, PNO_BESTNET_LEN);
-	NULL_CHECK(plbestnet_v1, "failed to allocate buffer for bestnet", err);
+	if (!plbestnet_v1) {
+		err = BCME_NOMEM;
+		DHD_ERROR(("%s: failed to allocate buffer for bestnet", __FUNCTION__));
+		goto exit;
+	}
+
 	plbestnet_v2 = (wl_pfn_lscanresults_v2_t*)plbestnet_v1;
 
 	DHD_PNO(("%s enter\n", __FUNCTION__));

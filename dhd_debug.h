@@ -30,17 +30,6 @@
 #include <dhd_dbg_ring.h>
 
 enum {
-	DEBUG_RING_ID_INVALID	= 0,
-	FW_VERBOSE_RING_ID,
-	DHD_EVENT_RING_ID,
-#ifdef BTLOG
-	BT_LOG_RING_ID,
-#endif	/* BTLOG */
-	/* add new id here */
-	DEBUG_RING_ID_MAX
-};
-
-enum {
 	/* Feature set */
 	DBG_MEMORY_DUMP_SUPPORTED = (1 << (0)), /* Memory dump of FW */
 	DBG_PER_PACKET_TX_RX_STATUS_SUPPORTED = (1 << (1)), /* PKT Status */
@@ -73,6 +62,15 @@ enum {
 /* NAN event ring, ring id 4 */
 #define NAN_EVENT_RING_NAME		"nan_event"
 #define NAN_EVENT_RING_SIZE		(64 * 1024)
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+/* DHD driver log ring */
+#define DRIVER_LOG_RING_NAME		"driver_log"
+#define DRIVER_LOG_RING_SIZE		(256 * 1024)
+/* ROAM stats log ring */
+#define ROAM_STATS_RING_NAME		"roam_stats"
+#define ROAM_STATS_RING_SIZE		(64 * 1024)
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 #ifdef BTLOG
 /* BT log ring, ring id 5 */

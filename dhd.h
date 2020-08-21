@@ -46,9 +46,6 @@
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
-#if defined(CONFIG_HAS_WAKELOCK)
-#include <linux/wakelock.h>
-#endif /* defined CONFIG_HAS_WAKELOCK */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <linux/sched/types.h>
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) */
@@ -97,6 +94,10 @@ int get_scheduler_policy(struct task_struct *p);
 #include <wdf.h>
 #include <WdfMiniport.h>
 #endif /* (BCMWDF)  */
+
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+#include <dnglioctl.h>
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 
 #ifdef DHD_ERPOM
 #include <pom.h>
@@ -452,7 +453,11 @@ enum dhd_op_flags {
 #endif /* MAX_CNTL_RX_TIMEOUT */
 
 #define DHD_SCAN_ASSOC_ACTIVE_TIME	40 /* ms: Embedded default Active setting from DHD */
+#ifndef CUSTOM_SCAN_UNASSOC_ACTIVE_TIME
 #define DHD_SCAN_UNASSOC_ACTIVE_TIME	80 /* ms: Embedded def. Unassoc Active setting from DHD */
+#else
+#define DHD_SCAN_UNASSOC_ACTIVE_TIME	CUSTOM_SCAN_UNASSOC_ACTIVE_TIME
+#endif /* CUSTOM_SCAN_UNASSOC_ACTIVE_TIME */
 #define DHD_SCAN_HOME_TIME		45 /* ms: Embedded default Home time setting from DHD */
 #define DHD_SCAN_HOME_AWAY_TIME	100 /* ms: Embedded default Home Away time setting from DHD */
 #ifndef CUSTOM_SCAN_PASSIVE_TIME
@@ -855,6 +860,16 @@ typedef struct {
 } tdls_peer_tbl_t;
 #endif /* defined(WLTDLS) && defined(PCIE_FULL_DONGLE) */
 
+typedef enum dhd_ring_id {
+	DEBUG_RING_ID_INVALID = 0x1,
+	FW_VERBOSE_RING_ID = 0x2,
+	DHD_EVENT_RING_ID = 0x3,
+	DRIVER_LOG_RING_ID = 0x4,
+	ROAM_STATS_RING_ID = 0x5,
+	BT_LOG_RING_ID = 0x6,
+	DEBUG_RING_ID_MAX = 0x7
+} dhd_ring_id_t;
+
 #ifdef DHD_LOG_DUMP
 #define DUMP_SSSR_ATTR_START	2
 #define DUMP_SSSR_ATTR_COUNT	10
@@ -878,6 +893,13 @@ typedef enum {
 	DLD_BUF_TYPE_FILTER = 4,
 	DLD_BUF_TYPE_ALL = 5
 } log_dump_type_t;
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+struct dhd_dbg_ring_buf
+{
+	void *dhd_pub;
+};
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 #define LOG_DUMP_MAGIC 0xDEB3DEB3
 #define HEALTH_CHK_BUF_SIZE 256
@@ -966,19 +988,23 @@ enum {
 
 extern void get_debug_dump_time(char *str);
 extern void clear_debug_dump_time(char *str);
-#if defined(DHD_PKT_LOGGING)
+#if defined(WL_CFGVENDOR_SEND_HANG_EVENT) || defined(DHD_PKT_LOGGING)
 extern void copy_debug_dump_time(char *dest, char *src);
-#endif
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT || DHD_PKT_LOGGING */
 
 #define FW_LOGSET_MASK_ALL 0xFFFFu
 
-#if defined(CUSTOMER_HW2) || defined(BOARD_HIKEY)
+#if defined(CUSTOMER_HW2_DEBUG)
+#define DHD_COMMON_DUMP_PATH    PLATFORM_PATH
+#elif defined(BOARD_HIKEY)
 #define DHD_COMMON_DUMP_PATH	"/data/misc/wifi/"
 #elif defined(__ARM_ARCH_7A__)
 #define DHD_COMMON_DUMP_PATH	"/data/vendor/wifi/"
 #else
 #define DHD_COMMON_DUMP_PATH	"/installmedia/"
 #endif
+
+#define DHD_MEMDUMP_LONGSTR_LEN 180
 
 struct cntry_locales_custom {
 	char iso_abbrev[WLC_CNTRY_BUF_SZ];      /* ISO 3166-1 country abbreviation */
@@ -1329,6 +1355,8 @@ typedef struct dhd_pub {
 	struct reorder_info *reorder_bufs[WLHOST_REORDERDATA_MAXFLOWS];
 	#define WLC_IOCTL_MAXBUF_FWCAP	1024
 	char  fw_capabilities[WLC_IOCTL_MAXBUF_FWCAP];
+	#define DHD_IOCTL_MAXBUF_DHDCAP	1024
+	char  dhd_capabilities[DHD_IOCTL_MAXBUF_DHDCAP];
 	#define MAXSKBPEND 1024
 	void *skbbuf[MAXSKBPEND];
 	uint32 store_idx;
@@ -1434,6 +1462,9 @@ typedef struct dhd_pub {
 	uint8 *soc_ram;
 	uint32 soc_ram_length;
 	uint32 memdump_type;
+#ifdef DHD_COREDUMP
+	char memdump_str[DHD_MEMDUMP_LONGSTR_LEN];
+#endif /* DHD_COREDUMP */
 #ifdef DHD_FW_COREDUMP
 	uint32 memdump_enabled;
 #ifdef DHD_DEBUG_UART
@@ -1608,6 +1639,11 @@ typedef struct dhd_pub {
 #endif /* defined (LINUX) || defined(linux) */
 	bool debug_buf_dest_support;
 	uint32 debug_buf_dest_stat[DEBUG_BUF_DEST_MAX];
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+	char *hang_info;
+	int hang_info_cnt;
+	char debug_dump_time_hang_str[DEBUG_DUMP_TIME_BUF_LEN];
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 	char debug_dump_time_str[DEBUG_DUMP_TIME_BUF_LEN];
 	void *event_log_filter;
 	uint tput_test_done;
@@ -1720,6 +1756,9 @@ typedef struct dhd_pub {
 	bool check_trap_rot;
 	/* if FW supports host insertion of SFH LLC */
 	bool host_sfhllc_supported;
+#ifdef DHD_GRO_ENABLE_HOST_CTRL
+	bool permitted_gro;
+#endif /* DHD_GRO_ENABLE_HOST_CTRL */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -1994,43 +2033,43 @@ inline static void MUTEX_UNLOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 	} while (0)
 #define DHD_OS_WAKE_LOCK_RX_TIMEOUT_ENABLE(pub, val) \
 	do { \
-		printf("call wake_lock_rx_timeout_enable[%d]: %s %d\n", \
+		printf("call dhd_wake_lock_rx_timeout_enable[%d]: %s %d\n", \
 			val, __FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_rx_timeout_enable(pub, val); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_CTRL_TIMEOUT_ENABLE(pub, val) \
 	do { \
-		printf("call wake_lock_ctrl_timeout_enable[%d]: %s %d\n", \
+		printf("call dhd_wake_lock_ctrl_timeout_enable[%d]: %s %d\n", \
 			val, __FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_ctrl_timeout_enable(pub, val); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_CTRL_TIMEOUT_CANCEL(pub) \
 	do { \
-		printf("call wake_lock_ctrl_timeout_cancel: %s %d\n", \
+		printf("call dhd_wake_lock_ctrl_timeout_cancel: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_ctrl_timeout_cancel(pub); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_WAIVE(pub) \
 	do { \
-		printf("call wake_lock_waive: %s %d\n", \
+		printf("call dhd_wake_lock_waive: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_waive(pub); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_RESTORE(pub) \
 	do { \
-		printf("call wake_lock_restore: %s %d\n", \
+		printf("call dhd_wake_lock_restore: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_restore(pub); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_INIT(dhd) \
 	do { \
-		printf("call wake_lock_init: %s %d\n", \
+		printf("call dhd_wake_lock_init: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_init(dhd); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_DESTROY(dhd) \
 	do { \
-		printf("call wake_lock_destroy: %s %d\n", \
+		printf("call dhd_wake_dhd_lock_destroy: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_destroy(dhd); \
 	} while (0)
@@ -2283,8 +2322,10 @@ extern void dhd_bus_wakeup_work(dhd_pub_t *dhdp);
 #define WIFI_FEATURE_EPR                0x4000      /* Enhanced power reporting         */
 #define WIFI_FEATURE_AP_STA             0x8000      /* Support for AP STA Concurrency   */
 #define WIFI_FEATURE_LINKSTAT           0x10000     /* Support for Linkstats            */
+#define WIFI_FEATURE_LOGGER             0x20000     /* WiFi Logger			*/
 #define WIFI_FEATURE_HAL_EPNO           0x40000	    /* WiFi PNO enhanced                */
 #define WIFI_FEATURE_RSSI_MONITOR       0x80000     /* RSSI Monitor                     */
+#define WIFI_FEATURE_MKEEP_ALIVE        0x100000    /* WiFi mkeep_alive			*/
 #define WIFI_FEATURE_CONFIG_NDO         0x200000    /* ND offload configure             */
 #define WIFI_FEATURE_TX_TRANSMIT_POWER  0x400000    /* Capture Tx transmit power levels */
 #define WIFI_FEATURE_CONTROL_ROAMING    0x800000    /* Enable/Disable firmware roaming  */
@@ -3428,20 +3469,10 @@ extern void dhd_os_general_spin_unlock(dhd_pub_t *pub, unsigned long flags);
 #define DHD_IF_STA_LIST_LOCK(lock, flags)	(flags) = osl_spin_lock(lock)
 #define DHD_IF_STA_LIST_UNLOCK(lock, flags)	osl_spin_unlock((lock), (flags))
 
-/* linux is defined for DHD EFI builds also,
-* since its cross-compiled for EFI from linux
-*/
-#if (defined(linux) || defined(LINUX)) && !defined(DHD_EFI)
-#define DHD_DBG_RING_LOCK_INIT(osh)				dhd_os_dbgring_lock_init(osh)
-#define DHD_DBG_RING_LOCK_DEINIT(osh, lock)		dhd_os_dbgring_lock_deinit(osh, (lock))
-#define DHD_DBG_RING_LOCK(lock, flags)			(flags) = dhd_os_dbgring_lock(lock)
-#define DHD_DBG_RING_UNLOCK(lock, flags)		dhd_os_dbgring_unlock((lock), flags)
-#else
-#define DHD_DBG_RING_LOCK_INIT(osh)				osl_spin_lock_init(osh)
-#define DHD_DBG_RING_LOCK_DEINIT(osh, lock)		osl_spin_lock_deinit(osh, (lock))
-#define DHD_DBG_RING_LOCK(lock, flags)			(flags) = osl_spin_lock(lock)
-#define DHD_DBG_RING_UNLOCK(lock, flags)		osl_spin_unlock((lock), flags)
-#endif /* (LINUX || linux) && !DHD_EFI */
+#define DHD_DBG_RING_LOCK_INIT(osh)		osl_spin_lock_init(osh)
+#define DHD_DBG_RING_LOCK_DEINIT(osh, lock)	osl_spin_lock_deinit(osh, (lock))
+#define DHD_DBG_RING_LOCK(lock, flags)		(flags) = osl_spin_lock(lock)
+#define DHD_DBG_RING_UNLOCK(lock, flags)	osl_spin_unlock((lock), flags)
 
 #ifdef DHD_MEM_STATS
 /* memory stats lock/unlock */
@@ -4234,6 +4265,13 @@ extern void dhd_hdm_wlan_sysfs_init(void);
 extern void dhd_hdm_wlan_sysfs_deinit(struct work_struct *);
 #define SYSFS_DEINIT_MS 10
 #endif /* DHD_SUPPORT_HDM */
+
+#if defined(linux) || defined(LINUX)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+void dhd_ctrl_tcp_limit_output_bytes(int level);
+#endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
+#endif /* linux || LINUX */
+
 #if defined(__linux__)
 extern void dhd_schedule_delayed_dpc_on_dpc_cpu(dhd_pub_t *dhdp, ulong delay);
 extern void dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata,
@@ -4259,4 +4297,10 @@ int dhd_ether_to_8023_hdr(osl_t *osh, struct ether_header *eh, void *p);
 int dhd_8023_llc_to_ether_hdr(osl_t *osh, struct ether_header *eh8023, void *p);
 #endif
 int dhd_schedule_socram_dump(dhd_pub_t *dhdp);
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+#ifndef DEBUGABILITY
+#error "DHD_DEBUGABILITY_LOG_DUMP_RING without DEBUGABILITY"
+#endif /* DEBUGABILITY */
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 #endif /* _dhd_h_ */

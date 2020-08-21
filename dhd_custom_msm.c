@@ -31,7 +31,6 @@
 #include <linux/err.h>
 #include <linux/gpio.h>
 #include <linux/skbuff.h>
-#include <linux/wlan_plat.h>
 #include <linux/mmc/host.h>
 #ifdef CONFIG_BCMDHD_PCIE
 #include <linux/msm_pcie.h>
@@ -39,6 +38,7 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>
+#include <linux/wlan_plat.h>
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern void dhd_exit_wlan_mem(void);

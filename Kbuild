@@ -20,9 +20,17 @@
 # <<Broadcom-WL-IPTag/Open:>>
 #
 
-# Path to the module source
+# Path to the module source, KERNEL_SRC is defined for out-of-tree Kbuild
+# and BCMDHD_ROOT is passed as KBUILD_OPTIONS for out-of-tree Makefile
 ifeq ($(KERNEL_SRC),)
- BCMDHD_ROOT=$(src)
+ ifeq ($(srctree),.)
+  BCMDHD_ROOT=$(src)
+ else
+  BCMDHD_ROOT=$(srctree)/$(src)
+ endif
+ $(warning : ** Regular in-tree build BCMDHD_ROOT=$(BCMDHD_ROOT)**)
+else
+ $(warning : ** out-of-tree Kbuild BCMDHD_ROOT=$(BCMDHD_ROOT)**)
 endif
 
 #####################
@@ -38,10 +46,17 @@ CONFIG_BCMDHD_PCIE=y
 CONFIG_BCM43752=
 CONFIG_BCM4389=y
 CONFIG_DHD_OF_SUPPORT=y
-CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcm4389.bin\""
-CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd_4389.cal\""
-CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm_4389.blob\""
-CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcm4389.map\""
+ifneq ($(CONFIG_ARCH_HISI),)
+ CONFIG_BCMDHD_FW_PATH="\"/vendor/etc/wifi/fw_bcmdhd.bin\""
+ CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
+ CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
+ CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcmbcmd.map\""
+else
+ CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcm4389.bin\""
+ CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd_4389.cal\""
+ CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm_4389.blob\""
+ CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcm4389.map\""
+endif
 CONFIG_BROADCOM_WIFI_RESERVED_MEM=y
 CONFIG_DHD_USE_STATIC_BUF=y
 CONFIG_DHD_USE_SCHED_SCAN=y
@@ -53,6 +68,11 @@ CONFIG_BCMDHD_PREALLOC_PKTIDMAP=y
 CONFIG_BCMDHD_PREALLOC_MEMDUMP=y
 CONFIG_BCMDHD_OOB_HOST_WAKE=y
 CONFIG_BCMDHD_GET_OOB_STATE=y
+
+# enable HTPUT for 4389
+ifneq ($(CONFIG_BCM4389),)
+ CONFIG_BCMDHD_HTPUT=y
+endif
 
 DHDCFLAGS += -DCONFIG_BCMDHD=$(CONFIG_BCMDHD)
 DHDCFLAGS += -DCONFIG_BCMDHD_PCIE=$(CONFIG_BCMDHD_PCIE)
@@ -92,6 +112,7 @@ DHDCFLAGS += -Wall -Wstrict-prototypes -Wno-parentheses-equality -Dlinux -DLINUX
 	-DWL_P2P_USE_RANDMAC
 
 DHDCFLAGS += -DOEM_ANDROID
+DHDCFLAGS += -DDHD_COREDUMP
 
 #################
 # Common feature
@@ -110,6 +131,12 @@ endif
 
 # Enable wakelock debug function
 DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
+
+# Support of channel stats in HAL V1.3
+DHDCFLAGS += -DCHAN_STATS_SUPPORT
+
+# Support of power stats in sysfs
+DHDCFLAGS += -DPWRSTATS_SYSFS
 
 # Enable SBN feature
 DHDCFLAGS += -DDHD_SBN
@@ -149,6 +176,14 @@ DHDCFLAGS += -DRTT_GEOFENCE_INTERVAL
 
 #Debug flag
 DHDCFLAGS += -DRTT_GEOFENCE_CONT
+
+#Debug flag
+DHDCFLAGS += -DDEBUGABILITY
+DHDCFLAGS += -DDEBUGABILITY_DISABLE_MEMDUMP
+DHDCFLAGS += -DDHD_DEBUGABILITY_LOG_DUMP_RING
+DHDCFLAGS += -DCUSTOMER_DBG_SYSTEM_TIME -DCUSTOMER_DBG_PREFIX_ENABLE
+
+DHDCFLAGS += -DDHD_REPLACE_LOG_INFO_TO_TRACE
 
 # SCAN TYPES, if kernel < 4.17 ..back port support required
 ifneq ($(CONFIG_CFG80211_SCANTYPE_BKPORT),)
@@ -215,14 +250,7 @@ endif
 ifneq ($(CONFIG_BCMDHD_HTPUT),)
  $(warning : ** HTPUT build)
  DHDCFLAGS += -DDHD_HTPUT_TUNABLES
-else
- $(warning : ** NON HTPUT build)
-# Older chips <= 4375 use non AX softap
- DHDCFLAGS += -DWL_DISABLE_HE_SOFTAP
 endif
-
-# High Priority P2P support
-DHDCFLAGS += -DDHD_HP2P
 
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Enable Load Balancing support by default.
@@ -293,7 +321,10 @@ DHDCFLAGS += -DROAM_AP_ENV_DETECTION
 DHDCFLAGS += -DROAM_CHANNEL_CACHE
 DHDCFLAGS += -DROAM_ENABLE
 DHDCFLAGS += -DSKIP_ROAM_TRIGGER_RESET
+DHDCFLAGS += -DWBTEXT
+DHDCFLAGS += -DWBTEXT_BTMDELTA=0
 DHDCFLAGS += -DWBTEXT_SCORE_V2
+DHDCFLAGS += -DRRM_BCNREQ_MAX_CHAN_TIME=12
 DHDCFLAGS += -DWL_LASTEVT
 DHDCFLAGS += -DROAM_EVT_DISABLE
 # Wake
@@ -332,11 +363,15 @@ DHDCFLAGS += -DDHD_PKT_LOGGING
 DHDCFLAGS += -DDHD_PKTDUMP_ROAM
 DHDCFLAGS += -DDHD_RANDMAC_LOGGING
 DHDCFLAGS += -DDHD_STATUS_LOGGING
+DHDCFLAGS += -DDISABLE_PCI_LOGGING -DDISABLE_BEACON_LOGGING
+DHDCFLAGS += -DDHD_WL_ERROR_LOGGING -DDHD_IE_ERROR_LOGGING -DDHD_ASSOC_ERROR_LOGGING -DDHD_PMU_ERROR_LOGGING
+DHDCFLAGS += -DDHD_8021X_ERROR_LOGGING -DDHD_AMPDU_ERROR_LOGGING -DDHD_SAE_ERROR_LOGGING
 DHDCFLAGS += -DDHD_WAKEPKT_DUMP
 DHDCFLAGS += -DRSSI_MONITOR_SUPPORT
 DHDCFLAGS += -DSUPPORT_RSSI_SUM_REPORT
 DHDCFLAGS += -DSET_SSID_FAIL_CUSTOM_RC=100
 DHDCFLAGS += -DDHD_EVENT_LOG_FILTER
+DHDCFLAGS += -DWL_CFGVENDOR_SEND_HANG_EVENT
 # Packet
 DHDCFLAGS += -DBLOCK_IPV6_PACKET
 #DHDCFLAGS += -DDHD_DONOT_FORWARD_BCMEVENT_AS_NETWORK_PKT # NAN test failure
@@ -524,6 +559,9 @@ DHDCFLAGS += -DWL_NAN -DWL_NAN_DISC_CACHE -DWL_NANP2P
 # SAR Tx power scenario
 DHDCFLAGS += -DWL_SAR_TX_POWER
 
+# Using extenal supplicant for WPA3
+DHDCFLAGS += -DWL_CLIENT_SAE
+
 # OWE
 DHDCFLAGS += -DWL_OWE
 #SAE-FT
@@ -531,6 +569,12 @@ DHDCFLAGS += -DWL_SAE_FT
 
 # Silent roam
 DHDCFLAGS += -DCONFIG_SILENT_ROAM
+# Get ROAM Channel Cache
+DHDCFLAGS += -DWL_GET_RCC
+# ROAM candidatae RSSI limit
+DHDCFLAGS += -DCONFIG_ROAM_RSSI_LIMIT
+DHDCFLAGS += -DCUSTOM_ROAMRSSI_2G=-70
+DHDCFLAGS += -DCUSTOM_ROAMRSSI_5G=-70
 
 # SAE..if kernel < 4.17 ..back port support required
 ifneq ($(CONFIG_CFG80211_SAE_BKPORT),)
@@ -751,17 +795,23 @@ ifeq ($(DRIVER_TYPE),m)
   DHDCFLAGS += -DBCMDHD_MODULAR
 endif
 
+DHDCFLAGS += -DDHD_CAP_CUSTOMER="\"hw2 \""
 ifneq ($(CONFIG_ARCH_HISI),)
-	DHDCFLAGS += -DBOARD_HIKEY
-	# Allow wl event forwarding as network packet
+	DHDCFLAGS += -DBOARD_HIKEY -DBOARD_HIKEY_HW2
+# Allow wl event forwarding as network packet
 	DHDCFLAGS += -DWL_EVENT_ENAB
+	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"hikey \""
+else
+# The flag will be enabled only on customer platform
+	DHDCFLAGS += -DCUSTOMER_HW2_DEBUG
 endif
 
 ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
+	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"exynos \""
 # Add chip specific suffix to the output in case of customer release
 ifneq ($(filter y, $(CONFIG_BCM4389)),)
-        BCM_WLAN_CHIP_SUFFIX = 4389
-        DHDCFLAGS += -DBCMPCI_DEV_ID=0x4441
+	BCM_WLAN_CHIP_SUFFIX = 4389
+	DHDCFLAGS += -DBCMPCI_DEV_ID=0x4441
 endif
 endif
 
@@ -837,13 +887,14 @@ obj-$(DRIVER_TYPE)   += bcmdhd$(BCM_WLAN_CHIP_SUFFIX).o
 ccflags-y := $(KBUILD_CFLAGS)
 ccflags-y += $(EXTRA_CFLAGS)
 
+# For in-tree model, define make rules here (KERNEL_SRC will be NULL)
 ifeq ($(KERNEL_SRC),)
 all:
-	@echo "$(MAKE) --no-print-directory -C $(KERNEL_SRC) SUBDIRS=$(CURDIR) modules $(KBUILD_OPTIONS)"
-	@$(MAKE) --no-print-directory -C $(KERNEL_SRC) SUBDIRS=$(CURDIR) modules $(KBUILD_OPTIONS)
+	@echo "$(MAKE) --no-print-directory -C $(KDIR) SUBDIRS=$(CURDIR) modules $(KBUILD_OPTIONS)"
+	@$(MAKE) --no-print-directory -C $(KDIR) SUBDIRS=$(CURDIR) modules $(KBUILD_OPTIONS)
 
 modules_install:
-	@$(MAKE) --no-print-directory -C $(KERNEL_SRC) \
+	@$(MAKE) --no-print-directory -C $(KDIR) \
 		SUBDIRS=$(CURDIR) modules_install
 
 clean:

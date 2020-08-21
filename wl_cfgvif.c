@@ -129,9 +129,6 @@ _Pragma("GCC diagnostic pop")
 #define VNDR_OUI_STR_LEN	10u
 #define DOT11_DISCONNECT_RC     2u
 
-#define WL_HE_FEATURES_HE_AP		0x8
-#define WL_HE_FEATURES_HE_P2P		0x20
-
 #if defined(WL_FW_OCE_AP_SELECT)
 static bool
 wl_cfgoce_has_ie(const u8 *ie, const u8 **tlvs, u32 *tlvs_len, const u8 *oui, u32 oui_len, u8 type);
@@ -1524,12 +1521,10 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	WL_ERR(("netdev_ifidx(%d), chan_type(%d) target channel(%d) \n",
 		dev->ifindex, channel_type, CHSPEC_CHANNEL(chspec)));
 
-#ifndef WL_P2P_6G
-	if (IS_P2P_GO(dev->ieee80211_ptr) && (CHSPEC_IS6G(chspec))) {
-		WL_ERR(("P2P GO not allowed on 6G\n"));
-		return -ENOTSUPP;
-	}
-#endif /* WL_P2P_6G */
+		if (IS_P2P_GO(dev->ieee80211_ptr) && (CHSPEC_IS6G(chspec))) {
+			WL_ERR(("P2P GO not allowed on 6G\n"));
+			return -ENOTSUPP;
+		}
 
 #ifdef NOT_YET
 	switch (channel_type) {
@@ -1953,11 +1948,11 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 			case RSN_AKM_FILS_SHA384:
 				wpa_auth |= WPA2_AUTH_FILS_SHA384;
 				break;
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
 			case RSN_AKM_SAE_PSK:
 				wpa_auth |= WPA3_AUTH_SAE_PSK;
 				break;
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_CLIENT_SAE */
 #endif /* MFP */
 			default:
 				WL_ERR(("No Key Mgmt Info\n"));
@@ -2927,7 +2922,7 @@ wl_cfg80211_bcn_bringup_ap(
 #endif /* DISABLE_11H_SOFTAP */
 
 #ifdef WL_DISABLE_HE_SOFTAP
-		err = wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_IF_TYPE_AP, FALSE);
+		err = wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_HE_FEATURES_HE_AP, FALSE);
 		if (err < 0) {
 			WL_ERR(("failed to set he features, error=%d\n", err));
 		}
@@ -3688,7 +3683,8 @@ wl_cfg80211_stop_ap(
 		}
 
 #ifdef WL_DISABLE_HE_SOFTAP
-		if (wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_IF_TYPE_AP, TRUE) != BCME_OK) {
+		if (wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_HE_FEATURES_HE_AP,
+			TRUE) != BCME_OK) {
 			WL_ERR(("failed to set he features\n"));
 		}
 #endif /* WL_DISABLE_HE_SOFTAP */
@@ -4205,6 +4201,15 @@ wl_notify_connect_status_ap(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	WL_INFORM_MEM(("[%s] Mode AP/GO. Event:%d status:%d reason:%d\n",
 		ndev->name, event, ntoh32(e->status), reason));
 
+#ifdef WL_CLIENT_SAE
+	if (event == WLC_E_AUTH && ntoh32(e->auth_type) == DOT11_SAE) {
+		err = wl_handle_auth_event(cfg, ndev, e, data);
+		if (err != BCME_OK) {
+			return err;
+		}
+	}
+#endif /* WL_CLIENT_SAE */
+
 	if (event == WLC_E_AUTH_IND) {
 #ifdef WL_SAE
 		if (ntoh32(e->auth_type) == DOT11_SAE) {
@@ -4287,6 +4292,7 @@ wl_notify_connect_status_ap(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		wl_wps_session_update(ndev, WPS_STATE_LINKDOWN, e->addr.octet);
 #endif /* WL_WPS_SYNC */
 	}
+
 #endif /* LINUX_VERSION < VERSION(3,2,0) && !WL_CFG80211_STA_EVENT && !WL_COMPAT_WIRELESS */
 	return err;
 }
@@ -5574,7 +5580,7 @@ wl_he_pack_uint_cb(void *ctx, uint16 id, uint16 len, uint8 *buf)
 }
 
 int wl_cfg80211_set_he_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
-		s32 bssidx, u32 interface_type, bool set)
+		s32 bssidx, u32 he_flag, bool set)
 {
 	bcm_xtlv_t read_he_xtlv;
 	uint8 se_he_xtlv[32];
@@ -5582,18 +5588,14 @@ int wl_cfg80211_set_he_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
 	he_xtlv_v32 v32;
 	u32 he_feature = 0;
 	s32 err = 0;
-	u32 he_interface = 0;
 
 	read_he_xtlv.id = WL_HE_CMD_FEATURES;
 	read_he_xtlv.len = 0;
 	err = wldev_iovar_getbuf_bsscfg(dev, "he", &read_he_xtlv, sizeof(read_he_xtlv),
 			cfg->ioctl_buf, WLC_IOCTL_SMLEN, bssidx, NULL);
 	if (err < 0) {
-		if (err == BCME_UNSUPPORTED) {
-			/* HE not supported. Do nothing. */
-			return BCME_OK;
-		}
 		WL_ERR(("HE get failed. error=%d\n", err));
+		return err;
 	} else {
 		he_feature =  *(int*)cfg->ioctl_buf;
 		he_feature = dtoh32(he_feature);
@@ -5601,20 +5603,11 @@ int wl_cfg80211_set_he_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
 
 	v32.id = WL_HE_CMD_FEATURES;
 	v32.len = sizeof(s32);
-	if (interface_type == WL_IF_TYPE_P2P_DISC) {
-		he_interface = WL_HE_FEATURES_HE_P2P;
-	} else if (interface_type == WL_IF_TYPE_AP) {
-		he_interface = WL_HE_FEATURES_HE_AP;
-	} else {
-		WL_ERR(("HE request for Invalid interface type"));
-		err = BCME_BADARG;
-		return err;
-	}
 
 	if (set) {
-		v32.val = (he_feature | he_interface);
+		v32.val = (he_feature | he_flag);
 	} else {
-		v32.val = (he_feature & ~he_interface);
+		v32.val = (he_feature & ~he_flag);
 	}
 
 	err = bcm_pack_xtlv_buf((void *)&v32, se_he_xtlv, sizeof(se_he_xtlv),

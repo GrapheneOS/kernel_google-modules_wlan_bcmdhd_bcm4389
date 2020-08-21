@@ -1694,7 +1694,7 @@ dhd_rtt_set_cfg(dhd_pub_t *dhd, rtt_config_params_t *params)
 	mutex_lock(&rtt_status->rtt_mutex);
 
 	if (rtt_status->status != RTT_STOPPED) {
-		DHD_RTT_ERR(("rtt is already started\n"));
+		DHD_RTT_ERR(("rtt is already started, status : %d\n", rtt_status->status));
 		err = BCME_BUSY;
 		goto exit;
 	}
@@ -1865,6 +1865,7 @@ dhd_rtt_update_geofence_sessions_cnt(dhd_pub_t *dhd, bool incr,
 	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
 	rtt_geofence_cfg_t* geofence_cfg = &rtt_status->geofence_cfg;
 	int ret = BCME_OK;
+	int geofence_ssn_cnt_before_upd = geofence_cfg->geofence_sessions_cnt;
 
 	if (incr) {
 		//ASSERT(!dhd_rtt_geofence_sessions_maxed_out(dhd));
@@ -1889,12 +1890,13 @@ dhd_rtt_update_geofence_sessions_cnt(dhd_pub_t *dhd, bool incr,
 		}
 	}
 	if (peer_addr) {
-		WL_INFORM_MEM(("session cnt update, upd = %d, cnt = %d, peer : "MACDBG", "
-			" ret = %d\n", incr, geofence_cfg->geofence_sessions_cnt,
-			MAC2STRDBG(peer_addr), ret));
+		WL_INFORM_MEM(("session cnt update, upd = %d, cnt = %d, cnt_bef_upd = %d, "
+			" peer : "MACDBG", ret = %d\n", incr, geofence_cfg->geofence_sessions_cnt,
+			geofence_ssn_cnt_before_upd, MAC2STRDBG(peer_addr), ret));
 	} else {
-		WL_INFORM_MEM(("session cnt update, upd = %d, cnt = %d, ret = %d\n",
-			incr, geofence_cfg->geofence_sessions_cnt, ret));
+		WL_INFORM_MEM(("session cnt update, upd = %d, cnt = %d, cnt_bef_upd = %d, "
+			"ret = %d\n", incr, geofence_cfg->geofence_sessions_cnt,
+			 geofence_ssn_cnt_before_upd, ret));
 	}
 
 exit:
@@ -4730,6 +4732,8 @@ dhd_rtt_init(dhd_pub_t *dhd)
 	rtt_status = GET_RTTSTATE(dhd);
 	NULL_CHECK(rtt_status, "rtt_status is NULL", err);
 
+	DHD_RTT_MEM(("dhd_rtt_init ENTRY\n"));
+
 	ret = dhd_rtt_get_version(dhd, &version);
 	if (ret == BCME_OK && (version == WL_PROXD_API_VERSION)) {
 		DHD_RTT_ERR(("%s : FTM is supported\n", __FUNCTION__));
@@ -4766,6 +4770,7 @@ dhd_rtt_init(dhd_pub_t *dhd)
 	rtt_status->all_cancel = TRUE;
 
 exit:
+	DHD_ERROR(("dhd_rtt_init EXIT, err = %d\n", err));
 #endif /* WL_CFG80211 */
 
 	return err;
@@ -4783,9 +4788,13 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 	rtt_results_header_t *rtt_header, *next;
 	rtt_result_t *rtt_result, *next2;
 	struct rtt_noti_callback *iter, *iter2;
+	rtt_target_info_t *rtt_target = NULL;
+
 	NULL_CHECK(dhd, "dhd is NULL", err);
 	rtt_status = GET_RTTSTATE(dhd);
 	NULL_CHECK(rtt_status, "rtt_status is NULL", err);
+
+	DHD_RTT_MEM(("dhd_rtt_deinit: ENTER\n"));
 
 #ifdef WL_NAN
 	if (delayed_work_pending(&rtt_status->rtt_retry_timer)) {
@@ -4800,6 +4809,21 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 
 	if (delayed_work_pending(&rtt_status->proxd_timeout)) {
 		cancel_delayed_work_sync(&rtt_status->proxd_timeout);
+	}
+
+	/*
+	 * Cleanup attempt is required,
+	 * if legacy RTT session is in progress
+	 */
+	if ((!RTT_IS_STOPPED(rtt_status)) &&
+			rtt_status->rtt_config.rtt_target_cnt &&
+			(rtt_status->cur_idx < rtt_status->rtt_config.rtt_target_cnt)) {
+		/* if dhd is started and there is a target cnt */
+		rtt_target = &rtt_status->rtt_config.target_info[rtt_status->cur_idx];
+		if (rtt_target->peer == RTT_PEER_AP) {
+			DHD_RTT_MEM(("dhd_rtt_deinit: Deleting Default FTM Session\n"));
+			dhd_rtt_delete_session(dhd, FTM_DEFAULT_SESSION);
+		}
 	}
 
 	rtt_status->status = RTT_STOPPED;
@@ -4825,6 +4849,7 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 		}
 	}
 	GCC_DIAGNOSTIC_POP();
+	DHD_RTT_MEM(("dhd_rtt_deinit: EXIT, err = %d\n", err));
 #endif /* WL_CFG80211 */
 	return err;
 }

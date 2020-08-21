@@ -50,15 +50,26 @@
 #define dtohchanspec(i) (i)
 #endif
 
+#if defined(CUSTOMER_DBG_PREFIX_ENABLE)
+#define USER_PREFIX_WLDEV		"[wldev][wlan] "
+#define WLDEV_ERROR_TEXT		USER_PREFIX_WLDEV
+#define WLDEV_INFO_TEXT			USER_PREFIX_WLDEV
+#else
+#define WLDEV_ERROR_TEXT		"WLDEV-ERROR) "
+#define WLDEV_INFO_TEXT			"WLDEV-INFO) "
+#endif /* defined(CUSTOMER_DBG_PREFIX_ENABLE) */
+
 #define	WLDEV_ERROR(args)						\
 	do {										\
-		pr_err("WLDEV-ERROR) ");	\
+		WL_DBG_PRINT_SYSTEM_TIME;		\
+		pr_cont(WLDEV_ERROR_TEXT);	\
 		pr_cont args;							\
 	} while (0)
 
 #define	WLDEV_INFO(args)						\
 	do {										\
-		pr_info("WLDEV-INFO) ");	\
+		WL_DBG_PRINT_SYSTEM_TIME;		\
+		pr_cont(WLDEV_INFO_TEXT);	\
 		pr_cont args;							\
 	} while (0)
 

@@ -63,6 +63,12 @@ int dhd_flow_queue_overflow(flow_queue_t *queue, void *pkt);
 #define FLOW_QUEUE_PKT_NEXT(p)          PKTLINK(p)
 #define FLOW_QUEUE_PKT_SETNEXT(p, x)    PKTSETLINK((p), (x))
 
+#ifdef DHD_REPLACE_LOG_INFO_TO_TRACE
+#define DHD_FLOWRING_INFO DHD_TRACE
+#else
+#define DHD_FLOWRING_INFO DHD_INFO
+#endif /* DHD_REPLACE_LOG_INFO_TO_TRACE */
+
 const uint8 prio2ac[8] = { 0, 1, 1, 0, 2, 2, 3, 3 };
 const uint8 prio2tid[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
@@ -686,7 +692,7 @@ dhd_flowid_find(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 #ifdef DHD_EFI
 	DHD_TRACE(("%s: cannot find flowid\n", __FUNCTION__));
 #else
-	DHD_INFO(("%s: cannot find flowid\n", __FUNCTION__));
+	DHD_FLOWRING_INFO(("%s: cannot find flowid\n", __FUNCTION__));
 #endif
 	return FLOWID_INVALID;
 } /* dhd_flowid_find */
@@ -802,7 +808,7 @@ dhd_flowid_alloc(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 	}
 	DHD_FLOWID_UNLOCK(dhdp->flowid_lock, flags);
 
-	DHD_INFO(("%s: allocated flowid %d\n", __FUNCTION__, fl_hash_node->flowid));
+	DHD_FLOWRING_INFO(("%s: allocated flowid %d\n", __FUNCTION__, fl_hash_node->flowid));
 
 	if (fl_hash_node->flowid > dhdp->max_tx_flowid) {
 		DHD_ERROR(("%s: flowid=%d max_tx_flowid=%d ifindex=%d prio=%d role=%d\n",
@@ -1055,7 +1061,7 @@ BCMFASTPATH(dhd_flowid_update)(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, void 
 		return BCME_ERROR;
 	}
 
-	DHD_INFO(("%s: prio %d flowid %d\n", __FUNCTION__, prio, flowid));
+	DHD_FLOWRING_INFO(("%s: prio %d flowid %d\n", __FUNCTION__, prio, flowid));
 
 	/* Tag the packet with flowid */
 	DHD_PKT_SET_FLOWID(pktbuf, flowid);

@@ -251,6 +251,15 @@ typedef enum {
 	((ctr) & WL_TXSTATUS_FREERUNCTR_MASK))
 #define WL_TXSTATUS_GET_FREERUNCTR(x)		((x)& WL_TXSTATUS_FREERUNCTR_MASK)
 
+/* packet prio phase bit updated */
+#define WL_SEQ_PKTPRIO_PHASE_MASK	0x1
+#define WL_SEQ_PKTPRIO_PHASE_SHIFT	15
+#define WL_SEQ_SET_PKTPRIO_PHASE(x, val)		((x) = \
+	((x) & ~(WL_SEQ_PKTPRIO_PHASE_MASK << WL_SEQ_PKTPRIO_PHASE_SHIFT)) | \
+	(((val) & WL_SEQ_PKTPRIO_PHASE_MASK) << WL_SEQ_PKTPRIO_PHASE_SHIFT))
+#define WL_SEQ_PKTPRIO_PHASE(x)	(((x) >> WL_SEQ_PKTPRIO_PHASE_SHIFT) & \
+	WL_SEQ_PKTPRIO_PHASE_MASK)
+
 /* AMSDU part of d11 seq number */
 #define WL_SEQ_AMSDU_MASK             0x1 /* allow 1 bit */
 #define WL_SEQ_AMSDU_SHIFT            14
@@ -473,7 +482,8 @@ typedef enum {
 	APP_STS_FLOWRING_NO_APP		= 0u,	/* Reason code used by pciedev */
 	APP_STS_FLOWRING_CLOSED		= 1u,	/* Disable APP as flowring is closed */
 	APP_STS_CRYPTO_UNSUPPORTED	= 2u,	/* Secuirity type doesn't support APP */
-	APP_STS_MAX			= 3u	/* MAX */
+	APP_STS_80211_FRAGMENTATION	= 3u,   /* 802.11 fragmentation enabled */
+	APP_STS_MAX			= 4u	/* MAX */
 } app_disable_reason_s;
 
 /* shared structure between wlc and pciedev layer to set/reset a reason code */

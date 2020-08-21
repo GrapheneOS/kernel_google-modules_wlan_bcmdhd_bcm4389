@@ -174,8 +174,7 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 #endif	/* _RTE_ */
 #endif	/*  OSL_GET_HCAPISPKTTXS */
 
-#if !((defined(__linux__) && defined(PKTC)) || defined(PKTC_DONGLE))
-
+#if !defined(PKTC_DONGLE)
 #define	PKTCGETATTR(skb)	(0)
 #define	PKTCSETATTR(skb, f, p, b) BCM_REFERENCE(skb)
 #define	PKTCCLRATTR(skb)	BCM_REFERENCE(skb)
@@ -203,7 +202,7 @@ do { \
 		(h) = (t) = (p); \
 	} \
 } while (0)
-#endif /* !linux || !PKTC */
+#endif /* !PKTC_DONGLE */
 
 #ifndef PKTSETCHAINED
 #define PKTSETCHAINED(osh, skb)		BCM_REFERENCE(osh)

@@ -67,6 +67,11 @@
 #define TDLS_MAX_IFACE_FOR_ENABLE 1
 #endif /* WLTDLS */
 
+/* HE flag defines */
+#define WL_HE_FEATURES_HE_AP		0x8
+#define WL_HE_FEATURES_HE_P2P		0x20
+#define WL_HE_FEATURES_6G		0x80u
+
 extern bool wl_cfg80211_check_vif_in_use(struct net_device *ndev);
 
 extern int wl_cfg80211_set_mgmt_vndr_ies(struct bcm_cfg80211 *cfg,

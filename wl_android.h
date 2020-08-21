@@ -182,4 +182,7 @@ extern int wl_android_bcnrecv_event(struct net_device *ndev,
 #define TSPEC_DEF_DIALOG_TOKEN 7
 #endif /* WL_CAC_TS */
 
+#ifdef WL_SUPPORT_AUTO_CHANNEL
+#define WLC_ACS_BAND_INVALID	0xffffu
+#endif /* WL_SUPPORT_AUTO_CHANNEL */
 #define WL_PRIV_CMD_LEN 64

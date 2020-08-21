@@ -44,7 +44,9 @@
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND) */
 #if defined(CONFIG_WIFI_CONTROL_FUNC)
 #include <linux/wlan_plat.h>
-#endif
+#else
+#include <dhd_plat.h>
+#endif /* CONFIG_WIFI_CONTROL_FUNC */
 
 #ifdef BCMPCIE
 #include <bcmmsgbuf.h>
@@ -62,29 +64,6 @@
 #define MAX_MON_PKT_SIZE       (4096 + MAX_RADIOTAP_SIZE)
 #endif /* HOST_RADIOTAP_CONV */
 #endif /* WL_MONITOR */
-
-#if !defined(CONFIG_WIFI_CONTROL_FUNC)
-#define WLAN_PLAT_NODFS_FLAG	0x01
-#define WLAN_PLAT_AP_FLAG	0x02
-struct wifi_platform_data {
-	int (*set_power)(int val);
-	int (*set_reset)(int val);
-	int (*set_carddetect)(int val);
-#ifdef DHD_COREDUMP
-	int (*set_coredump)(const char *buf, int buf_len, const char *info);
-#endif
-	void *(*mem_prealloc)(int section, unsigned long size);
-	int (*get_mac_addr)(unsigned char *buf);
-#ifdef BCMSDIO
-	int (*get_wake_irq)(void);
-#endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 58)) || defined(CUSTOM_COUNTRY_CODE)
-	void *(*get_country_code)(char *ccode, u32 flags);
-#else /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 58)) || defined (CUSTOM_COUNTRY_CODE) */
-	void *(*get_country_code)(char *ccode);
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 58)) */
-};
-#endif /* CONFIG_WIFI_CONTROL_FUNC */
 
 #define DHD_REGISTRATION_TIMEOUT  12000  /* msec : allowed time to finished dhd registration */
 
@@ -420,6 +399,10 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 int wifi_platform_bus_enumerate(wifi_adapter_info_t *adapter, bool device_present);
 int wifi_platform_get_irq_number(wifi_adapter_info_t *adapter, unsigned long *irq_flags_ptr);
 int wifi_platform_get_mac_addr(wifi_adapter_info_t *adapter, unsigned char *buf);
+#ifdef DHD_COREDUMP
+int wifi_platform_set_coredump(wifi_adapter_info_t *adapter, const char *buf, int buf_len,
+	const char *info);
+#endif /* DHD_COREDUMP */
 #ifdef CUSTOM_COUNTRY_CODE
 void *wifi_platform_get_country_code(wifi_adapter_info_t *adapter, char *ccode,
 	u32 flags);

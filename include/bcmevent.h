@@ -302,9 +302,12 @@ typedef union bcm_event_msg_u {
 #define WLC_E_ROAM_CACHE_UPDATE		191	/* Roam cache update indication */
 #define WLC_E_AP_BCN_DRIFT		192	/* Beacon Drift event */
 #define WLC_E_PFN_SCAN_ALLGONE_EXT	193	/* last found PFN network gets lost. */
-#define WLC_E_LAST			194	/* highest val + 1 for range checking */
-#if (WLC_E_LAST > 194)
-#error "WLC_E_LAST: Invalid value for last event; must be <= 194."
+#define WLC_E_AUTH_START		194	/* notify upper layer to start auth */
+#define WLC_E_TWT_TEARDOWN		195	/* TWT Teardown Complete Event */
+#define WLC_E_TWT_INFO_FRM		196	/* TWT Info Event Notification */
+#define WLC_E_LAST			197	/* highest val + 1 for range checking */
+#if (WLC_E_LAST > 197)
+#error "WLC_E_LAST: Invalid value for last event; must be <= 197."
 #endif /* WLC_E_LAST */
 
 /* define an API for getting the string name of an event */
@@ -384,7 +387,8 @@ typedef enum wlc_roam_cache_update_reason {
 	WLC_ROAM_CACHE_UPDATE_MISSING_AP = 11,		/* cached ap not found */
 	WLC_ROAM_CACHE_UPDATE_START_PART_SCAN = 12,	/* RCC */
 	WLC_ROAM_CACHE_UPDATE_RCC_MODE = 13,		/* RCC */
-	WLC_ROAM_CACHE_UPDATE_RCC_CHANNELS = 14		/* RCC */
+	WLC_ROAM_CACHE_UPDATE_RCC_CHANNELS = 14,	/* RCC */
+	WLC_ROAM_CACHE_UPDATE_START_LP_FULL_SCAN = 15	/* start low power full scan */
 } wlc_roam_cache_update_reason_t;
 
 /*
@@ -1108,17 +1112,73 @@ typedef struct {
  * own TWT parameter.
  */
 
-#define WL_TWT_SETUP_CPLT_VER	0
+#define WL_TWT_SETUP_CPLT_VER	0u
+
+/* TWT Setup Reason code */
+typedef enum wl_twt_setup_rc {
+	WL_TWT_SETUP_RC_ACCEPT	= 0,	/* TWT Setup Accepted */
+	WL_TWT_SETUP_RC_REJECT	= 1,	/* TWT Setup Rejected */
+	WL_TWT_SETUP_RC_TIMEOUT	= 2,	/* TWT Setup Time-out */
+	WL_TWT_SETUP_RC_IE	= 3,	/* TWT Setup IE Validation failed */
+	WL_TWT_SETUP_RC_PARAMS	= 4,	/* TWT Setup IE Params invalid */
+	WL_TWT_SETUP_RC_ERROR	= 5,	/* Generic Error cases */
+} wl_twt_setup_rc_t;
 
 /* TWT Setup Completion event data */
 typedef struct wl_twt_setup_cplt {
 	uint16 version;
 	uint16 length;	/* the byte count of fields from 'dialog' onwards */
-	uint8 dialog;	/* the dialog token user supplied to the TWT setup API */
-	uint8 pad[3];
+	uint8 dialog;	/* Setup frame dialog token */
+	uint8 reason_code;	/* see WL_TWT_SETUP_RC_XXXX */
+	uint8 pad[2];
 	int32 status;
 	/* wl_twt_sdesc_t desc; - defined in wlioctl.h */
 } wl_twt_setup_cplt_t;
+
+#define WL_TWT_TEARDOWN_CPLT_VER	0u
+
+/* TWT teardown Reason code */
+typedef enum wl_twt_td_rc {
+	WL_TWT_TD_RC_SUCCESS	= 0,	/* Teardown complete Successful */
+	WL_TWT_TD_RC_HOST	= 1,	/* Teardown triggered by Host */
+	WL_TWT_TD_RC_PEER	= 2,	/* Peer initiated teardown */
+	WL_TWT_TD_RC_MCHAN	= 3,	/* Teardown due to MCHAN Active */
+	WL_TWT_TD_RC_MCNX	= 4,	/* Teardown due to MultiConnection */
+	WL_TWT_TD_RC_SETUP_FAIL	= 5, /* Setup fail midway. Teardown all connections */
+	WL_TWT_TD_RC_SCHED	= 6,	/* Teardown by TWT Scheduler */
+	WL_TWT_TD_RC_CSA	= 7,	/* Teardown due to CSA */
+	WL_TWT_TD_RC_BTCX	= 8,	/* Teardown due to BTCX */
+	WL_TWT_TD_RC_ERROR	= 9,	/* Generic Error cases */
+} wl_twt_td_rc_t;
+
+/* TWT Teardown complete event data */
+typedef struct wl_twt_teardown_cplt {
+	uint16 version;
+	uint16 length;	/* the byte count of fields from 'reason_code' onwards */
+	uint8 reason_code;	/* WL_TWT_TD_RC_XXXX */
+	uint8 pad[3];
+	int32 status;
+	/* wl_twt_teardesc_t; - defined in wlioctl.h */
+} wl_twt_teardown_cplt_t;
+
+#define WL_TWT_INFO_CPLT_VER	0u
+
+/* TWT Info Reason code */
+typedef enum wl_twt_info_rc {
+	WL_TWT_INFO_RC_HOST	= 0,	/* Host initiated Info complete */
+	WL_TWT_INFO_RC_PEER	= 1,	/* Peer initiated TWT Info */
+	WL_TWT_INFO_RC_ERROR	= 2,	/* generic error conditions */
+} wl_twt_info_rc_t;
+
+/* TWT Info complete event data */
+typedef struct wl_twt_info_cplt {
+	uint16 version;
+	uint16 length;		/* the byte count of fields from 'reason_code' onwards */
+	uint8 reason_code;		/* WL_TWT_INFO_RC_XXXX */
+	uint8 pad[3];
+	int32 status;
+	/* wl_twt_infodesc_t; - defined in wlioctl.h */
+} wl_twt_info_cplt_t;
 
 #define WL_INVALID_IE_EVENT_VERSION	0
 

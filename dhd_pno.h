@@ -160,16 +160,6 @@ typedef struct cmd_tlv {
 } cmd_tlv_t;
 #if defined(GSCAN_SUPPORT) || defined(DHD_GET_VALID_CHANNELS)
 typedef enum {
-    WIFI_BAND_UNSPECIFIED,
-    WIFI_BAND_BG = 1,                       /* 2.4 GHz                   */
-    WIFI_BAND_A = 2,                        /* 5 GHz without DFS         */
-    WIFI_BAND_A_DFS = 4,                    /* 5 GHz DFS only            */
-    WIFI_BAND_A_WITH_DFS = 6,               /* 5 GHz with DFS            */
-    WIFI_BAND_ABG = 3,                      /* 2.4 GHz + 5 GHz; no DFS   */
-    WIFI_BAND_ABG_WITH_DFS = 7,             /* 2.4 GHz + 5 GHz with DFS  */
-} gscan_wifi_band_t;
-
-typedef enum {
 	HOTLIST_LOST,
 	HOTLIST_FOUND
 } hotlist_type_t;

@@ -211,6 +211,29 @@ enum dhd_bus_low_power_state {
 	DHD_BUS_D3_ACK_RECIEVED,	/* D3 ACK recieved */
 };
 
+#ifdef DHD_FLOW_RING_STATUS_TRACE
+#define FRS_TRACE_SIZE 32 /* frs - flow_ring_status */
+typedef struct _dhd_flow_ring_status_trace_t {
+	uint64  timestamp;
+	uint16 h2d_ctrl_post_drd;
+	uint16 h2d_ctrl_post_dwr;
+	uint16 d2h_ctrl_cpln_drd;
+	uint16 d2h_ctrl_cpln_dwr;
+	uint16 h2d_rx_post_drd;
+	uint16 h2d_rx_post_dwr;
+	uint16 d2h_rx_cpln_drd;
+	uint16 d2h_rx_cpln_dwr;
+	uint16 d2h_tx_cpln_drd;
+	uint16 d2h_tx_cpln_dwr;
+	uint16 h2d_info_post_drd;
+	uint16 h2d_info_post_dwr;
+	uint16 d2h_info_cpln_drd;
+	uint16 d2h_info_cpln_dwr;
+	uint16 d2h_ring_edl_drd;
+	uint16 d2h_ring_edl_dwr;
+} dhd_frs_trace_t;
+#endif /* DHD_FLOW_RING_STATUS_TRACE */
+
 /** Instantiated once for each hardware (dongle) instance that this DHD manages */
 typedef struct dhd_bus {
 	dhd_pub_t	*dhd;	/**< pointer to per hardware (dongle) unique instance */
@@ -367,6 +390,12 @@ typedef struct dhd_bus {
 	void	*bar1_switch_lock;
 	void *backplane_access_lock;
 	enum dhd_bus_low_power_state bus_low_power_state;
+#ifdef DHD_FLOW_RING_STATUS_TRACE
+	dhd_frs_trace_t frs_isr_trace[FRS_TRACE_SIZE]; /* frs - flow_ring_status */
+	dhd_frs_trace_t frs_dpc_trace[FRS_TRACE_SIZE]; /* frs - flow_ring_status */
+	uint32	frs_isr_count;
+	uint32	frs_dpc_count;
+#endif /* DHD_FLOW_RING_STATUS_TRACE */
 #ifdef DHD_MMIO_TRACE
 	dhd_mmio_trace_t   mmio_trace[MAX_MMIO_TRACE_SIZE];
 	uint32	mmio_trace_count;

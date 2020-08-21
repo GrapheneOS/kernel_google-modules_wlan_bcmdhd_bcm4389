@@ -1203,6 +1203,7 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 
 /* Control Subtypes */
 #define FC_SUBTYPE_TRIGGER		2	/* Trigger frame */
+#define FC_SUBTYPE_NDPA                 5	/* NDPA  */
 #define FC_SUBTYPE_CTL_WRAPPER		7	/* Control Wrapper */
 #define FC_SUBTYPE_BLOCKACK_REQ		8	/* Block Ack Req */
 #define FC_SUBTYPE_BLOCKACK		9	/* Block Ack */
@@ -1260,6 +1261,7 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define FC_ACTION_NOACK	FC_KIND(FC_TYPE_MNG, FC_SUBTYPE_ACTION_NOACK)	/* action no-ack */
 
 #define FC_CTL_TRIGGER	FC_KIND(FC_TYPE_CTL, FC_SUBTYPE_TRIGGER)	/* Trigger frame */
+#define FC_CTL_NDPA	FC_KIND(FC_TYPE_CTL, FC_SUBTYPE_NDPA)	/* NDPA frame */
 #define FC_CTL_WRAPPER	FC_KIND(FC_TYPE_CTL, FC_SUBTYPE_CTL_WRAPPER)	/* Control Wrapper */
 #define FC_BLOCKACK_REQ	FC_KIND(FC_TYPE_CTL, FC_SUBTYPE_BLOCKACK_REQ)	/* Block Ack Req */
 #define FC_BLOCKACK	FC_KIND(FC_TYPE_CTL, FC_SUBTYPE_BLOCKACK)	/* Block Ack */
@@ -1549,11 +1551,13 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_MNG_TIM_BITMAP_CTL_PVBOFF_MASK	0xFE	/* Mask for partial virtual bitmap */
 
 /* TLV defines */
-#define TLV_TAG_OFF		0	/* tag offset */
-#define TLV_LEN_OFF		1	/* length offset */
-#define TLV_HDR_LEN		2	/* header length */
-#define TLV_BODY_OFF		2	/* body offset */
-#define TLV_BODY_LEN_MAX	255	/* max body length */
+#define TLV_TAG_OFF         0	/* tag offset */
+#define TLV_LEN_OFF         1	/* length offset */
+#define TLV_HDR_LEN         2	/* header length */
+#define TLV_BODY_OFF        2	/* body offset */
+#define TLV_BODY_LEN_MAX    255	/* max body length */
+#define TLV_EXT_HDR_LEN     3u  /* extended IE header length */
+#define TLV_EXT_BODY_OFF    3u  /* extended IE body offset */
 
 /* Management Frame Information Element IDs */
 enum dot11_tag_ids {
@@ -2056,8 +2060,8 @@ typedef struct dot11_oper_mode_notif_ie dot11_oper_mode_notif_ie_t;
 #define DOT11_ACTION_CAT_RRM		5	/* category radio measurements */
 #define DOT11_ACTION_CAT_FBT	6	/* category fast bss transition */
 #define DOT11_ACTION_CAT_HT		7	/* category for HT */
-#define	DOT11_ACTION_CAT_SA_QUERY	8	/* security association query */
-#define	DOT11_ACTION_CAT_PDPA		9	/* protected dual of public action */
+#define DOT11_ACTION_CAT_SA_QUERY	8	/* security association query */
+#define DOT11_ACTION_CAT_PDPA		9	/* protected dual of public action */
 #define DOT11_ACTION_CAT_WNM		10	/* category for WNM */
 #define DOT11_ACTION_CAT_UWNM		11	/* category for Unprotected WNM */
 #define DOT11_ACTION_CAT_MESH		13	/* category for Mesh */
@@ -2100,11 +2104,12 @@ typedef struct dot11_oper_mode_notif_ie dot11_oper_mode_notif_ie_t;
 #define DOT11_PUB_ACTION_CHANNEL_SWITCH	4	/* d11 action channel switch */
 #define DOT11_PUB_ACTION_VENDOR_SPEC	9	/* Vendor specific */
 #define DOT11_PUB_ACTION_GAS_CB_REQ	12	/* GAS Comeback Request */
-#define DOT11_PUB_ACTION_FTM_REQ	32		/* FTM request */
-#define DOT11_PUB_ACTION_FTM		33		/* FTM measurement */
-
-/* unassigned value. Will change after final assignement */
-#define DOT11_PUB_ACTION_FTM_LMR    50	/* FTM 11AZ Location Management Report */
+#define DOT11_PUB_ACTION_FTM_REQ	32	/* FTM request */
+#define DOT11_PUB_ACTION_FTM		33	/* FTM measurement */
+/* unassigned value. Will change after final assignement.
+ * for now, use 34(same as FILS DISC) due to QT/TB/chipsim support from uCode
+ */
+#define DOT11_PUB_ACTION_FTM_LMR	34	/* FTM 11AZ Location Management Report */
 
 #define DOT11_PUB_ACTION_FTM_REQ_TRIGGER_START	1u	/* FTM request start trigger */
 #define DOT11_PUB_ACTION_FTM_REQ_TRIGGER_STOP	0u	/* FTM request stop trigger */
@@ -5183,15 +5188,19 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm {
 typedef struct dot11_ftm dot11_ftm_t;
 
 BWL_PRE_PACKED_STRUCT struct dot11_ftm_lmr {
-	uint8    category;				/* category of action frame (4) */
-	uint8    action;				/* public action (33) */
-	uint8    dialog;				/* dialog token */
-	uint8    tod[6];				/* t1 - last depart timestamp */
-	uint8    toa[6];				/* t4 - last ack arrival timestamp */
-	uint8    tod_err[2];			/* t1 error */
-	uint8    toa_err[2];			/* t4 error */
-	uint16   cfo;                   /* I2R LMR: clock difference between ISTA and RSTA. */
-	uint8    sec_ltf_params[6];     /* Secure LTF parameters */
+	uint8    category;          /* category of action frame (4) */
+	uint8    action;            /* public action (33) */
+	uint8    dialog;            /* dialog token */
+	uint8    tod[6];            /* RSTA t3 or ISTA t1:
+	                             * last departure of NDP
+	                             */
+	uint8    toa[6];            /* RSTA t2 or ISTA t4:
+	                             * last arrival of NDP
+	                             */
+	uint8    tod_err[2];        /* t3 or t1 error */
+	uint8    toa_err[2];        /* t2 or t4 error */
+	uint16   cfo;               /* I2R LMR: clock difference between ISTA and RSTA. */
+	uint8    sec_ltf_params[];  /* Optional Secure LTF parameters */
 	/* no AOA feedback */
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_ftm_lmr dot11_ftm_lmr_t;
@@ -5204,6 +5213,12 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm_ranging_ndpa {
 	uint8           dialog_token; /* sounding dialog token */
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_ftm_ranging_ndpa dot11_ftm_ranging_ndpa_t;
+
+/* NDPA types = dialog token byte lower 2 bits */
+#define DOT11_NDPA_TYPE_MASK     0x03
+#define DOT11_NDPA_TYPE_VHT      0x00
+#define DOT11_NDPA_TYPE_RANGING  0x01
+#define DOT11_NDPA_TYPE_HE       0x02
 
 #define DOT11_FTM_ERR_NOT_CONT_OFFSET 1
 #define DOT11_FTM_ERR_NOT_CONT_MASK 0x80
@@ -5288,7 +5303,7 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm_ranging_params {
 	uint8 info[6];
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_ftm_ranging_params dot11_ftm_ranging_params_t;
-#define DOT11_FTM_RANGING_PARAMS_IE_LEN (sizeof(dot11_ftm_ranging_params_t) - 3)
+#define DOT11_FTM_CMN_RANGING_PARAMS_IE_LEN (sizeof(dot11_ftm_ranging_params_t) - TLV_EXT_HDR_LEN)
 
 /* FTM NTB specific */
 BWL_PRE_PACKED_STRUCT struct dot11_ftm_ntb_params {
@@ -5297,14 +5312,18 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm_ntb_params {
 	uint8 info[6];
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_ftm_ntb_params dot11_ftm_ntb_params_t;
-#define DOT11_FTM_NTB_PARAMS_IE_LEN sizeof(dot11_ftm_ntb_params_t)
+
+#define DOT11_FTM_NTB_PARAMS_SUB_IE_LEN (sizeof(dot11_ftm_ntb_params_t))
+#define DOT11_FTM_NTB_PARAMS_IE_LEN DOT11_FTM_CMN_RANGING_PARAMS_IE_LEN + \
+	DOT11_FTM_NTB_PARAMS_SUB_IE_LEN
 
 /* FTM TB specific */
 BWL_PRE_PACKED_STRUCT struct dot11_ftm_tb_params {
 	uint8 id; /* DOT11_FTM_TB_SUB_ELT_ID */
 	uint8 len;
-	uint8 info[]; /* variable length */
+	uint8 info[1]; /* variable length, minimum 1 */
 } BWL_POST_PACKED_STRUCT;
+
 typedef struct dot11_ftm_tb_params dot11_ftm_tb_params_t;
 #define DOT11_FTM_TB_PARAMS_IE_LEN sizeof(dot11_ftm_tb_params_t)
 
@@ -5312,7 +5331,7 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm_sec_ltf_params {
 	uint8 id; /* 255 */
 	uint8 len;
 	uint8 ext_id; /* DOT11_MNG_FTM_SECURE_LTF_EXT_ID */
-	uint8 info[14];
+	uint8 info[11];
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_ftm_sec_ltf_params dot11_ftm_sec_ltf_params_t;
 #define DOT11_FTM_SEC_LTF_PARAMS_IE_LEN (sizeof(dot11_ftm_sec_ltf_params_t) - 3)

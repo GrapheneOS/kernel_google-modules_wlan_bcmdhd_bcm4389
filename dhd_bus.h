@@ -263,6 +263,12 @@ extern void dhd_bus_handle_mb_data(struct dhd_bus *bus, uint32 d2h_mb_data);
 /* dump the device trap informtation  */
 extern void dhd_bus_dump_trap_info(struct dhd_bus *bus, struct bcmstrbuf *b);
 extern void dhd_bus_copy_trap_sig(struct dhd_bus *bus,  trap_t *tr);
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+extern void dhd_dump_pcie_rc_regs_for_linkdown(dhd_pub_t *dhd, int *bytes_written);
+void copy_hang_info_linkdown(dhd_pub_t *dhd);
+void copy_ext_trap_sig(dhd_pub_t *dhd, trap_t *tr);
+void copy_hang_info_trap(dhd_pub_t *dhd);
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 
 /* Function to set default min res mask */
 extern bool dhd_bus_set_default_min_res_mask(struct dhd_bus *bus);
@@ -390,4 +396,9 @@ extern int dhd_bus_get_sdtc_etb(dhd_pub_t *dhd, uint8 *sdtc_etb_mempool,
 extern int dhd_socram_dump(struct dhd_bus *bus);
 
 extern int dhdpcie_get_max_eventbufpost(struct dhd_bus *bus);
+
+#ifdef DHD_FLOW_RING_STATUS_TRACE
+extern void dhd_bus_flow_ring_status_isr_trace(dhd_pub_t *dhd);
+extern void dhd_bus_flow_ring_status_dpc_trace(dhd_pub_t *dhd);
+#endif /* DHD_FLOW_RING_STATUS_TRACE */
 #endif /* _dhd_bus_h_ */

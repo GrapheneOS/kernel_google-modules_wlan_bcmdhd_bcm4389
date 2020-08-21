@@ -777,7 +777,7 @@ int bcm_encode(uint8 **in, uint *in_len, bcm_format_t fmt,
  * on input pad_off represents the number of bits (MSBs of the first output byte)
  * to preserve and on output number of pad bits (LSBs) set to 0 in the output.
  */
-int bcm_decode(uint8 **in, uint *in_len, bcm_format_t fmt,
+int bcm_decode(const uint8 **in, uint *in_len, bcm_format_t fmt,
 		uint *pad_off, uint8 *out, uint out_size);
 
 extern void bcm_bitprint32(const uint32 u32);

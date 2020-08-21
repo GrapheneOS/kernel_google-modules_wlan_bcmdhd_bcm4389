@@ -107,6 +107,13 @@ config BCMDHD_CLM_PATH
 	---help---
 	  Path to the clm file.
 
+config BCMDHD_MAP_PATH
+	depends on BCMDHD
+	string "MAP path"
+	default "/vendor/etc/wifi/fw_bcmdhd.map"
+	---help---
+	  Path to the map file.
+
 config BROADCOM_WIFI_RESERVED_MEM
 	bool "BROADCOM Reserved memory for wifi device"
 	depends on BCMDHD

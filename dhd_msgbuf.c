@@ -233,6 +233,12 @@ struct msgbuf_ring; /* ring context for common and flow rings */
 #define PCIE_D2H_SYNC_NUM_OF_STEPS  (5U)
 #define PCIE_D2H_SYNC_DELAY         (100UL)	/* in terms of usecs */
 
+#ifdef DHD_REPLACE_LOG_INFO_TO_TRACE
+#define DHD_MSGBUF_INFO DHD_TRACE
+#else
+#define DHD_MSGBUF_INFO DHD_INFO
+#endif /* DHD_REPLACE_LOG_INFO_TO_TRACE */
+
 /**
  * Custom callback attached based upon D2H DMA Sync mode advertized by dongle.
  *
@@ -530,8 +536,12 @@ bool agg_h2d_db_enab = TRUE;
 #define AGG_H2D_DB_TIMEOUT_USEC		(1000u)	/* 1 msec */
 uint32 agg_h2d_db_timeout = AGG_H2D_DB_TIMEOUT_USEC;
 
+#ifndef AGG_H2D_DB_INFLIGHT_THRESH
 /* Keep inflight threshold same as txp_threshold */
-uint32 agg_h2d_db_inflight_thresh = TXP_FLUSH_MAX_ITEMS_FLUSH_CNT;
+#define AGG_H2D_DB_INFLIGHT_THRESH TXP_FLUSH_MAX_ITEMS_FLUSH_CNT
+#endif /* !AGG_H2D_DB_INFLIGHT_THRESH */
+
+uint32 agg_h2d_db_inflight_thresh = AGG_H2D_DB_INFLIGHT_THRESH;
 
 #define DHD_NUM_INFLIGHT_HISTO_ROWS (14u)
 #define DHD_INFLIGHT_HISTO_SIZE (sizeof(uint64) * DHD_NUM_INFLIGHT_HISTO_ROWS)
@@ -867,6 +877,11 @@ static void dhd_prot_process_snapshot_complete(dhd_pub_t *dhd, void *buf);
 #ifdef DHD_TIMESYNC
 extern void dhd_parse_proto(uint8 *pktdata, dhd_pkt_parse_t *parse);
 #endif
+
+#ifdef DHD_FLOW_RING_STATUS_TRACE
+void dhd_dump_bus_flow_ring_status_isr_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf);
+void dhd_dump_bus_flow_ring_status_dpc_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf);
+#endif /* DHD_FLOW_RING_STATUS_TRACE */
 
 #ifdef DHD_TX_PROFILE
 extern bool dhd_protocol_matches_profile(uint8 *p, int plen, const
@@ -5320,7 +5335,7 @@ dhd_prot_infobufpost(dhd_pub_t *dhd, msgbuf_ring_t *ring)
 		DHD_PKTID_AUDIT(dhd, prot->pktid_ctrl_map, pktid, DHD_DUPLICATE_ALLOC);
 #endif /* DHD_PKTID_AUDIT_RING */
 
-		DHD_INFO(("ID %d, low_addr 0x%08x, high_addr 0x%08x\n",
+		DHD_MSGBUF_INFO(("ID %d, low_addr 0x%08x, high_addr 0x%08x\n",
 			infobuf_post->cmn_hdr.request_id,  infobuf_post->host_buf_addr.low_addr,
 			infobuf_post->host_buf_addr.high_addr));
 
@@ -5643,7 +5658,7 @@ dhd_msgbuf_rxbuf_post_ctrlpath(dhd_pub_t *dhd, uint8 msg_type, uint32 max_to_pos
 	uint32 i = 0;
 	int32 ret_val;
 
-	DHD_INFO(("max to post %d, event %d \n", max_to_post, msg_type));
+	DHD_MSGBUF_INFO(("max to post %d, event %d \n", max_to_post, msg_type));
 
 	if (dhd->busstate == DHD_BUS_DOWN) {
 		DHD_ERROR(("%s: bus is already down.\n", __FUNCTION__));
@@ -5656,7 +5671,7 @@ dhd_msgbuf_rxbuf_post_ctrlpath(dhd_pub_t *dhd, uint8 msg_type, uint32 max_to_pos
 			break;
 		i++;
 	}
-	DHD_INFO(("posted %d buffers of type %d\n", i, msg_type));
+	DHD_MSGBUF_INFO(("posted %d buffers of type %d\n", i, msg_type));
 	return (uint16)i;
 }
 
@@ -5666,7 +5681,7 @@ dhd_msgbuf_rxbuf_post_ioctlresp_bufs(dhd_pub_t *dhd)
 	dhd_prot_t *prot = dhd->prot;
 	int max_to_post;
 
-	DHD_INFO(("ioctl resp buf post\n"));
+	DHD_MSGBUF_INFO(("ioctl resp buf post\n"));
 	max_to_post = prot->max_ioctlrespbufpost - prot->cur_ioctlresp_bufs_posted;
 	if (max_to_post <= 0) {
 		DHD_INFO(("%s: Cannot post more than max IOCTL resp buffers\n",
@@ -6301,7 +6316,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 				prot->hmaptest.in_progress = FALSE;
 			}
 #endif /* DHD_HMAPTEST */
-			DHD_INFO(("id 0x%04x, offset %d, len %d, idx %d, phase 0x%02x, "
+			DHD_MSGBUF_INFO(("id 0x%04x, offset %d, len %d, idx %d, phase 0x%02x, "
 				"pktdata %p, metalen %d\n",
 				ltoh32(msg->cmn_hdr.request_id),
 				ltoh16(msg->data_offset),
@@ -6684,7 +6699,7 @@ BCMFASTPATH(dhd_prot_process_msgtype)(dhd_pub_t *dhd, msgbuf_ring_t *ring, uint8
 		/* Prefetch data to populate the cache */
 		OSL_PREFETCH(buf + item_len);
 
-		DHD_INFO(("msg_type %d item_len %d buf_len %d\n",
+		DHD_MSGBUF_INFO(("msg_type %d item_len %d buf_len %d\n",
 			msg_type, item_len, buf_len));
 
 		if (msg_type == MSG_TYPE_LOOPBACK) {
@@ -7122,7 +7137,7 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 			DHD_DUPLICATE_FREE, msg, D2HRING_TXCMPLT_ITEMSIZE);
 #endif /* DHD_PKTID_AUDIT_RING && !BCM_ROUTER_DHD */
 
-	DHD_INFO(("txstatus for pktid 0x%04x\n", pktid));
+	DHD_MSGBUF_INFO(("txstatus for pktid 0x%04x\n", pktid));
 	if (OSL_ATOMIC_DEC_RETURN(dhd->osh, &prot->active_tx_count) < 0) {
 		DHD_ERROR(("Extra packets are freed\n"));
 	}
@@ -7257,7 +7272,7 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 	DHD_RING_UNLOCK(ring->ring_lock, flags);
 #ifdef DHD_MEM_STATS
 	DHD_MEM_STATS_LOCK(dhd->mem_stats_lock, flags);
-	DHD_INFO(("%s txpath_mem: %llu PKTLEN: %d\n",
+	DHD_MSGBUF_INFO(("%s txpath_mem: %llu PKTLEN: %d\n",
 		__FUNCTION__, dhd->txpath_mem, PKTLEN(dhd->osh, pkt)));
 	dhd->txpath_mem -= PKTLEN(dhd->osh, pkt);
 	DHD_MEM_STATS_UNLOCK(dhd->mem_stats_lock, flags);
@@ -7338,7 +7353,7 @@ BCMFASTPATH(dhd_prot_process_infobuf_complete)(dhd_pub_t *dhd, void* buf)
 			DHD_DUPLICATE_FREE, buf, D2HRING_INFO_BUFCMPLT_ITEMSIZE);
 #endif /* DHD_PKTID_AUDIT_RING */
 
-	DHD_INFO(("id 0x%04x, len %d, phase 0x%02x, seqnum %d, rx_dataoffset %d\n",
+	DHD_MSGBUF_INFO(("id 0x%04x, len %d, phase 0x%02x, seqnum %d, rx_dataoffset %d\n",
 		pktid, buflen, resp->cmn_hdr.flags, ltoh16(resp->seqnum),
 		dhd->prot->rx_dataoffset));
 
@@ -7517,7 +7532,10 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 	flow_ring_node_t *flow_ring_node;
 	void *big_pktbuf = NULL;
 	uint8 dhd_udr = FALSE;
+	bool host_sfh_llc_reqd = dhd->host_sfhllc_supported;
+	bool llc_inserted = FALSE;
 
+	BCM_REFERENCE(llc_inserted);
 #ifdef PCIE_INB_DW
 	if (dhd_prot_inc_hostactive_devwake_assert(dhd->bus) != BCME_OK) {
 		DHD_ERROR(("failed to increment hostactive_devwake\n"));
@@ -7629,8 +7647,9 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 	* Copy before we cache flush packet using DMA_MAP
 	*/
 	bcopy(pktdata, txdesc->txhdr, ETHER_HDR_LEN);
+
 #ifdef HOST_SFH_LLC
-	if (dhd->host_sfhllc_supported) {
+	if (host_sfh_llc_reqd) {
 		if (dhd_ether_to_8023_hdr(dhd->osh, (struct ether_header *)pktdata,
 				PKTBUF) == BCME_OK) {
 			/* adjust the data pointer and length information */
@@ -7644,8 +7663,8 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 #endif /* HOST_SFH_LLC */
 	{
 		/* Extract the ethernet header and adjust the data pointer and length */
+		pktlen = PKTLEN(dhd->osh, PKTBUF) - ETHER_HDR_LEN;
 		pktdata = PKTPULL(dhd->osh, PKTBUF, ETHER_HDR_LEN);
-		pktlen -= ETHER_HDR_LEN;
 	}
 
 	/* Map the data pointer to a DMA-able address */
@@ -7729,7 +7748,7 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 	txdesc->data_buf_addr.high_addr = htol32(PHYSADDRHI(pa));
 	txdesc->data_buf_addr.low_addr  = htol32(PHYSADDRLO(pa));
 
-	if (!dhd->host_sfhllc_supported)
+	if (!host_sfh_llc_reqd)
 	{
 		/* Move data pointer to keep ether header in local PKTBUF for later reference */
 		PKTPUSH(dhd->osh, PKTBUF, ETHER_HDR_LEN);
@@ -7740,7 +7759,7 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 #ifdef DHD_TIMESYNC
 	txdesc->rate = 0;
 
-	if (dhd->prot->tx_ts_log_enabled) {
+	if (!llc_inserted && dhd->prot->tx_ts_log_enabled) {
 		dhd_pkt_parse_t parse;
 
 		dhd_parse_proto(PKTDATA(dhd->osh, PKTBUF), &parse);
@@ -7763,14 +7782,15 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 #endif /* DHD_SBN */
 
 #ifdef DHD_TX_PROFILE
-	if (dhd->tx_profile_enab && dhd->num_profiles > 0)
+	if (!llc_inserted &&
+		dhd->tx_profile_enab && dhd->num_profiles > 0)
 	{
 		uint8 offset;
 
 		for (offset = 0; offset < dhd->num_profiles; offset++) {
 			if (dhd_protocol_matches_profile((uint8 *)PKTDATA(dhd->osh, PKTBUF),
 				PKTLEN(dhd->osh, PKTBUF), &(dhd->protocol_filters[offset]),
-				dhd->host_sfhllc_supported)) {
+				host_sfh_llc_reqd)) {
 				/* mask so other reserved bits are not modified. */
 				txdesc->rate |=
 					(((uint8)dhd->protocol_filters[offset].profile_index) &
@@ -8424,10 +8444,10 @@ dhd_prot_wl_ioctl_ret_intercept(dhd_pub_t *dhd, wl_ioctl_t * ioc, void * buf,
 #endif /* DHD_HMAPTEST */
 
 	if (!ret && ioc->cmd == WLC_SET_VAR && buf != NULL) {
+		int slen;
 		/* Intercept the wme_dp ioctl here */
 		if (!strcmp(buf, "wme_dp")) {
-			int slen, val = 0;
-
+			int val = 0;
 			slen = strlen("wme_dp") + 1;
 			if (len >= (int)(slen + sizeof(int)))
 				bcopy(((char *)buf + slen), &val, sizeof(int));
@@ -9152,7 +9172,7 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 	}
 #endif /* DHD_RECOVER_TIMEOUT */
 
-	if (timeleft == 0 && (!dhd_query_bus_erros(dhd))) {
+	if (timeleft == 0 && (!dhd->dongle_trap_data) && (!dhd_query_bus_erros(dhd))) {
 		if (dhd->check_trap_rot) {
 			/* check dongle trap first */
 			DHD_ERROR(("Check dongle trap in the case of iovar timeout\n"));
@@ -9486,7 +9506,7 @@ void dhd_prot_dump(dhd_pub_t *dhd, struct bcmstrbuf *b)
 	bcm_bprintf(b, "host_seqnum %u dngl_seqnum %u\n", dhd_prot_read_seqnum(dhd, TRUE),
 		dhd_prot_read_seqnum(dhd, FALSE));
 #endif /* DHD_DMA_INDICES_SEQNUM */
-	bcm_bprintf(b, "tx_h2d_db_cnt:%lu\n", dhd->prot->tx_h2d_db_cnt);
+	bcm_bprintf(b, "tx_h2d_db_cnt:%llu\n", dhd->prot->tx_h2d_db_cnt);
 #ifdef AGG_H2D_DB
 	bcm_bprintf(b, "agg_h2d_db_enab:%d agg_h2d_db_timeout:%d agg_h2d_db_inflight_thresh:%d\n",
 		agg_h2d_db_enab, agg_h2d_db_timeout, agg_h2d_db_inflight_thresh);
@@ -9597,7 +9617,7 @@ BCMFASTPATH(dhd_prot_alloc_ring_space)(dhd_pub_t *dhd, msgbuf_ring_t *ring,
 	}
 
 	if (ret_buf == HOST_RING_BASE(ring)) {
-		DHD_INFO(("%s: setting the phase now\n", ring->name));
+		DHD_MSGBUF_INFO(("%s: setting the phase now\n", ring->name));
 		ring->current_phase = ring->current_phase ? 0 : BCMPCIE_CMNHDR_PHASE_BIT_INIT;
 	}
 
@@ -10194,7 +10214,7 @@ BCMFASTPATH(dhd_prot_get_ring_space)(msgbuf_ring_t *ring, uint16 nitems, uint16 
 	if ((ring_avail_cnt == 0) ||
 	       (exactly_nitems && (ring_avail_cnt < nitems) &&
 	       ((ring->max_items - ring->wr) >= nitems))) {
-		DHD_INFO(("Space not available: ring %s items %d write %d read %d\n",
+		DHD_MSGBUF_INFO(("Space not available: ring %s items %d write %d read %d\n",
 			ring->name, nitems, ring->wr, ring->rd));
 		return NULL;
 	}
@@ -11014,7 +11034,7 @@ int dhd_prot_h2d_mbdata_send_ctrlmsg(dhd_pub_t *dhd, uint32 mb_data)
 	int num_post = 1;
 	int i;
 
-	DHD_INFO(("%s Sending H2D MB data Req data 0x%04x\n",
+	DHD_MSGBUF_INFO(("%s Sending H2D MB data Req data 0x%04x\n",
 		__FUNCTION__, mb_data));
 	if (!ctrl_ring->inited) {
 		DHD_ERROR(("%s: Ctrl Submit Ring: not inited\n", __FUNCTION__));
@@ -11067,7 +11087,7 @@ int dhd_prot_h2d_mbdata_send_ctrlmsg(dhd_pub_t *dhd, uint32 mb_data)
 			h2d_mb_data->mail_box_data = htol32(mb_data);
 		}
 
-		DHD_INFO(("%s Send H2D MB data Req data 0x%04x\n", __FUNCTION__, mb_data));
+		DHD_MSGBUF_INFO(("%s Send H2D MB data Req data 0x%04x\n", __FUNCTION__, mb_data));
 
 		/* upd wrt ptr and raise interrupt */
 		dhd_prot_ring_write_complete_mbdata(dhd, ctrl_ring, h2d_mb_data,
@@ -11322,7 +11342,7 @@ dhd_prot_process_d2h_mb_data(dhd_pub_t *dhd, void* buf)
 	d2h_mailbox_data_t *d2h_data;
 
 	d2h_data = (d2h_mailbox_data_t *)buf;
-	DHD_INFO(("%s dhd_prot_process_d2h_mb_data, 0x%04x\n", __FUNCTION__,
+	DHD_MSGBUF_INFO(("%s dhd_prot_process_d2h_mb_data, 0x%04x\n", __FUNCTION__,
 		d2h_data->d2h_mailbox_data));
 	dhd_bus_handle_mb_data(dhd->bus, d2h_data->d2h_mailbox_data);
 }
@@ -11476,6 +11496,10 @@ void dhd_prot_print_info(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 	dhd_dump_bus_mmio_trace(dhd->bus, strbuf);
 #endif /* DHD_MMIO_TRACE */
 	dhd_dump_bus_ds_trace(dhd->bus, strbuf);
+#ifdef DHD_FLOW_RING_STATUS_TRACE
+	dhd_dump_bus_flow_ring_status_isr_trace(dhd->bus, strbuf);
+	dhd_dump_bus_flow_ring_status_dpc_trace(dhd->bus, strbuf);
+#endif /* DHD_FLOW_RING_STATUS_TRACE */
 }
 
 int
@@ -11778,6 +11802,537 @@ dhd_prot_process_d2h_ring_config_complete(dhd_pub_t *dhd, void *msg)
 		__FUNCTION__, ltoh16(((ring_config_resp_t *)msg)->compl_hdr.status),
 		ltoh16(((ring_config_resp_t *)msg)->compl_hdr.flow_ring_id)));
 }
+
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+void
+copy_ext_trap_sig(dhd_pub_t *dhd, trap_t *tr)
+{
+	uint32 *ext_data = dhd->extended_trap_data;
+	hnd_ext_trap_hdr_t *hdr;
+	const bcm_tlv_t *tlv;
+
+	if (ext_data == NULL) {
+		return;
+	}
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_SIGNATURE);
+	if (tlv) {
+		memcpy(tr, &tlv->data, sizeof(struct _trap_struct));
+	}
+}
+#define TRAP_T_NAME_OFFSET(var) {#var, OFFSETOF(trap_t, var)}
+
+typedef struct {
+	char name[HANG_INFO_TRAP_T_NAME_MAX];
+	uint32 offset;
+} hang_info_trap_t;
+
+#ifdef DHD_EWPR_VER2
+static hang_info_trap_t hang_info_trap_tbl[] = {
+	{"reason", 0},
+	{"ver", VENDOR_SEND_HANG_EXT_INFO_VER},
+	{"stype", 0},
+	TRAP_T_NAME_OFFSET(type),
+	TRAP_T_NAME_OFFSET(epc),
+	{"resrvd", 0},
+	{"resrvd", 0},
+	{"resrvd", 0},
+	{"resrvd", 0},
+	{"", 0}
+};
+#else
+static hang_info_trap_t hang_info_trap_tbl[] = {
+	{"reason", 0},
+	{"ver", VENDOR_SEND_HANG_EXT_INFO_VER},
+	{"stype", 0},
+	TRAP_T_NAME_OFFSET(type),
+	TRAP_T_NAME_OFFSET(epc),
+	TRAP_T_NAME_OFFSET(cpsr),
+	TRAP_T_NAME_OFFSET(spsr),
+	TRAP_T_NAME_OFFSET(r0),
+	TRAP_T_NAME_OFFSET(r1),
+	TRAP_T_NAME_OFFSET(r2),
+	TRAP_T_NAME_OFFSET(r3),
+	TRAP_T_NAME_OFFSET(r4),
+	TRAP_T_NAME_OFFSET(r5),
+	TRAP_T_NAME_OFFSET(r6),
+	TRAP_T_NAME_OFFSET(r7),
+	TRAP_T_NAME_OFFSET(r8),
+	TRAP_T_NAME_OFFSET(r9),
+	TRAP_T_NAME_OFFSET(r10),
+	TRAP_T_NAME_OFFSET(r11),
+	TRAP_T_NAME_OFFSET(r12),
+	TRAP_T_NAME_OFFSET(r13),
+	TRAP_T_NAME_OFFSET(r14),
+	TRAP_T_NAME_OFFSET(pc),
+	{"", 0}
+};
+#endif /* DHD_EWPR_VER2 */
+
+#define TAG_TRAP_IS_STATE(tag) \
+	((tag == TAG_TRAP_MEMORY) || (tag == TAG_TRAP_PCIE_Q) || \
+	(tag == TAG_TRAP_WLC_STATE) || (tag == TAG_TRAP_LOG_DATA) || \
+	(tag == TAG_TRAP_CODE))
+
+static void
+copy_hang_info_head(char *dest, trap_t *src, int len, int field_name,
+		int *bytes_written, int *cnt, char *cookie)
+{
+	uint8 *ptr;
+	int remain_len;
+	int i;
+
+	ptr = (uint8 *)src;
+
+	memset(dest, 0, len);
+	remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+
+	/* hang reason, hang info ver */
+	for (i = 0; (i < HANG_INFO_TRAP_T_SUBTYPE_IDX) && (*cnt < HANG_FIELD_CNT_MAX);
+			i++, (*cnt)++) {
+		if (field_name) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s:%c",
+					hang_info_trap_tbl[i].name, HANG_KEY_DEL);
+		}
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%d%c",
+				hang_info_trap_tbl[i].offset, HANG_KEY_DEL);
+
+	}
+
+	if (*cnt < HANG_FIELD_CNT_MAX) {
+		if (field_name) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s:%c",
+					"cookie", HANG_KEY_DEL);
+		}
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s%c",
+				cookie, HANG_KEY_DEL);
+		(*cnt)++;
+	}
+
+	if (*cnt < HANG_FIELD_CNT_MAX) {
+		if (field_name) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s:%c",
+					hang_info_trap_tbl[HANG_INFO_TRAP_T_SUBTYPE_IDX].name,
+					HANG_KEY_DEL);
+		}
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%08x%c",
+				hang_info_trap_tbl[HANG_INFO_TRAP_T_SUBTYPE_IDX].offset,
+				HANG_KEY_DEL);
+		(*cnt)++;
+	}
+
+	if (*cnt < HANG_FIELD_CNT_MAX) {
+		if (field_name) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s:%c",
+					hang_info_trap_tbl[HANG_INFO_TRAP_T_EPC_IDX].name,
+					HANG_KEY_DEL);
+		}
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%08x%c",
+				*(uint32 *)
+				(ptr + hang_info_trap_tbl[HANG_INFO_TRAP_T_EPC_IDX].offset),
+				HANG_KEY_DEL);
+		(*cnt)++;
+	}
+#ifdef DHD_EWPR_VER2
+	/* put 0 for HG03 ~ HG06 (reserved for future use) */
+	for (i = 0; (i < HANG_INFO_BIGDATA_EXTRA_KEY) && (*cnt < HANG_FIELD_CNT_MAX);
+			i++, (*cnt)++) {
+		if (field_name) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s:%c",
+				hang_info_trap_tbl[HANG_INFO_TRAP_T_EXTRA_KEY_IDX+i].name,
+				HANG_KEY_DEL);
+		}
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%d%c",
+			hang_info_trap_tbl[HANG_INFO_TRAP_T_EXTRA_KEY_IDX+i].offset,
+			HANG_KEY_DEL);
+	}
+#endif /* DHD_EWPR_VER2 */
+}
+#ifndef DHD_EWPR_VER2
+static void
+copy_hang_info_trap_t(char *dest, trap_t *src, int len, int field_name,
+		int *bytes_written, int *cnt, char *cookie)
+{
+	uint8 *ptr;
+	int remain_len;
+	int i;
+
+	ptr = (uint8 *)src;
+
+	remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+
+	for (i = HANG_INFO_TRAP_T_OFFSET_IDX;
+			(hang_info_trap_tbl[i].name[0] != 0) && (*cnt < HANG_FIELD_CNT_MAX);
+			i++, (*cnt)++) {
+		if (field_name) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%c%s:",
+					HANG_RAW_DEL, hang_info_trap_tbl[i].name);
+		}
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%c%08x",
+				HANG_RAW_DEL, *(uint32 *)(ptr + hang_info_trap_tbl[i].offset));
+	}
+}
+
+static void
+copy_hang_info_stack(dhd_pub_t *dhd, char *dest, int *bytes_written, int *cnt)
+{
+	int remain_len;
+	int i = 0;
+	const uint32 *stack;
+	uint32 *ext_data = dhd->extended_trap_data;
+	hnd_ext_trap_hdr_t *hdr;
+	const bcm_tlv_t *tlv;
+	int remain_stack_cnt = 0;
+	uint32 dummy_data = 0;
+	int bigdata_key_stack_cnt = 0;
+
+	if (ext_data == NULL) {
+		return;
+	}
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_STACK);
+
+	remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	if (tlv) {
+		stack = (const uint32 *)tlv->data;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len,
+				"%08x", *(uint32 *)(stack++));
+		(*cnt)++;
+		if (*cnt >= HANG_FIELD_CNT_MAX) {
+			return;
+		}
+		for (i = 1; i < (uint32)(tlv->len / sizeof(uint32)); i++, bigdata_key_stack_cnt++) {
+			remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+			/* Raw data for bigdata use '_' and Key data for bigdata use space */
+			*bytes_written += scnprintf(&dest[*bytes_written], remain_len,
+				"%c%08x",
+				i <= HANG_INFO_BIGDATA_KEY_STACK_CNT ? HANG_KEY_DEL : HANG_RAW_DEL,
+				*(uint32 *)(stack++));
+
+			(*cnt)++;
+			if ((*cnt >= HANG_FIELD_CNT_MAX) ||
+					(i >= HANG_FIELD_TRAP_T_STACK_CNT_MAX)) {
+				return;
+			}
+		}
+	}
+
+	remain_stack_cnt = HANG_FIELD_TRAP_T_STACK_CNT_MAX - i;
+
+	for (i = 0; i < remain_stack_cnt; i++) {
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%c%08x",
+				HANG_RAW_DEL, dummy_data);
+		(*cnt)++;
+		if (*cnt >= HANG_FIELD_CNT_MAX) {
+			return;
+		}
+	}
+	GCC_DIAGNOSTIC_POP();
+
+}
+
+static void
+copy_hang_info_specific(dhd_pub_t *dhd, char *dest, int *bytes_written, int *cnt)
+{
+	int remain_len;
+	int i;
+	const uint32 *data;
+	uint32 *ext_data = dhd->extended_trap_data;
+	hnd_ext_trap_hdr_t *hdr;
+	const bcm_tlv_t *tlv;
+	int remain_trap_data = 0;
+	uint8 buf_u8[sizeof(uint32)] = { 0, };
+	const uint8 *p_u8;
+
+	if (ext_data == NULL) {
+		return;
+	}
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_SIGNATURE);
+	if (tlv) {
+		/* header include tlv hader */
+		remain_trap_data = (hdr->len - tlv->len - sizeof(uint16));
+	}
+
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_STACK);
+	if (tlv) {
+		/* header include tlv hader */
+		remain_trap_data -= (tlv->len + sizeof(uint16));
+	}
+
+	data = (const uint32 *)(hdr->data + (hdr->len  - remain_trap_data));
+
+	remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+
+	for (i = 0; i < (uint32)(remain_trap_data / sizeof(uint32)) && *cnt < HANG_FIELD_CNT_MAX;
+			i++, (*cnt)++) {
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%c%08x",
+				HANG_RAW_DEL, *(uint32 *)(data++));
+		GCC_DIAGNOSTIC_POP();
+	}
+
+	if (*cnt >= HANG_FIELD_CNT_MAX) {
+		return;
+	}
+
+	remain_trap_data -= (sizeof(uint32) * i);
+
+	if (remain_trap_data > sizeof(buf_u8)) {
+		DHD_ERROR(("%s: resize remain_trap_data\n", __FUNCTION__));
+		remain_trap_data =  sizeof(buf_u8);
+	}
+
+	if (remain_trap_data) {
+		p_u8 = (const uint8 *)data;
+		for (i = 0; i < remain_trap_data; i++) {
+			buf_u8[i] = *(const uint8 *)(p_u8++);
+		}
+
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+		*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%c%08x",
+				HANG_RAW_DEL, ltoh32_ua(buf_u8));
+		(*cnt)++;
+	}
+}
+#endif /* DHD_EWPR_VER2 */
+
+static void
+get_hang_info_trap_subtype(dhd_pub_t *dhd, uint32 *subtype)
+{
+	uint32 i;
+	uint32 *ext_data = dhd->extended_trap_data;
+	hnd_ext_trap_hdr_t *hdr;
+	const bcm_tlv_t *tlv;
+
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	/* Dump a list of all tags found  before parsing data */
+	for (i = TAG_TRAP_DEEPSLEEP; i < TAG_TRAP_LAST; i++) {
+		tlv = bcm_parse_tlvs(hdr->data, hdr->len, i);
+		if (tlv) {
+			if (!TAG_TRAP_IS_STATE(i)) {
+				*subtype = i;
+				return;
+			}
+		}
+	}
+}
+#ifdef DHD_EWPR_VER2
+static void
+copy_hang_info_etd_base64(dhd_pub_t *dhd, char *dest, int *bytes_written, int *cnt)
+{
+	int remain_len;
+	uint32 *ext_data = dhd->extended_trap_data;
+	hnd_ext_trap_hdr_t *hdr;
+	char *base64_out = NULL;
+	int base64_cnt;
+	int max_base64_len = HANG_INFO_BASE64_BUFFER_SIZE;
+
+	if (ext_data == NULL) {
+		return;
+	}
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - *bytes_written;
+
+	if (remain_len <= 0) {
+		DHD_ERROR(("%s: no space to put etd\n", __FUNCTION__));
+		return;
+	}
+
+	if (remain_len < max_base64_len) {
+		DHD_ERROR(("%s: change max base64 length to remain length %d\n", __FUNCTION__,
+			remain_len));
+		max_base64_len = remain_len;
+	}
+
+	base64_out = MALLOCZ(dhd->osh, HANG_INFO_BASE64_BUFFER_SIZE);
+	if (base64_out == NULL) {
+		DHD_ERROR(("%s: MALLOC failed for size %d\n",
+			__FUNCTION__, HANG_INFO_BASE64_BUFFER_SIZE));
+		return;
+	}
+
+	if (hdr->len > 0) {
+		base64_cnt = dhd_base64_encode(hdr->data, hdr->len, base64_out, max_base64_len);
+		if (base64_cnt == 0) {
+			DHD_ERROR(("%s: base64 encoding error\n", __FUNCTION__));
+		}
+	}
+
+	*bytes_written += scnprintf(&dest[*bytes_written], remain_len, "%s",
+			base64_out);
+	(*cnt)++;
+	MFREE(dhd->osh, base64_out, HANG_INFO_BASE64_BUFFER_SIZE);
+}
+#endif /* DHD_EWPR_VER2 */
+
+void
+copy_hang_info_trap(dhd_pub_t *dhd)
+{
+	trap_t tr;
+	int bytes_written;
+	int trap_subtype = 0;
+
+	if (!dhd || !dhd->hang_info) {
+		DHD_ERROR(("%s dhd=%p hang_info=%p\n", __FUNCTION__,
+			dhd, (dhd ? dhd->hang_info : NULL)));
+		return;
+	}
+
+	if (!dhd->dongle_trap_occured) {
+		DHD_ERROR(("%s: dongle_trap_occured is FALSE\n", __FUNCTION__));
+		return;
+	}
+
+	memset(&tr, 0x00, sizeof(struct _trap_struct));
+
+	copy_ext_trap_sig(dhd, &tr);
+	get_hang_info_trap_subtype(dhd, &trap_subtype);
+
+	hang_info_trap_tbl[HANG_INFO_TRAP_T_REASON_IDX].offset = HANG_REASON_DONGLE_TRAP;
+	hang_info_trap_tbl[HANG_INFO_TRAP_T_SUBTYPE_IDX].offset = trap_subtype;
+
+	bytes_written = 0;
+	dhd->hang_info_cnt = 0;
+	get_debug_dump_time(dhd->debug_dump_time_hang_str);
+	copy_debug_dump_time(dhd->debug_dump_time_str, dhd->debug_dump_time_hang_str);
+
+	copy_hang_info_head(dhd->hang_info, &tr, VENDOR_SEND_HANG_EXT_INFO_LEN, FALSE,
+			&bytes_written, &dhd->hang_info_cnt, dhd->debug_dump_time_hang_str);
+
+	DHD_INFO(("hang info head cnt: %d len: %d data: %s\n",
+		dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
+
+	clear_debug_dump_time(dhd->debug_dump_time_hang_str);
+
+#ifdef DHD_EWPR_VER2
+	/* stack info & trap info are included in etd data */
+
+	/* extended trap data dump */
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		copy_hang_info_etd_base64(dhd, dhd->hang_info, &bytes_written, &dhd->hang_info_cnt);
+		DHD_INFO(("hang info specific cnt: %d len: %d data: %s\n",
+			dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
+	}
+#else
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		copy_hang_info_stack(dhd, dhd->hang_info, &bytes_written, &dhd->hang_info_cnt);
+		DHD_INFO(("hang info stack cnt: %d len: %d data: %s\n",
+			dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
+	}
+
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		copy_hang_info_trap_t(dhd->hang_info, &tr, VENDOR_SEND_HANG_EXT_INFO_LEN, FALSE,
+				&bytes_written, &dhd->hang_info_cnt, dhd->debug_dump_time_hang_str);
+		DHD_INFO(("hang info trap_t cnt: %d len: %d data: %s\n",
+			dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
+	}
+
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		copy_hang_info_specific(dhd, dhd->hang_info, &bytes_written, &dhd->hang_info_cnt);
+		DHD_INFO(("hang info specific cnt: %d len: %d data: %s\n",
+			dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
+	}
+#endif /* DHD_EWPR_VER2 */
+}
+
+void
+copy_hang_info_linkdown(dhd_pub_t *dhd)
+{
+	int bytes_written = 0;
+	int remain_len;
+
+	if (!dhd || !dhd->hang_info) {
+		DHD_ERROR(("%s dhd=%p hang_info=%p\n", __FUNCTION__,
+			dhd, (dhd ? dhd->hang_info : NULL)));
+		return;
+	}
+
+	if (!dhd->bus->is_linkdown) {
+		DHD_ERROR(("%s: link down is not happened\n", __FUNCTION__));
+		return;
+	}
+
+	dhd->hang_info_cnt = 0;
+
+	get_debug_dump_time(dhd->debug_dump_time_hang_str);
+	copy_debug_dump_time(dhd->debug_dump_time_str, dhd->debug_dump_time_hang_str);
+
+	/* hang reason code (0x8808) */
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
+		bytes_written += scnprintf(&dhd->hang_info[bytes_written], remain_len, "%d%c",
+				HANG_REASON_PCIE_LINK_DOWN_EP_DETECT, HANG_KEY_DEL);
+		dhd->hang_info_cnt++;
+	}
+
+	/* EWP version */
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
+		bytes_written += scnprintf(&dhd->hang_info[bytes_written], remain_len, "%d%c",
+				VENDOR_SEND_HANG_EXT_INFO_VER, HANG_KEY_DEL);
+		dhd->hang_info_cnt++;
+	}
+
+	/* cookie - dump time stamp */
+	if (dhd->hang_info_cnt < HANG_FIELD_CNT_MAX) {
+		remain_len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
+		bytes_written += scnprintf(&dhd->hang_info[bytes_written], remain_len, "%s%c",
+				dhd->debug_dump_time_hang_str, HANG_KEY_DEL);
+		dhd->hang_info_cnt++;
+	}
+
+	clear_debug_dump_time(dhd->debug_dump_time_hang_str);
+
+	/* dump PCIE RC registers */
+	dhd_dump_pcie_rc_regs_for_linkdown(dhd, &bytes_written);
+
+	DHD_INFO(("hang info haed cnt: %d len: %d data: %s\n",
+		dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
+
+}
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 
 int
 dhd_prot_debug_info_print(dhd_pub_t *dhd)
@@ -13224,3 +13779,181 @@ dhd_prot_smmu_fault_dump(dhd_pub_t *dhdp)
 #endif /* DHD_FW_COREDUMP */
 }
 #endif /* DHD_MAP_LOGGING */
+
+#ifdef DHD_FLOW_RING_STATUS_TRACE
+void
+dhd_dump_bus_flow_ring_status_trace(
+	dhd_bus_t *bus, struct bcmstrbuf *strbuf, dhd_frs_trace_t *frs_trace, int dumpsz, char *str)
+{
+	int i;
+	dhd_prot_t *prot = bus->dhd->prot;
+	uint32 isr_cnt = bus->frs_isr_count % FRS_TRACE_SIZE;
+	uint32 dpc_cnt = bus->frs_dpc_count % FRS_TRACE_SIZE;
+
+	bcm_bprintf(strbuf, "---- %s ------ isr_cnt: %d dpc_cnt %d\n",
+		str, isr_cnt, dpc_cnt);
+	bcm_bprintf(strbuf, "%s\t%s\t%s\t%s\t%s\t%s\t",
+		"Timestamp ns", "H2DCtrlPost", "D2HCtrlCpl",
+		"H2DRxPost", "D2HRxCpl", "D2HTxCpl");
+	if (prot->h2dring_info_subn != NULL && prot->d2hring_info_cpln != NULL) {
+		bcm_bprintf(strbuf, "%s\t%s\t", "H2DRingInfoPost", "D2HRingInfoCpl");
+	}
+	if (prot->d2hring_edl != NULL) {
+		bcm_bprintf(strbuf, "%s", "D2HRingEDL");
+	}
+	bcm_bprintf(strbuf, "\n");
+	for (i = 0; i < dumpsz; i ++) {
+		bcm_bprintf(strbuf, "%llu\t%6u-%u\t%6u-%u\t%6u-%u\t%6u-%u\t%6u-%u\t",
+				frs_trace[i].timestamp,
+				frs_trace[i].h2d_ctrl_post_drd,
+				frs_trace[i].h2d_ctrl_post_dwr,
+				frs_trace[i].d2h_ctrl_cpln_drd,
+				frs_trace[i].d2h_ctrl_cpln_dwr,
+				frs_trace[i].h2d_rx_post_drd,
+				frs_trace[i].h2d_rx_post_dwr,
+				frs_trace[i].d2h_rx_cpln_drd,
+				frs_trace[i].d2h_rx_cpln_dwr,
+				frs_trace[i].d2h_tx_cpln_drd,
+				frs_trace[i].d2h_tx_cpln_dwr);
+		if (prot->h2dring_info_subn != NULL && prot->d2hring_info_cpln != NULL) {
+			bcm_bprintf(strbuf, "%6u-%u\t%6u-%u\t",
+				frs_trace[i].h2d_info_post_drd,
+				frs_trace[i].h2d_info_post_dwr,
+				frs_trace[i].d2h_info_cpln_drd,
+				frs_trace[i].d2h_info_cpln_dwr);
+		}
+		if (prot->d2hring_edl != NULL) {
+			bcm_bprintf(strbuf, "%6u-%u",
+				frs_trace[i].d2h_ring_edl_drd,
+				frs_trace[i].d2h_ring_edl_dwr);
+
+		}
+		bcm_bprintf(strbuf, "\n");
+	}
+	bcm_bprintf(strbuf, "--------------------------\n");
+}
+
+void
+dhd_dump_bus_flow_ring_status_isr_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf)
+{
+	int dumpsz;
+
+	dumpsz = bus->frs_isr_count < FRS_TRACE_SIZE ?
+		bus->frs_isr_count : FRS_TRACE_SIZE;
+	if (dumpsz == 0) {
+		bcm_bprintf(strbuf, "\nEMPTY ISR FLOW RING TRACE\n");
+		return;
+	}
+	dhd_dump_bus_flow_ring_status_trace(bus, strbuf, bus->frs_isr_trace,
+		dumpsz, "ISR FLOW RING TRACE DRD-DWR");
+}
+
+void
+dhd_dump_bus_flow_ring_status_dpc_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf)
+{
+	int dumpsz;
+
+	dumpsz = bus->frs_dpc_count < FRS_TRACE_SIZE ?
+		bus->frs_dpc_count : FRS_TRACE_SIZE;
+	if (dumpsz == 0) {
+		bcm_bprintf(strbuf, "\nEMPTY ISR FLOW RING TRACE\n");
+		return;
+	}
+	dhd_dump_bus_flow_ring_status_trace(bus, strbuf, bus->frs_dpc_trace,
+		dumpsz, "DPC FLOW RING TRACE DRD-DWR");
+}
+static void
+dhd_bus_flow_ring_status_trace(dhd_pub_t *dhd, dhd_frs_trace_t *frs_trace)
+{
+	dhd_prot_t *prot = dhd->prot;
+	msgbuf_ring_t *ring;
+
+	ring = &prot->h2dring_ctrl_subn;
+	frs_trace->h2d_ctrl_post_drd =
+		dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_RD_UPD, ring->idx);
+	frs_trace->h2d_ctrl_post_dwr =
+		dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_WR_UPD, ring->idx);
+
+	ring = &prot->d2hring_ctrl_cpln;
+	frs_trace->d2h_ctrl_cpln_drd =
+		dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_RD_UPD, ring->idx);
+	frs_trace->d2h_ctrl_cpln_dwr =
+		dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_WR_UPD, ring->idx);
+
+	ring = &prot->h2dring_rxp_subn;
+	frs_trace->h2d_rx_post_drd =
+		dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_RD_UPD, ring->idx);
+	frs_trace->h2d_rx_post_dwr =
+		dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_WR_UPD, ring->idx);
+
+	ring = &prot->d2hring_rx_cpln;
+	frs_trace->d2h_rx_cpln_drd =
+		dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_RD_UPD, ring->idx);
+	frs_trace->d2h_rx_cpln_dwr =
+		dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_WR_UPD, ring->idx);
+
+	ring = &prot->d2hring_tx_cpln;
+	frs_trace->d2h_tx_cpln_drd =
+		dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_RD_UPD, ring->idx);
+	frs_trace->d2h_tx_cpln_dwr =
+		dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_WR_UPD, ring->idx);
+
+	if (dhd->prot->h2dring_info_subn != NULL && dhd->prot->d2hring_info_cpln != NULL) {
+		ring = prot->h2dring_info_subn;
+		frs_trace->h2d_info_post_drd =
+			dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_RD_UPD, ring->idx);
+		frs_trace->h2d_info_post_dwr =
+			dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_WR_UPD, ring->idx);
+
+		ring = prot->d2hring_info_cpln;
+		frs_trace->d2h_info_cpln_drd =
+			dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_RD_UPD, ring->idx);
+		frs_trace->d2h_info_cpln_dwr =
+			dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_WR_UPD, ring->idx);
+	}
+	if (prot->d2hring_edl != NULL) {
+		ring = prot->d2hring_edl;
+		frs_trace->d2h_ring_edl_drd =
+			dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_RD_UPD, ring->idx);
+		frs_trace->d2h_ring_edl_dwr =
+			dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_WR_UPD, ring->idx);
+	}
+
+}
+
+void
+dhd_bus_flow_ring_status_isr_trace(dhd_pub_t *dhd)
+{
+	uint32 cnt = dhd->bus->frs_isr_count % FRS_TRACE_SIZE;
+	dhd_frs_trace_t *frs_isr_trace = &dhd->bus->frs_isr_trace[cnt];
+	uint64 time_ns_prev = frs_isr_trace[cnt].timestamp;
+	uint64 time_ns_now = OSL_LOCALTIME_NS();
+
+	if ((time_ns_now - time_ns_prev) < 250000) { /* delta less than 250us */
+		return;
+	}
+
+	dhd_bus_flow_ring_status_trace(dhd, frs_isr_trace);
+
+	frs_isr_trace->timestamp = OSL_LOCALTIME_NS();
+	dhd->bus->frs_isr_count ++;
+}
+
+void
+dhd_bus_flow_ring_status_dpc_trace(dhd_pub_t *dhd)
+{
+	uint32 cnt = dhd->bus->frs_dpc_count % FRS_TRACE_SIZE;
+	dhd_frs_trace_t *frs_dpc_trace = &dhd->bus->frs_dpc_trace[cnt];
+	uint64 time_ns_prev = frs_dpc_trace[cnt].timestamp;
+	uint64 time_ns_now = OSL_LOCALTIME_NS();
+
+	if ((time_ns_now - time_ns_prev) < 250000) { /* delta less than 250us */
+		return;
+	}
+
+	dhd_bus_flow_ring_status_trace(dhd, frs_dpc_trace);
+
+	frs_dpc_trace->timestamp = OSL_LOCALTIME_NS();
+	dhd->bus->frs_dpc_count ++;
+}
+#endif /* DHD_FLOW_RING_STATUS_TRACE */

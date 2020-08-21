@@ -59,10 +59,14 @@
 #include <linux/pm_runtime.h>
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
-#if defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
+#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
+	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
 	defined(CONFIG_SOC_EXYNOS1000) || defined(CONFIG_SOC_GS101)
 #include <linux/exynos-pci-ctrl.h>
-#endif /* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 || CONFIG_SOC_EXYNOS1000 */
+#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
+	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
+	* CONFIG_SOC_EXYNOS1000 || CONFIG_SOC_GS101
+	*/
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #ifndef AUTO_SUSPEND_TIMEOUT
@@ -695,7 +699,10 @@ static int dhdpcie_pm_prepare(struct device *dev)
 	}
 
 	bus = pch->bus;
-	DHD_DISABLE_RUNTIME_PM(bus->dhd);
+
+	if (bus->dhd->up)
+		DHD_DISABLE_RUNTIME_PM(bus->dhd);
+
 	bus->chk_pm = TRUE;
 
 	return 0;
@@ -742,7 +749,10 @@ static void dhdpcie_pm_complete(struct device *dev)
 	}
 
 	bus = pch->bus;
-	DHD_ENABLE_RUNTIME_PM(bus->dhd);
+
+	if (bus->dhd->up)
+		DHD_ENABLE_RUNTIME_PM(bus->dhd);
+
 	bus->chk_pm = FALSE;
 
 	return;
@@ -857,11 +867,11 @@ static int dhdpcie_set_suspend_resume(dhd_bus_t *bus, bool state)
 	ASSERT(bus && !bus->dhd->dongle_reset);
 
 #ifdef DHD_PCIE_RUNTIMEPM
-		/* if wakelock is held during suspend, return failed */
-		if (state == TRUE && dhd_os_check_wakelock_all(bus->dhd)) {
-			return -EBUSY;
-		}
-		mutex_lock(&bus->pm_lock);
+	/* if wakelock is held during suspend, return failed */
+	if (state == TRUE && dhd_os_check_wakelock_all(bus->dhd)) {
+		return -EBUSY;
+	}
+	mutex_lock(&bus->pm_lock);
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 	/* When firmware is not loaded do the PCI bus */
@@ -874,13 +884,27 @@ static int dhdpcie_set_suspend_resume(dhd_bus_t *bus, bool state)
 		return ret;
 	}
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
-		ret = dhdpcie_bus_suspend(bus, state, byint);
+	ret = dhdpcie_bus_suspend(bus, state, byint);
 #else
-		ret = dhdpcie_bus_suspend(bus, state);
+	ret = dhdpcie_bus_suspend(bus, state);
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+	if (ret == BCME_OK) {
+		/*
+		 * net.ipv4.tcp_limit_output_bytes is used for all ipv4 sockets
+		 * so, returning back to original value when there is no traffic(suspend)
+		 */
+		if (state == TRUE) {
+			dhd_ctrl_tcp_limit_output_bytes(0);
+		} else {
+			dhd_ctrl_tcp_limit_output_bytes(1);
+		}
+	}
+#endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
+
 #ifdef DHD_PCIE_RUNTIMEPM
-		mutex_unlock(&bus->pm_lock);
+	mutex_unlock(&bus->pm_lock);
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 	return ret;
@@ -1027,11 +1051,15 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	}
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
-#if defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
+#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
+	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
 	defined(CONFIG_SOC_EXYNOS1000)
 	DHD_ERROR(("%s: Disable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 || CONFIG_SOC_EXYNOS1000 */
+#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
+	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
+	* CONFIG_SOC_EXYNOS1000
+	*/
 #if defined(CONFIG_SOC_GS101)
 	DHD_ERROR(("%s: Disable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
@@ -1116,11 +1144,15 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	}
 	BCM_REFERENCE(pch);
 	dhdpcie_suspend_dump_cfgregs(pch->bus, "AFTER_EP_RESUME");
-#if defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
+#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
+	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
 	defined(CONFIG_SOC_EXYNOS1000)
 	DHD_ERROR(("%s: Enable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 || CONFIG_SOC_EXYNOS1000 */
+#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
+	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
+	* CONFIG_SOC_EXYNOS1000
+	*/
 #if defined(CONFIG_SOC_GS101)
 	DHD_ERROR(("%s: Enable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_rc_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI, 1);
@@ -2838,12 +2870,15 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 	bus->idlecount++;
 
 	DHD_TRACE(("%s : Enter \n", __FUNCTION__));
+
 	if (dhd_query_bus_erros(dhd)) {
 		/* Becasue bus_error/dongle_trap ... etc,
-		 * driver don't allow enter suspend, return TRUE
+		 * driver don't allow enter suspend, return FALSE
 		 */
+		DHD_GENERAL_UNLOCK(dhd, flags);
 		return FALSE;
 	}
+
 	if ((bus->idletime > 0) && (bus->idlecount >= bus->idletime)) {
 		bus->idlecount = 0;
 		if (DHD_BUS_BUSY_CHECK_IDLE(dhd) && !DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhd) &&
