@@ -377,6 +377,11 @@ dhd_wlan_init(void)
 	int ret;
 
 	DHD_INFO(("%s: START.......\n", __FUNCTION__));
+
+#ifdef DHD_COREDUMP
+	platform_device_register(&sscd_dev);
+#endif /* DHD_COREDUMP */
+
 	ret = dhd_wifi_init_gpio();
 	if (ret < 0) {
 		DHD_ERROR(("%s: failed to initiate GPIO, ret=%d\n",
@@ -400,10 +405,6 @@ dhd_wlan_init(void)
 #ifdef GET_CUSTOM_MAC_ENABLE
 	dhd_wlan_init_mac_addr();
 #endif /* GET_CUSTOM_MAC_ENABLE */
-
-#ifdef DHD_COREDUMP
-	platform_device_register(&sscd_dev);
-#endif /* DHD_COREDUMP */
 
 fail:
 	DHD_ERROR(("%s: FINISH.......\n", __FUNCTION__));

@@ -46,16 +46,16 @@ CONFIG_BCMDHD_PCIE=y
 CONFIG_BCM43752=
 CONFIG_BCM4389=y
 CONFIG_DHD_OF_SUPPORT=y
-ifneq ($(CONFIG_ARCH_HISI),)
- CONFIG_BCMDHD_FW_PATH="\"/vendor/etc/wifi/fw_bcmdhd.bin\""
- CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
- CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
- CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcmbcmd.map\""
-else
+ifneq ($(CONFIG_SOC_GS101),)
  CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcm4389.bin\""
  CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd_4389.cal\""
  CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm_4389.blob\""
  CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcm4389.map\""
+else
+ CONFIG_BCMDHD_FW_PATH="\"/vendor/etc/wifi/fw_bcmdhd.bin\""
+ CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
+ CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
+ CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcmbcmd.map\""
 endif
 CONFIG_BROADCOM_WIFI_RESERVED_MEM=y
 CONFIG_DHD_USE_STATIC_BUF=y
@@ -796,23 +796,23 @@ ifeq ($(DRIVER_TYPE),m)
 endif
 
 DHDCFLAGS += -DDHD_CAP_CUSTOMER="\"hw2 \""
-ifneq ($(CONFIG_ARCH_HISI),)
-	DHDCFLAGS += -DBOARD_HIKEY -DBOARD_HIKEY_HW2
-# Allow wl event forwarding as network packet
-	DHDCFLAGS += -DWL_EVENT_ENAB
-	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"hikey \""
-else
+ifneq ($(CONFIG_SOC_GS101),)
 # The flag will be enabled only on customer platform
-	DHDCFLAGS += -DCUSTOMER_HW2_DEBUG
-endif
-
-ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
-	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"exynos \""
+    DHDCFLAGS += -DCUSTOMER_HW2_DEBUG
+    DHDCFLAGS += -DDHD_CAP_PLATFORM="\"exynos \""
+    DHDCFLAGS += -DCONFIG_ARCH_EXYNOS
 # Add chip specific suffix to the output in case of customer release
 ifneq ($(filter y, $(CONFIG_BCM4389)),)
 	BCM_WLAN_CHIP_SUFFIX = 4389
 	DHDCFLAGS += -DBCMPCI_DEV_ID=0x4441
 	DHDCFLAGS += -DUSIPCI_DEV_ID=0x4389
+endif
+else
+ifneq ($(CONFIG_ARCH_HISI),)
+	DHDCFLAGS += -DBOARD_HIKEY -DBOARD_HIKEY_HW2
+# Allow wl event forwarding as network packet
+	DHDCFLAGS += -DWL_EVENT_ENAB
+	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"hikey \""
 endif
 endif
 
@@ -855,10 +855,10 @@ endif
 
 ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
 	DHDOFILES += dhd_custom_google.o
-endif
-
+else
 ifneq ($(CONFIG_ARCH_HISI),)
 	DHDOFILES += dhd_custom_hikey.o
+endif
 endif
 
 ifneq ($(CONFIG_BROADCOM_WIFI_RESERVED_MEM),)
