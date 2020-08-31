@@ -239,6 +239,16 @@ static struct pci_device_id dhdpcie_pci_devid[] __devinitdata = {
 	class_mask: 0xffff00,
 	driver_data: 0,
 	},
+#ifdef USIPCI_DEV_ID
+	{ vendor: VENDOR_BROADCOM,
+	device: USIPCI_DEV_ID,
+	subvendor: PCI_ANY_ID,
+	subdevice: PCI_ANY_ID,
+	class: PCI_CLASS_NETWORK_OTHER << 8,
+	class_mask: 0xffff00,
+	driver_data: 0,
+	},
+#endif
 	{ 0, 0, 0, 0, 0, 0, 0}
 };
 MODULE_DEVICE_TABLE(pci, dhdpcie_pci_devid);
