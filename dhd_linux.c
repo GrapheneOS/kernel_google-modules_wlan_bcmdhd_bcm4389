@@ -16034,7 +16034,7 @@ dhd_module_init(void)
 		dhd_hdm_wlan_sysfs_init();
 	}
 #endif /* DHD_SUPPORT_HDM */
-	return err;
+	return BCME_OK;
 
 }
 
