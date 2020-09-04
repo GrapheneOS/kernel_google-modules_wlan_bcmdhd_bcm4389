@@ -119,6 +119,13 @@ extern char* dhd_dbg_get_system_timestamp(void);
 #define COOKIE_LOG_HDR "\n-------------------- Cookie List ----------------------------\n"
 #endif /* DHD_LOG_DUMP */
 
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+/* Only for writing to ring */
+#define DHD_INFO_RING(args)	DHD_ERROR(args)
+#else
+#define DHD_INFO_RING(args)
+#endif
+
 #if defined(CUSTOMER_DBG_SYSTEM_TIME) && defined(DHD_DEBUGABILITY_LOG_DUMP_RING)
 #define DBG_PRINT_PREFIX "[%s][dhd][wlan]", dhd_dbg_get_system_timestamp()
 #else
@@ -165,12 +172,28 @@ do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
 		DBG_PRINT_SYSTEM_TIME;	\
 		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_ERROR_VAL) {	\
 		DHD_LOG_DUMP_WRITE_TS;	\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
 
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+#define DHD_INFO(args)	\
+do {	\
+	if (dhd_msg_level & DHD_INFO_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_INFO_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+#else
 #define DHD_INFO(args)		do {if (dhd_msg_level & DHD_INFO_VAL) printf args;} while (0)
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 #endif /* DHD_EFI */
 #else /* DHD_LOG_DUMP */
 /* !defined(DHD_LOG_DUMP cases) */
@@ -241,6 +264,9 @@ do {	\
 			DBG_PRINT_SYSTEM_TIME;	\
 			pr_cont args;		\
 		}	\
+	}	\
+	if (dhd_log_level & DHD_ERROR_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;		\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
@@ -251,6 +277,9 @@ do {	\
 			DBG_PRINT_SYSTEM_TIME;	\
 			pr_cont args;		\
 		}	\
+	}	\
+	if (dhd_log_level & DHD_ERROR_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;		\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
@@ -266,6 +295,8 @@ do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
 		DBG_PRINT_SYSTEM_TIME;	\
 		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_EVENT_VAL) {	\
 		DHD_LOG_DUMP_WRITE_PRSRV_TS;	\
 		DHD_LOG_DUMP_WRITE_PRSRV args;	\
 	}	\
@@ -277,6 +308,8 @@ do {	\
 			DBG_PRINT_SYSTEM_TIME;	\
 			printf args;		\
 		}	\
+	}	\
+	if (dhd_log_level & DHD_EVENT_VAL) {	\
 		DHD_LOG_DUMP_WRITE_TS;		\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\
@@ -292,6 +325,10 @@ do {	\
 		if (dhd_msg_level & DHD_MSGTRACE_VAL) { \
 			DBG_PRINT_SYSTEM_TIME;	\
 			pr_cont args;		\
+		}	\
+	}	\
+	if (dhd_log_level & DHD_EVENT_VAL) {	\
+		if (dhd_log_level & DHD_MSGTRACE_VAL) { \
 			DHD_LOG_DUMP_WRITE_TS;		\
 			DHD_LOG_DUMP_WRITE args;	\
 		}	\
@@ -302,6 +339,8 @@ do {										\
 	if (dhd_msg_level & DHD_ERROR_VAL) {    \
 		DBG_PRINT_SYSTEM_TIME;	\
 		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_ERROR_VAL) {    \
 		DHD_LOG_DUMP_WRITE_EX_TS;	\
 		DHD_LOG_DUMP_WRITE_EX args;	\
 	}	\
@@ -321,6 +360,8 @@ do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
 		DBG_PRINT_SYSTEM_TIME;	\
 		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_ERROR_VAL) {	\
 		DHD_LOG_DUMP_WRITE_ROAM_TS;	\
 		DHD_LOG_DUMP_WRITE_ROAM args;	\
 	}	\
@@ -358,28 +399,27 @@ do {	\
 #if defined(DHD_EFI)
 #define DHD_FWLOG(args) DHD_MSGTRACE_LOG(args)
 #elif defined(DHD_LOG_PRINT_RATE_LIMIT)
-#define DHD_FW_VERBOSE(args)        \
-do {    \
-	if (dbgring_msg_level & DHD_FWLOG_VAL) {        \
-		DHD_LOG_DUMP_WRITE_EX args;     \
-	}       \
-} while (0)
-#define DHD_FWLOG(args)	\
-	do { \
-		if (dhd_msg_level & DHD_FWLOG_VAL) { \
-			if (control_logtrace && !log_print_threshold) \
-				printf args; \
-			DHD_LOG_DUMP_WRITE args; \
-		} \
-	} while (0)
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+/* FW_VERBOSE RING */
+#define DHD_LOG_DUMP_FWLOG	DHD_LOG_DUMP_WRITE_EX
 #else
-#define DHD_FW_VERBOSE(args)        \
-do {    \
-	if (dbgring_msg_level & DHD_FWLOG_VAL) {        \
-		DHD_LOG_DUMP_WRITE_EX args;     \
-	}       \
+/* DLD_BUF_TYPE_GENERAL */
+#define DHD_LOG_DUMP_FWLOG	DHD_LOG_DUMP_WRITE
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
+
+#define DHD_FWLOG(args)	\
+do { \
+	if (dhd_msg_level & DHD_FWLOG_VAL) { \
+		if (control_logtrace && !log_print_threshold) \
+			printf args; \
+	} \
+	if (dhd_log_level & DHD_FWLOG_VAL) { \
+		DHD_LOG_DUMP_FWLOG args; \
+	} \
 } while (0)
 
+#else
 #define DHD_FWLOG(args)	\
 	do { \
 		if (dhd_msg_level & DHD_FWLOG_VAL) { \
@@ -628,7 +668,7 @@ do {	\
 
 #define DHD_NONE(args)
 extern int dhd_msg_level;
-extern int dbgring_msg_level;
+extern int dhd_log_level;
 #ifdef DHD_LOG_PRINT_RATE_LIMIT
 extern int log_print_threshold;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */

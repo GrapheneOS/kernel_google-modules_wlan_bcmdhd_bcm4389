@@ -148,15 +148,36 @@ typedef struct {
 #define DFS_SCAN_S_MAX 5
 
 #define ACTION_FRAME_SIZE 1800
+#define WL_RAND_GAS_MAC (0x01 << 0u)
+struct wl_action_frame {
+	struct ether_addr da;
+	uint16 len;
+	uint32 packetId;
+	uint8  data[ACTION_FRAME_SIZE];
+};
 
-typedef struct wl_action_frame {
-	struct ether_addr 	da;
-	uint16 			len;
-	uint32 			packetId;
-	uint8			data[ACTION_FRAME_SIZE];
-} wl_action_frame_t;
+typedef struct wl_action_frame_v2 {
+	uint16			version;
+	uint16			len_total;
+	uint16                  data_offset;
+	struct ether_addr       da;
+	uint32                  packetId;
+	struct ether_addr       rand_mac_addr;
+	struct ether_addr       rand_mac_mask;
+	uint16                  flags;
+	uint16                  len_data;
+	uint8                   data[];
+} wl_action_frame_v2_t;
 
+#ifndef WL_AF_PARAMS_VERSION_SUPPORT
+/* actframe params LEGACY structure. DONOT extend this structure unless
+ * there is a clear requirement. Use the versioned struct v2 onwards.
+ */
+typedef struct wl_action_frame wl_action_frame_t;
+typedef struct wl_af_params wl_af_params_t;
 #define WL_WIFI_ACTION_FRAME_SIZE sizeof(struct wl_action_frame)
+#define WL_WIFI_AF_PARAMS_SIZE sizeof(struct wl_af_params)
+#endif /* WL_AF_PARAMS_VERSION_SUPPORT */
 
 typedef struct ssid_info
 {
@@ -164,15 +185,40 @@ typedef struct ssid_info
 	uint8		ssid[32];	/**< SSID string */
 } ssid_info_t;
 
-typedef struct wl_af_params {
+struct wl_af_params {
 	uint32			channel;
 	int32			dwell_time;
 	struct ether_addr	BSSID;
 	uint8 PAD[2];
-	wl_action_frame_t	action_frame;
-} wl_af_params_t;
+	struct wl_action_frame action_frame;
+};
 
-#define WL_WIFI_AF_PARAMS_SIZE sizeof(struct wl_af_params)
+typedef struct wl_af_params_v2 {
+	uint16			version;
+	uint16			length;
+	uint32			channel;
+	int32			dwell_time;
+	struct ether_addr	BSSID;
+	uint8                   PAD[2];
+	wl_action_frame_v2_t	action_frame;
+} wl_af_params_v2_t;
+
+#define WL_WIFI_ACTION_FRAME_SIZE_V2 sizeof(wl_action_frame_v2_t)
+#define WL_WIFI_AF_PARAMS_SIZE_V2    sizeof(wl_af_params_v2_t)
+
+/* version of actframe iovar to be returned as part of wl_actframe_version structure */
+#define WL_ACTFRAME_VERSION_MAJOR_2        2u
+
+/**< current version of actframe_version structure */
+#define WL_ACTFRAME_VERSION_V1             1u
+
+/** actframe interface version */
+typedef struct wl_actframe_version_v1 {
+	uint16  version;                /**< version of the structure */
+	uint16  length;                 /**< length of the entire structure */
+	/* actframe interface version numbers */
+	uint16  actframe_ver_major;     /**< actframe interface major version number */
+} wl_actframe_version_v1_t;
 
 #define MFP_TEST_FLAG_NORMAL	0
 #define MFP_TEST_FLAG_ANY_KEY	1
@@ -7731,12 +7777,14 @@ typedef struct wl_tcp_keep_set {
 			OFFSETOF(wl_pkt_filter_pattern_timeout_t, mask_and_pattern)
 
 #define WL_APF_INTERNAL_VERSION	1
-#define WL_APF_PROGRAM_MAX_SIZE (2 * 1024)
 #define WL_APF_PROGRAM_FIXED_LEN	OFFSETOF(wl_apf_program_t, instrs)
 #define WL_APF_PROGRAM_LEN(apf_program)	\
 	((apf_program)->instr_len * sizeof((apf_program)->instrs[0]))
 #define WL_APF_PROGRAM_TOTAL_LEN(apf_program)	\
 	(WL_APF_PROGRAM_FIXED_LEN + WL_APF_PROGRAM_LEN(apf_program))
+#ifndef WL_APF_PROGRAM_MAX_SIZE
+#define WL_APF_PROGRAM_MAX_SIZE (2u * 1024u)
+#endif /* WL_APF_PROGRAM_MAX_SIZE */
 
 /** IOVAR "pkt_filter_enable" parameter. */
 typedef struct wl_pkt_filter_enable {
@@ -9652,6 +9700,61 @@ typedef BWL_PRE_PACKED_STRUCT struct wlc_ipfo_route_tbl {
 /* Version of wlc_btc_stats_t structure.
  * Increment whenever a change is made to wlc_btc_stats_t
  */
+#define BTCX_STATS_VER_5 5
+typedef struct wlc_btc_stats_v5 {
+	uint16 version;			/* version number of struct */
+	uint16 valid;			/* Size of this struct */
+	uint32 stats_update_timestamp;	/* tStamp when data is updated. */
+	uint32 btc_status;		/* btc status log */
+	uint32 bt_req_type_map;		/* BT Antenna Req types since last stats sample */
+	uint32 bt_req_cnt;		/* #BT antenna requests since last stats sampl */
+	uint32 bt_gnt_cnt;		/* #BT antenna grants since last stats sample */
+	uint32 bt_gnt_dur;		/* usec BT owns antenna since last stats sample */
+	uint16 bt_abort_cnt;		/* #Times WL was preempted due to BT since WL up */
+	uint16 bt_latency_cnt;		/* #Time ucode high latency detected since WL up */
+	uint16 bt_succ_pm_protect_cnt;	/* successful PM protection */
+	uint16 bt_succ_cts_cnt;		/* successful CTS2A protection */
+	uint16 bt_wlan_tx_preempt_cnt;	/* WLAN TX Preemption */
+	uint16 bt_wlan_rx_preempt_cnt;	/* WLAN RX Preemption */
+	uint16 bt_ap_tx_after_pm_cnt;	/* AP TX even after PM protection */
+	uint16 bt_peraud_cumu_gnt_cnt;	/* Grant cnt for periodic audio */
+	uint16 bt_peraud_cumu_deny_cnt;	/* Deny cnt for periodic audio */
+	uint16 bt_a2dp_cumu_gnt_cnt;	/* Grant cnt for A2DP */
+	uint16 bt_a2dp_cumu_deny_cnt;	/* Deny cnt for A2DP */
+	uint16 bt_sniff_cumu_gnt_cnt;	/* Grant cnt for Sniff */
+	uint16 bt_sniff_cumu_deny_cnt;	/* Deny cnt for Sniff */
+	uint16 bt_frameburst_ack_cncl_cnt;	/* Count of Ack Cancel for Frame Burst */
+	uint16 bt_le_scan_tx_intr_cnt;	/* LE Scan Tx Interrupt Count */
+	uint16 bt_le_scan_intr_cnt;	/* LE Scan INterrupt Count */
+	uint16 bt_a2dp_grant_ext_intr;	/* A2DP Grant Extension Count */
+	uint16 bt_a2dp_grant_ext_prcsd_cnt;	/* A2DP Grant Extension Processed Count */
+	uint16 bt_pred_out_of_sync_cnt;	/* Predictor Out Of Sync Count */
+	uint16 bt_dcsn_map;		/* Accumulated decision bitmap once Ant grant */
+	uint16 bt_dcsn_cnt;		/* Accumulated decision bitmap counters once Ant grant */
+	uint16 bt_a2dp_hiwat_cnt;	/* Ant grant by a2dp high watermark */
+	uint16 bt_datadelay_cnt;	/* Ant grant by acl/a2dp datadelay */
+	uint16 bt_crtpri_cnt;		/* Ant grant by critical BT task */
+	uint16 bt_pri_cnt;		/* Ant grant by high BT task */
+	uint16 a2dpbuf1cnt;		/* Ant request with a2dp buffercnt 1 */
+	uint16 a2dpbuf2cnt;		/* Ant request with a2dp buffercnt 2 */
+	uint16 a2dpbuf3cnt;		/* Ant request with a2dp buffercnt 3 */
+	uint16 a2dpbuf4cnt;		/* Ant request with a2dp buffercnt 4 */
+	uint16 a2dpbuf5cnt;		/* Ant request with a2dp buffercnt 5 */
+	uint16 a2dpbuf6cnt;		/* Ant request with a2dp buffercnt 6 */
+	uint16 a2dpbuf7cnt;		/* Ant request with a2dp buffercnt 7 */
+	uint16 a2dpbuf8cnt;		/* Ant request with a2dp buffercnt 8 */
+	uint16 antgrant_lt10ms;		/* Ant grant duration cnt 0~10ms */
+	uint16 antgrant_lt30ms;		/* Ant grant duration cnt 10~30ms */
+	uint16 antgrant_lt60ms;		/* Ant grant duration cnt 30~60ms */
+	uint16 antgrant_ge60ms;		/* Ant grant duration cnt 60~ms */
+	uint16 wldurn_ge0ms;		/* WL duration count between 0-5ms */
+	uint16 wldurn_ge5ms;		/* WL duration count between 5-12ms */
+	uint16 wldurn_ge12ms;		/* WL duration count between 12-21ms */
+	uint16 wldurn_ge21ms;		/* WL duration count between 21-30ms */
+	uint16 wldurn_ge30ms;		/* WL duration count between 30-65ms */
+	uint16 wldurn_ge65ms;		/* WL Duration greater than 65ms */
+} wlc_btc_stats_v5_t;
+
 #define BTCX_STATS_VER_4 4
 typedef struct wlc_btc_stats_v4 {
 	uint16 version; /* version number of struct */
@@ -9744,6 +9847,44 @@ typedef struct wlc_btc_stats_v2 {
 } wlc_btc_stats_v2_t;
 
 /* Durations for each bt task in millisecond */
+#define WL_BTCX_DURSTATS_VER_2 (2u)
+typedef struct wlc_btcx_durstats_v2 {
+	uint16 version;			/* version number of struct */
+	uint16 valid;			/* validity of this struct */
+	uint32 stats_update_timestamp;	/* tStamp when data is updated */
+	uint16 bt_acl_dur;		/* acl duration in ms */
+	uint16 bt_sco_dur;		/* sco duration in ms */
+	uint16 bt_esco_dur;		/* esco duration in ms */
+	uint16 bt_a2dp_dur;		/* a2dp duration in ms */
+	uint16 bt_sniff_dur;		/* sniff duration in ms */
+	uint16 bt_pscan_dur;		/* page scan duration in ms */
+	uint16 bt_iscan_dur;		/* inquiry scan duration in ms */
+	uint16 bt_page_dur;		/* paging duration in ms */
+	uint16 bt_inquiry_dur;		/* inquiry duration in ms */
+	uint16 bt_mss_dur;		/* mss duration in ms */
+	uint16 bt_park_dur;		/* park duration in ms */
+	uint16 bt_rssiscan_dur;		/* rssiscan duration in ms */
+	uint16 bt_iscan_sco_dur;	/* inquiry scan sco duration in ms */
+	uint16 bt_pscan_sco_dur;	/* page scan sco duration in ms */
+	uint16 bt_tpoll_dur;		/* tpoll duration in ms */
+	uint16 bt_sacq_dur;		/* sacq duration in ms */
+	uint16 bt_sdata_dur;		/* sdata duration in ms */
+	uint16 bt_rs_listen_dur;	/* rs listen duration in ms */
+	uint16 bt_rs_burst_dur;		/* rs brust duration in ms */
+	uint16 bt_ble_adv_dur;		/* ble adv duration in ms */
+	uint16 bt_ble_scan_dur;		/* ble scan duration in ms */
+	uint16 bt_ble_init_dur;		/* ble init duration in ms */
+	uint16 bt_ble_conn_dur;		/* ble connection duration in ms */
+	uint16 bt_task_lmp_dur;		/* lmp duration in ms */
+	uint16 bt_esco_retran_dur;	/* esco retransmission duration in ms */
+	uint16 bt_task26_dur;		/* task26 duration in ms */
+	uint16 bt_task27_dur;		/* task27 duration in ms */
+	uint16 bt_task28_dur;		/* task28 duration in ms */
+	uint16 bt_task_pred_dur;	/* prediction task duration in ms */
+	uint16 bt_multihid_dur;		/* multihid duration in ms */
+	uint16 bt_scan_tx_dur;		/* Scan Tx duration in ms */
+} wlc_btcx_durstats_v2_t;
+
 #define WL_BTCX_DURSTATS_VER_1 (1u)
 typedef struct wlc_btcx_durstats_v1 {
 	uint16 version;			/* version number of struct */
@@ -16425,10 +16566,15 @@ typedef struct wl_proxd_ftm_session_status {
 	uint16	burst_num;
 	uint16 core_info;
 } wl_proxd_ftm_session_status_t;
+/* wl_proxd_ftm_session_status_t core_info stores the following local core info. */
+#define WL_FTM_SESSION_STATUS_CORE_INFO_CORE_SHIFT		8u
+#define WL_FTM_SESSION_STATUS_CORE_INFO_CORE_MASK		0xff00u
+#define WL_FTM_SESSION_STATUS_CORE_INFO_NUM_CORE_SHIFT		0u
+#define WL_FTM_SESSION_STATUS_CORE_INFO_NUM_CORE_MASK		0x00ffu
 
 /** rrm range request */
 typedef struct wl_proxd_range_req {
-	uint16 			num_repeat;
+	uint16			num_repeat;
 	uint16			init_delay_range;	/**< in TUs */
 	uint8			pad;
 	uint8			num_nbr;		/**< number of (possible) neighbors */
@@ -18502,6 +18648,24 @@ typedef struct {
 	uint8	sc_ofld_last_enter_fail_reason;
 } wl_sta_ofld_cntrs_v1_t;
 
+#define WL_STA_OFLD_CNTRS_VER_2 (2u)
+typedef struct {
+	uint16	version;
+	uint16	pad;
+
+	uint16	sc_ofld_enter_cnt;		/* offload entry cnt */
+	uint16	sc_ofld_exit_cnt;		/* offload exit cnt */
+	uint16	sc_ofld_wbus_reject_cnt;	/* wbus rejected cnt */
+	uint16	sc_ofld_wbus_cb_fail_cnt;	/* wbus callbk fail cnt */
+	uint16	sc_ofld_missed_bcn_cnt;		/* missed bcn cnt */
+	uint8	sc_ofld_last_exit_reason;	/* reason of last exit */
+	uint8	pad2[3];
+	uint32	sc_ofld_last_enter_fail_reason;	/* reason preventing entry */
+	uint32	sc_ofld_last_sc_bcn_ts;      /* SC ofld last bcn ts  */
+	uint32	sc_ofld_last_enter_ts;       /* SC ofld last enter ts  */
+	uint32	sc_ofld_last_exit_ts;        /* SC ofld last exit ts  */
+} wl_sta_ofld_cntrs_v2_t;
+
 /* ##### Ecounters v2 section ##### */
 
 #define ECOUNTERS_VERSION_2	2
@@ -20063,6 +20227,13 @@ typedef struct wl_hwa_cnts_v1 {
  */
 
 /* TWT Setup descriptor */
+
+/* Any change to wl_twt_sdesc is not possible without affecting this ROMed structure
+ * in various current branches. Hence to use new updated structure wl_twt_sdesc_v1
+ * typecast it to wl_twt_sdesc_t and define WL_TWT_SDESC_TYPEDEF_HAS_ALIAS
+ * in required branches
+ */
+#ifndef  WL_TWT_SDESC_TYPEDEF_HAS_ALIAS
 typedef struct wl_twt_sdesc {
 	/* Setup Command. */
 	uint8 setup_cmd;		/* See TWT_SETUP_CMD_XXXX in 802.11ah.h */
@@ -20084,11 +20255,12 @@ typedef struct wl_twt_sdesc {
 	/* deprecated - to be removed */
 	uint16 li;
 } wl_twt_sdesc_t;
+#endif /* WL_TWT_SDESC_TYPEDEF_HAS_ALIAS */
 
 #define WL_TWT_SETUP_DESC_VER	1u
 
 /* TWT Setup descriptor (Version controlled) */
-typedef struct wl_twt_sdesc_v1 {
+struct wl_twt_sdesc_v1 {
 	/* structure control */
 	uint16 version;		/* structure version */
 	uint16 length;		/* data length (starting after this field) */
@@ -20109,7 +20281,7 @@ typedef struct wl_twt_sdesc_v1 {
 	uint32 wake_int_min;	/* Min. wake interval allowed for TWT Setup */
 	uint32 wake_dur_min;	/* Min. wake duration allowed for TWT Setup */
 	uint32 wake_dur_max;	/* Max. wake duration allowed for TWT Setup */
-} wl_twt_sdesc_v1_t;
+};
 
 #define WL_TWT_CONFIG_DESC_VER	1u
 
@@ -20153,6 +20325,11 @@ typedef struct wl_twt_cdesc {
 #define WL_TWT_INV_BCAST_ID	0xFFu
 #define WL_TWT_INV_FLOW_ID	0xFFu
 
+#define WL_TWT_INV_WAKE_DUR	0xFFFFFFFFu
+#define WL_TWT_INV_WAKE_INT	0xFFFFFFFFu
+#define WL_TWT_INV_PKT_NUM	0xFFFFFFFFu
+#define WL_TWT_INV_WAKE_TIME	0xFFFFFFFFu
+
 /* auto flow_id */
 #define WL_TWT_SETUP_FLOW_ID_AUTO	0xFFu
 /* auto broadcast ID */
@@ -20192,7 +20369,13 @@ typedef struct wl_twt_setup {
 	uint16 length;	/* data length (starting after this field) */
 	struct ether_addr peer;	/* Peer address - leave it all 0s' for AP */
 	uint8 pad[2];
+#ifndef WL_TWT_SDESC_TYPEDEF_HAS_ALIAS	/* Use either legacy structure or
+					 * the new versioned structure
+					 */
 	wl_twt_sdesc_t desc;	/* Setup Descriptor */
+#else
+	struct wl_twt_sdesc_v1 desc;
+#endif /* WL_TWT_SDESC_TYPEDEF_HAS_ALIAS */
 	uint16 dialog;		/* Deprecated - to be removed */
 	uint8 pad1[2];
 } wl_twt_setup_t;
@@ -20285,7 +20468,13 @@ typedef struct wl_twt_status {
 	uint8	PAD[2];
 	struct	ether_addr peer;
 	uint8	PAD[2];
-	wl_twt_sdesc_t desc;	/* TWT Descriptor */
+#ifndef WL_TWT_SDESC_TYPEDEF_HAS_ALIAS	/* Use either legacy structure or
+					 * the new versioned structure
+					 */
+	wl_twt_sdesc_t desc;	/* Setup Descriptor */
+#else
+	struct wl_twt_sdesc_v1 desc;
+#endif /* WL_TWT_SDESC_TYPEDEF_HAS_ALIAS */
 } wl_twt_status_t;
 
 /* wl twt status output */
@@ -22899,6 +23088,24 @@ typedef struct {
 	wlc_btcec_periodic_sch_stats_v1_t sstats[BTCEC_SCHED_MAX_V1];	/* sch specific */
 } wlc_btcec_periodic_stats_v1_t;
 
+#define WLC_BTCEC_PERIODIC_CNTRS_V2	(2u)
+typedef struct {
+	uint16	ver;
+	uint16	len;
+	uint8	rx_msg_cnt;	/* received messages counter */
+	uint8	tx_msg_cnt;	/* transmitted messages counter */
+	uint8	add_msg_cnt;	/* rx add messages counter */
+	uint8	del_msg_cnt;	/* rx del messages counter */
+	uint8	btmc_cnt;	/* btmc state check count */
+	uint8	fb_schupd_cnt;	/* fixed bit:schedule update count */
+	uint8	fb_btmc_cnt;	/* fixed bit:btmc update count */
+	uint8	num_sstats;	/* number of elements in sstats struct */
+	uint32	fixed_bits_lsb;	/* state of gci fixed bits */
+	uint32	btmc_active_ts;	/* last btmc active timestamp in ms */
+	uint32	btmc_idle_ts;	/* last btmc idle timestamp in ms */
+	wlc_btcec_periodic_sch_stats_v1_t sstats[BTCEC_SCHED_MAX_V1];	/* sch specific */
+} wlc_btcec_periodic_stats_v2_t;
+
 #define WBUS_OFFLOAD_STATS_V1		1u
 #define WBUS_OFFLOAD_USER_STATS_V1	1u
 
@@ -23671,6 +23878,7 @@ typedef struct hp2p_udbg_config {
 
 #define WLC_HP2P_RLLW_RETRY_LIMIT	7u
 #define WLC_HP2P_MAX_PKTLIFETIME_IN_MS	2000u	/* 2 seconds */
+#define WLC_HP2P_MAX_CCA_THRESHOLD	100u	/* 100 percent */
 
 /*
  * nav_thresh:	13	: By default set to 13ms
@@ -23692,7 +23900,8 @@ typedef struct hp2p_rllw_cfg {
 	uint16	hof_wait_thr;		/* HOF packet wait threshold in ms */
 	uint16	hof_switch_dur;		/* How long to stay in the switched band in ms */
 	uint16	hof_pkt_life_thr;	/* HOF remaining pkt lifetime threshold in ms */
-	uint16	pad;
+	uint8	cca_thresh;		/* CCA threshold in percentage for HOF switch */
+	uint8	pad;
 } hp2p_rllw_cfg_t;
 
 #define WL_HP2P_CAP_MPEER	0x01u	/* Multipeer Hp2p */

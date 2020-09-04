@@ -114,20 +114,20 @@ typedef struct dhd_info {
 
 	/* Wakelocks */
 #if defined(CONFIG_HAS_WAKELOCK)
-	struct wakeup_source wl_wifi;   /* Wifi wakelock */
-	struct wakeup_source wl_rxwake; /* Wifi rx wakelock */
-	struct wakeup_source wl_ctrlwake; /* Wifi ctrl wakelock */
-	struct wakeup_source wl_wdwake; /* Wifi wd wakelock */
-	struct wakeup_source wl_evtwake; /* Wifi event wakelock */
-	struct wakeup_source wl_pmwake;   /* Wifi pm handler wakelock */
-	struct wakeup_source wl_txflwake; /* Wifi tx flow wakelock */
+	struct wakeup_source *wl_wifi;   /* Wifi wakelock */
+	struct wakeup_source *wl_rxwake; /* Wifi rx wakelock */
+	struct wakeup_source *wl_ctrlwake; /* Wifi ctrl wakelock */
+	struct wakeup_source *wl_wdwake; /* Wifi wd wakelock */
+	struct wakeup_source *wl_evtwake; /* Wifi event wakelock */
+	struct wakeup_source *wl_pmwake;   /* Wifi pm handler wakelock */
+	struct wakeup_source *wl_txflwake; /* Wifi tx flow wakelock */
 #ifdef BCMPCIE_OOB_HOST_WAKE
-	struct wakeup_source wl_intrwake; /* Host wakeup wakelock */
+	struct wakeup_source *wl_intrwake; /* Host wakeup wakelock */
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 #ifdef DHD_USE_SCAN_WAKELOCK
-	struct wakeup_source wl_scanwake;  /* Wifi scan wakelock */
+	struct wakeup_source *wl_scanwake;  /* Wifi scan wakelock */
 #endif /* DHD_USE_SCAN_WAKELOCK */
-	struct wakeup_source wl_nanwake; /* NAN wakelock */
+	struct wakeup_source *wl_nanwake; /* NAN wakelock */
 #endif /* CONFIG_HAS_WAKELOCK */
 
 	/* net_device interface lock, prevent race conditions among net_dev interface
@@ -135,9 +135,9 @@ typedef struct dhd_info {
 	 */
 	struct mutex dhd_net_if_mutex;
 	struct mutex dhd_suspend_mutex;
-#if defined(PKT_FILTER_SUPPORT) && defined(APF)
+#if defined(APF)
 	struct mutex dhd_apf_mutex;
-#endif /* PKT_FILTER_SUPPORT && APF */
+#endif /* APF */
 	spinlock_t wakelock_spinlock;
 	spinlock_t wakelock_evt_spinlock;
 	uint32 wakelock_counter;
@@ -405,6 +405,9 @@ typedef struct dhd_info {
 	/* indicates mem_dump was scheduled as work queue or called directly */
 	bool scheduled_memdump;
 	struct work_struct dhd_hang_process_work;
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	struct work_struct dhd_alert_process_work;
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 } dhd_info_t;
 
 #ifdef WL_MONITOR
@@ -461,13 +464,35 @@ extern uint sssr_enab;
 extern uint fis_enab;
 #endif /* DHD_SSSR_DUMP */
 
+/*
+ * Some android arch platforms backported wakelock APIs from kernel 5.4..0
+ * Since their minor versions are changed in the Android R OS
+ * Added defines for these platforms
+ * 4.19.81 -> 4.19.110, 4.14.78 -> 4.14.170
+ */
+#if (defined(BOARD_HIKEY) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 96))) || \
+	(defined(CONFIG_ARCH_MSM) && (((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 170)) && \
+	(LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0))) || (LINUX_VERSION_CODE >= \
+	KERNEL_VERSION(4, 19, 110))))
+#define WAKELOCK_BACKPORT
+#endif /* WAKELOCK_BACKPORT */
+
 #ifdef CONFIG_HAS_WAKELOCK
-enum {
-	WAKE_LOCK_SUSPEND, /* Prevent suspend */
-	WAKE_LOCK_TYPE_COUNT
-};
-#define dhd_wake_lock_init(wakeup_source, type, name)	wakeup_source_add(wakeup_source)
-#define dhd_wake_lock_destroy(wakeup_source)		wakeup_source_remove(wakeup_source)
+#if ((LINUX_VERSION_CODE  >= KERNEL_VERSION(5, 4, 0)) || defined(WAKELOCK_BACKPORT))
+#define dhd_wake_lock_init(wakeup_source, dev, name) \
+do { \
+	wakeup_source = wakeup_source_register(dev, name); \
+} while (0);
+#else
+#define dhd_wake_lock_init(wakeup_source, dev, name) \
+do { \
+	wakeup_source = wakeup_source_register(name); \
+} while (0);
+#endif /* LINUX_VERSION >= 5.4.0 */
+#define dhd_wake_lock_destroy(wakeup_source) \
+do { \
+	wakeup_source_unregister(wakeup_source); \
+} while (0);
 #define dhd_wake_lock(wakeup_source)			__pm_stay_awake(wakeup_source)
 #define dhd_wake_unlock(wakeup_source)			__pm_relax(wakeup_source)
 #define dhd_wake_lock_active(wakeup_source)		((wakeup_source)->active)

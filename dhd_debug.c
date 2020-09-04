@@ -52,11 +52,7 @@
 		(type *)((char *)(ptr) - offsetof(type, member))
 #endif /* defined(DHD_EFI ) || defined(NDIS) */
 
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-uint8 control_logtrace = LOGTRACE_RAW_FMT;
-#else
 uint8 control_logtrace = CUSTOM_CONTROL_LOGTRACE;
-#endif
 
 struct map_table {
 	uint16 fw_id;
@@ -260,7 +256,7 @@ dhd_dbg_pull_from_ring(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_len)
 	if (!dhdp || !dhdp->dbg)
 		return 0;
 	if (!VALID_RING(ring_id)) {
-		DHD_ERROR(("%s : invalid ring_id : %d\n", __FUNCTION__, ring_id));
+		DHD_DBGIF(("%s : invalid ring_id : %d\n", __FUNCTION__, ring_id));
 		return BCME_RANGE;
 	}
 	ring = &dhdp->dbg->dbg_rings[ring_id];
@@ -704,11 +700,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 				((0x01u << logset) & dhdp->logset_prsrv_mask)) {
 				DHD_PRSRV_MEM(("%s\n", b.origbuf));
 			} else {
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-				DHD_FW_VERBOSE(("%s\n", b.origbuf));
-#else
 				DHD_FWLOG(("%s\n", b.origbuf));
-#endif
 #ifdef DHD_LOG_PRINT_RATE_LIMIT
 				log_print_count++;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
@@ -1332,7 +1324,7 @@ dhd_dbg_get_ring_status(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_status_t *dbg
 		}
 	}
 	if (!VALID_RING(id)) {
-		DHD_ERROR(("%s : cannot find the ring_id : %d\n", __FUNCTION__, ring_id));
+		DHD_DBGIF(("%s : cannot find the ring_id : %d\n", __FUNCTION__, ring_id));
 		ret = BCME_NOTFOUND;
 	}
 	return ret;
@@ -2413,7 +2405,7 @@ void pr_roam_scan_cmpl_v1(prcd_event_log_hdr_t *plog_hdr)
 	int i;
 
 	DHD_ERROR_ROAM(("ROAM_LOG_SCAN_CMPL: time:%d version:%d"
-		"is_full:%d scan_count:%d score_delta:%d",
+		"is_full:%d scan_count:%d score_delta:%d\n",
 		plog_hdr->armcycle, log->hdr.version, log->full_scan,
 		log->scan_count, log->score_delta));
 	DHD_ERROR_ROAM(("  ROAM_LOG_CUR_AP: " MACDBG "rssi:%d score:%d channel:%s\n",
@@ -2513,7 +2505,7 @@ void pr_roam_scan_cmpl_v2(prcd_event_log_hdr_t *plog_hdr)
 	char chanspec_buf[CHANSPEC_STR_LEN];
 
 	DHD_ERROR_ROAM(("ROAM_LOG_SCAN_CMPL: time:%d version:%d"
-		"scan_count:%d score_delta:%d",
+		"scan_count:%d score_delta:%d\n",
 		plog_hdr->armcycle, log->hdr.version,
 		log->scan_count, log->score_delta));
 	DHD_ERROR_ROAM(("  ROAM_LOG_CUR_AP: " MACDBG "rssi:%d score:%d channel:%s\n",
@@ -2800,3 +2792,64 @@ dhd_dbg_set_fwverbose(dhd_pub_t *dhdp, uint32 new_val)
 		dhdp->dbg->dbg_rings[FW_VERBOSE_RING_ID].log_level = new_val;
 	}
 }
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+char*
+dhd_dbg_get_system_timestamp(void)
+{
+	static char timebuf[DEBUG_DUMP_TIME_BUF_LEN];
+	struct timeval tv;
+	unsigned long local_time;
+	struct rtc_time tm;
+
+	memset_s(timebuf, DEBUG_DUMP_TIME_BUF_LEN, 0, DEBUG_DUMP_TIME_BUF_LEN);
+	do_gettimeofday(&tv);
+	local_time = (u32)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+	rtc_time_to_tm(local_time, &tm);
+	scnprintf(timebuf, DEBUG_DUMP_TIME_BUF_LEN,
+			"%02d:%02d:%02d.%06lu",
+			tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+	return timebuf;
+}
+
+extern struct dhd_dbg_ring_buf g_ring_buf;
+void
+dhd_dbg_ring_write(int type, char *binary_data,
+		int binary_len, const char *fmt, ...)
+{
+	int len = 0;
+	va_list args;
+	struct dhd_dbg_ring_buf *ring_buf = NULL;
+	char tmp_buf[DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE] = {0, };
+
+	ring_buf = &g_ring_buf;
+
+	va_start(args, fmt);
+	len = vsnprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, fmt, args);
+	/* Non ANSI C99 compliant returns -1,
+	 * ANSI compliant return len >= DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE
+	 */
+	va_end(args);
+	if (len < 0) {
+		return;
+	}
+
+	if (len >= DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE) {
+		len = DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE - 1;
+		tmp_buf[len] = '\0';
+	}
+
+	if (ring_buf->dhd_pub) {
+		dhd_pub_t *dhdp = (dhd_pub_t *)ring_buf->dhd_pub;
+		if (type == DRIVER_LOG_RING_ID || type == FW_VERBOSE_RING_ID ||
+				type == ROAM_STATS_RING_ID) {
+			if (DBG_RING_ACTIVE(dhdp, type)) {
+				dhd_os_push_push_ring_data(dhdp, type,
+						tmp_buf, strlen(tmp_buf));
+				return;
+			}
+		}
+	}
+	return;
+}
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */

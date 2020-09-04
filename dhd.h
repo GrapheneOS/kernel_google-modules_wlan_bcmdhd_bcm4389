@@ -34,6 +34,7 @@
 #define _dhd_h_
 
 #if defined(LINUX)
+#include <linux/firmware.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -1225,12 +1226,11 @@ typedef struct dhd_pub {
 	/* DTIM skip value, default 0(or 1) means wake each DTIM
 	 * 3 means skip 2 DTIMs and wake up 3rd DTIM(9th beacon when AP DTIM is 3)
 	 */
-	int suspend_bcn_li_dtim;         /* bcn_li_dtim value in suspend mode */
-#ifdef PKT_FILTER_SUPPORT
-	int early_suspended;	/* Early suspend status */
-	int dhcp_in_progress;	/* DHCP period */
-#endif
-
+	int suspend_bcn_li_dtim;	/* bcn_li_dtim value in suspend mode */
+	int early_suspended;		/* Early suspend status */
+#if defined(PKT_FILTER_SUPPORT)
+	int dhcp_in_progress;		/* DHCP period */
+#endif /* PKT_FILTER_SUPPORT */
 	/* Pkt filter defination */
 	char * pktfilter[100];
 	int pktfilter_count;
@@ -1500,9 +1500,9 @@ typedef struct dhd_pub {
 #ifdef GSCAN_SUPPORT
 	bool lazy_roam_enable;
 #endif
-#if defined(PKT_FILTER_SUPPORT) && defined(APF)
+#if defined(APF)
 	bool apf_set;
-#endif /* PKT_FILTER_SUPPORT && APF */
+#endif /* APF */
 	void *macdbg_info;
 #ifdef DHD_WET
 	void *wet_info;
@@ -1759,6 +1759,9 @@ typedef struct dhd_pub {
 #ifdef DHD_GRO_ENABLE_HOST_CTRL
 	bool permitted_gro;
 #endif /* DHD_GRO_ENABLE_HOST_CTRL */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	uint32 alert_reason;		/* reason codes for alert event */
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -1767,6 +1770,7 @@ int dhd_wifi_platform_set_power(dhd_pub_t *pub, bool on);
 static INLINE int dhd_wifi_platform_set_power(dhd_pub_t *pub, bool on)  { return 0; }
 #endif /* __linux__ */
 
+#define MAX_WAKE_REASON_STATS	32u
 typedef struct {
 	uint rxwake;
 	uint rcwake;
@@ -1784,7 +1788,12 @@ typedef struct {
 	uint rx_ucast;
 #endif /* DHD_WAKE_RX_STATUS */
 #ifdef DHD_WAKE_EVENT_STATUS
+#ifdef CUSTOM_WAKE_REASON_STATS
+	int rc_event[MAX_WAKE_REASON_STATS];
+	int rc_event_idx;
+#else
 	uint rc_event[WLC_E_LAST];
+#endif /* CUSTOM_WAKE_REASON_STATS */
 #endif /* DHD_WAKE_EVENT_STATUS */
 } wake_counts_t;
 
@@ -2414,6 +2423,10 @@ void dhd_intr_poll_pkt_thresholds(dhd_pub_t *dhd);
 #endif /* DHD_INTR_POLL_PERIOD_DYNAMIC */
 #endif /* DHD_EFI && DHD_INTR_POLL_PERIOD_DYNAMIC */
 
+#ifdef DHD_DEBUG
+void dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int substr_type);
+#endif /* DHD_DEBUG */
+
 extern void
 dhd_pcie_dump_core_regs(dhd_pub_t * pub, uint32 index, uint32 first_addr, uint32 last_addr);
 extern void wl_dhdpcie_dump_regs(void * context);
@@ -2487,6 +2500,8 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size);
 #endif /* DHD_FW_COREDUMP */
 
 #if defined(linux) || defined(LINUX)
+int dhd_os_get_img_fwreq(dhd_pub_t *dhd, const struct firmware **fw, char *file_path);
+void dhd_os_close_img_fwreq(const struct firmware *fw);
 #if defined(DHD_SSSR_DUMP)
 void dhd_write_sssr_dump(dhd_pub_t *dhdp, uint32 dump_mode);
 #endif /* DHD_SSSR_DUMP */
@@ -2605,7 +2620,7 @@ typedef struct {
 } dhd_event_log_t;
 #endif /* SHOW_LOGTRACE */
 
-#if defined(PKT_FILTER_SUPPORT) && defined(APF)
+#if defined(APF)
 /*
  * As per Google's current implementation, there will be only one APF filter.
  * Therefore, userspace doesn't bother about filter id and because of that
@@ -2619,12 +2634,12 @@ extern void dhd_apf_lock(struct net_device *dev);
 extern void dhd_apf_unlock(struct net_device *dev);
 extern int dhd_dev_apf_get_version(struct net_device *ndev, uint32 *version);
 extern int dhd_dev_apf_get_max_len(struct net_device *ndev, uint32 *max_len);
-extern int dhd_dev_apf_add_filter(struct net_device *ndev, u8* program,
-	uint32 program_len);
+extern int dhd_dev_apf_add_filter(struct net_device *ndev, u8* program, uint32 program_len);
 extern int dhd_dev_apf_enable_filter(struct net_device *ndev);
 extern int dhd_dev_apf_disable_filter(struct net_device *ndev);
 extern int dhd_dev_apf_delete_filter(struct net_device *ndev);
-#endif /* PKT_FILTER_SUPPORT && APF */
+extern int dhd_dev_apf_read_filter_data(struct net_device *ndev, u8* buf, uint32 buf_len);
+#endif /* APF */
 
 extern void dhd_timeout_start(dhd_timeout_t *tmo, uint usec);
 extern int dhd_timeout_expired(dhd_timeout_t *tmo);
@@ -4303,4 +4318,23 @@ int dhd_schedule_socram_dump(dhd_pub_t *dhdp);
 #error "DHD_DEBUGABILITY_LOG_DUMP_RING without DEBUGABILITY"
 #endif /* DEBUGABILITY */
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+typedef enum dhd_alert_reason_codes {
+	ALERT_BCN_LOST = 0,
+	ALERT_TX_STALL = 1,
+	ALERT_RX_STALL = 2,
+	ALERT_IOCTL_TIMEOUT = 3,
+	ALERT_DONGLE_TRAP = 4,
+	ALERT_SCAN_STALL = 5,
+	ALERT_SCAN_ERR = 6,
+	ALERT_SCAN_BUSY = 7,
+	ALERT_FW_QUEUE_STALL = 8
+} dhd_alert_reason_codes_t;
+int dhd_os_send_alert_message(dhd_pub_t *dhdp);
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
+
+#ifdef CUSTOMER_HW4_DEBUG
+bool dhd_validate_chipid(dhd_pub_t *dhdp);
+#endif /* CUSTOMER_HW4_DEBUG */
+
 #endif /* _dhd_h_ */

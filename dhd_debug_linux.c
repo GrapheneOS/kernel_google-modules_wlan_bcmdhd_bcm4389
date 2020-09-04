@@ -125,12 +125,15 @@ dbg_ring_poll_worker(struct work_struct *work)
 	} else if (ring->wp < ring->rp) {
 		buflen = ring->ring_size - ring->rp + ring->wp;
 	} else {
+		DHD_DBG_RING_UNLOCK(ring->lock, flags);
 		goto exit;
 	}
 
 	if (buflen > ring->ring_size) {
+		DHD_DBG_RING_UNLOCK(ring->lock, flags);
 		goto exit;
 	}
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	buf = MALLOCZ(dhdp->osh, buflen);
 	if (!buf) {
@@ -141,6 +144,7 @@ dbg_ring_poll_worker(struct work_struct *work)
 
 	rlen = dhd_dbg_pull_from_ring(dhdp, ringid, buf, buflen);
 
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	if (!ring->sched_pull) {
 		ring->sched_pull = TRUE;
 	}
@@ -155,6 +159,7 @@ dbg_ring_poll_worker(struct work_struct *work)
 		rlen -= ENTRY_LENGTH(hdr);
 		hdr = (dhd_dbg_ring_entry_t *)((char *)hdr + ENTRY_LENGTH(hdr));
 	}
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 	MFREE(dhdp->osh, buf, buflen);
 
 exit:
@@ -165,8 +170,6 @@ exit:
 			schedule_delayed_work(d_work, ring_info->interval);
 		}
 	}
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
-
 	return;
 }
 
@@ -362,7 +365,7 @@ dhd_os_push_push_ring_data(dhd_pub_t *dhdp, int ring_id, void *data, int32 data_
 	}
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 	ret = dhd_dbg_push_to_ring(dhdp, ring_id, &msg_hdr, event_data);
-	if (ret) {
+	if (ret && ret != BCME_BUSY) {
 		DHD_ERROR(("%s : failed to push data into the ring (%d) with ret(%d)\n",
 			__FUNCTION__, ring_id, ret));
 	}

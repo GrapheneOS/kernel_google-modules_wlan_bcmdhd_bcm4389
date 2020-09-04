@@ -4003,7 +4003,7 @@ static const uint32 crc32_table[256] = {
  * accumulating over multiple pieces.
  */
 uint32
-hndcrc32(const uint8 *pdata, uint nbytes, uint32 crc)
+BCMPOSTTRAPRAMFN(hndcrc32)(const uint8 *pdata, uint nbytes, uint32 crc)
 {
 	const uint8 *pend;
 	pend = pdata + nbytes;

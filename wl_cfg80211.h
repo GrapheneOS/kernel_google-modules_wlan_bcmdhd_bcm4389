@@ -73,12 +73,6 @@ struct wl_ibss;
 /* Enable by default */
 #define WL_WTC
 
-/*
- * Common feature. If this becomes customer specific,
- * move it to customer specific makefile when required
- */
-#define WL_5G_SOFTAP_ONLY_ON_DEF_CHAN
-
 #ifndef WL_CLIENT_SAE
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SAE))
 #define WL_SAE
@@ -106,6 +100,9 @@ struct wl_ibss;
 /* Use driver managed regd */
 #define WL_SELF_MANAGED_REGDOM
 #endif /* KERNEL >= 4.0 */
+
+/* mandatory for Android 11 */
+#define WL_ACT_FRAME_MAC_RAND
 
 #define CH_TO_CHSPC(band, _channel) \
 	((_channel | band) | WL_CHANSPEC_BW_20 | WL_CHANSPEC_CTL_SB_NONE)
@@ -367,6 +364,9 @@ extern char *dhd_dbg_get_system_timestamp(void);
 #endif
 
 #define CUSTOM_RETRY_MASK 0xff000000 /* Mask for retry counter of custom dwell time */
+
+/* regdomain country code len */
+#define WL_CCODE_LEN	2u
 
 /* On some MSM platform, it uses different version
  * of linux kernel and cfg code as not synced.
@@ -644,6 +644,10 @@ do {									\
 #ifdef WL_6G_BAND
 /* additional scan timeout for 6GHz, 6000msec */
 #define WL_SCAN_TIMER_INTERVAL_MS_6G	6000
+#define CHSPEC_TO_WLC_BAND(chspec) (CHSPEC_IS2G(chspec) ? WLC_BAND_2G : CHSPEC_IS5G(chspec) ? \
+	WLC_BAND_5G : WLC_BAND_6G)
+#else
+#define CHSPEC_TO_WLC_BAND(chspec) (CHSPEC_IS2G(chspec) ? WLC_BAND_2G : WLC_BAND_5G)
 #endif /* WL_6G_BAND */
 #define CHSPEC_IS_6G_PSC(chspec) (CHSPEC_IS6G(chspec) && ((CHSPEC_CHANNEL(chspec) % 16) == 5))
 #define WL_CHANNEL_SYNC_RETRY	5
@@ -1462,8 +1466,6 @@ typedef struct wl_btm_event_type_data wl_btm_event_type_data_t;
 typedef struct wl_bssid_prune_evt_info wl_bssid_pruned_evt_info_t;
 #endif /* WL_MBO || WL_OCE */
 
-#define WL_CCODE_LEN 2
-
 #ifdef WL_NAN
 #ifdef WL_NANP2P
 #define WL_CFG_P2P_DISC_BIT 0x1u
@@ -1576,6 +1578,27 @@ typedef enum wl_sar_modes {
 	NR_Sub6_SAR_BACKOFF_ENABLE,
 	SAR_BACKOFF_DISABLE_ALL
 } wl_sar_modes_t;
+
+typedef enum
+{
+	SAR_DISABLE = 0,
+	SAR_HEAD,
+	SAR_GRIP,
+	SAR_HEAD_GRIP,
+	SAR_NR_mW_ONLY,
+	SAR_NR_mW_HEAD,
+	SAR_NR_mW_GRIP,
+	SAR_NR_mW_HEAD_GRIP,
+	SAR_NR_SUB6_ONLY,
+	SAR_NR_SUB6_HEAD,
+	SAR_NR_SUB6_GRIP,
+	SAR_NR_SUB6_HEAD_GRIP,
+	SAR_NR_SUB6_mW_INVALID1,
+	SAR_NR_SUB6_mW_INVALID2,
+	SAR_NR_SUB6_mW_INVALID3,
+	SAR_NR_SUB6_mW_INVALID4,
+	SAR_BT = 16
+} sar_advance_modes;
 
 /* Pre selected Power scenarios to be applied from BDF file */
 typedef enum {
@@ -1875,6 +1898,13 @@ struct bcm_cfg80211 {
 	struct delayed_work ap_work;     /* AP linkup timeout handler */
 	wl_event_idx_t eidx;	/* event state tracker */
 	u32 halpid;
+#ifdef WL_THERMAL_MITIGATION
+	u32 thermal_mode;
+#endif /* WL_THERMAL_MITIGATION */
+	uint16  actframe_params_ver;
+	struct ether_addr af_randmac;
+	bool randomized_gas_tx;
+	u8 country[WLC_CNTRY_BUF_SZ];
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -1932,6 +1962,70 @@ typedef struct wl_wips_event_info {
 	int16 deauth_RSSI;
 } wl_wips_event_info_t;
 
+/* Added for HOSTAPD required ACS action */
+#ifdef WL_SOFTAP_ACS
+#define APCS_MAX_RETRY        10
+#define APCS_DEFAULT_2G_CH    1
+#define APCS_DEFAULT_5G_CH    149
+
+enum wl_vendor_attr_acs_offload {
+	BRCM_VENDOR_ATTR_ACS_CHANNEL_INVALID = 0,
+	BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ,
+	BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ,
+	BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL,
+	BRCM_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL,
+	BRCM_VENDOR_ATTR_ACS_HW_MODE,
+	BRCM_VENDOR_ATTR_ACS_HT_ENABLED,
+	BRCM_VENDOR_ATTR_ACS_HT40_ENABLED,
+	BRCM_VENDOR_ATTR_ACS_VHT_ENABLED,
+	BRCM_VENDOR_ATTR_ACS_CHWIDTH,
+	BRCM_VENDOR_ATTR_ACS_CH_LIST,
+	BRCM_VENDOR_ATTR_ACS_FREQ_LIST,
+
+	BRCM_VENDOR_ATTR_ACS_LAST
+};
+
+/* defined for hw_mode in hostapd.conf */
+enum hostapd_hw_mode {
+	HOSTAPD_MODE_IEEE80211B,
+	HOSTAPD_MODE_IEEE80211G,
+	HOSTAPD_MODE_IEEE80211A,
+	HOSTAPD_MODE_IEEE80211AD,
+	HOSTAPD_MODE_IEEE80211ANY,
+	NUM_HOSTAPD_MODES
+};
+
+typedef struct acs_selected_channels {
+	u32 pri_freq; /* save slelcted primary frequency */
+	u32 sec_freq; /* save slelcted secondary frequency */
+	u8 vht_seg0_center_ch;
+	u8 vht_seg1_center_ch;
+	u16 ch_width;
+	enum hostapd_hw_mode hw_mode;
+} acs_selected_channels_t;
+
+typedef struct drv_acs_params {
+	enum hostapd_hw_mode hw_mode;
+	u32 band;                      /* band derived from hw_mode */
+	u32 ht_enabled;
+	u32 ht40_enabled;
+	u32 vht_enabled;
+	u32 he_enabled;
+	u16 ch_width;
+	unsigned int ch_list_len;
+	const u8 *ch_list;
+	const u32 *freq_list;
+	u32 freq_bands;               /* band derived from freq list */
+} drv_acs_params_t;
+
+typedef struct acs_delay_work {
+	struct delayed_work acs_delay_work;
+	u32 init_flag;
+	struct net_device *ndev;
+	chanspec_t ch_chosen;
+	drv_acs_params_t parameter;
+} acs_delay_work_t;
+#endif /* WL_SOFTAP_ACS */
 s32 wl_iftype_to_mode(wl_iftype_t iftype);
 
 #define BCM_LIST_FOR_EACH_ENTRY_SAFE(pos, next, head, member) \
@@ -2956,4 +3050,7 @@ extern s32 wl_update_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 extern s32 wl_handle_auth_event(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	const wl_event_msg_t *e, void *data);
 #endif /* WL_CLIENT_SAE */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+extern int wl_cfg80211_alert(struct net_device *dev);
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 #endif /* _wl_cfg80211_h_ */

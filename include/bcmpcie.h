@@ -153,6 +153,8 @@ typedef struct {
 #define PCIE_SHARED2_TXCSO		0x00200000u	/* Tx Checksum offload support */
 #define PCIE_SHARED2_TXPOST_EXT		0x00400000u	/* extended txpost work item support */
 
+#define PCIE_SHARED2_PTM		0x01000000u	/* PCIe PTM */
+
 #define PCIE_SHARED2_D2H_D11_TX_STATUS	0x40000000
 #define PCIE_SHARED2_H2D_D11_TX_STATUS	0x80000000
 
@@ -438,6 +440,7 @@ typedef struct {
 #define HOSTCAP_HWA				0x80000000
 
 #define HOSTCAP2_DURATION_SCALE_MASK            0x0000003Fu
+#define HOSTCAP2_PCIE_PTM			0x00000100u
 
 /* extended trap debug buffer allocation sizes. Note that this buffer can be used for
  * other trap related purposes also.

@@ -1651,6 +1651,7 @@ wl_cfgp2p_action_tx_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev
 				} else {
 					CFGP2P_ACTION(("TX actfrm : NO ACK\n"));
 				}
+				cfg->randomized_gas_tx = FALSE;
 				/* if there is no ack, we don't need to wait for
 				 * WLC_E_ACTION_FRAME_OFFCHAN_COMPLETE event for ucast
 				 */
@@ -1662,12 +1663,54 @@ wl_cfgp2p_action_tx_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev
 			CFGP2P_ACTION((" WLC_E_ACTION_FRAME_OFFCHAN_COMPLETE is received,"
 						"status : %d\n", status));
 
+			cfg->randomized_gas_tx = FALSE;
 			if (wl_get_drv_status_all(cfg, SENDING_ACT_FRM))
 				complete(&cfg->send_af_done);
 		}
 	}
 	return ret;
 }
+
+#define ETHER_LOCAL_ADDR 0x02
+s32
+wl_actframe_fillup_v2(wl_af_params_v2_t *af_params_v2_p, wl_af_params_t *af_params,
+	const u8 *sa, uint16 wl_af_params_size)
+{
+	s32 err = 0;
+	wl_action_frame_v2_t *action_frame_v2_p;
+	struct ether_addr rand_mac_mask = {{0}};
+	WL_DBG(("Enter \n"));
+
+	af_params_v2_p->version = WL_ACTFRAME_VERSION_MAJOR_2;
+	af_params_v2_p->length = wl_af_params_size;
+	af_params_v2_p->channel = af_params->channel;
+	af_params_v2_p->dwell_time = af_params->dwell_time;
+	af_params_v2_p->BSSID = af_params->BSSID;
+	action_frame_v2_p = &af_params_v2_p->action_frame;
+	action_frame_v2_p->len_total = OFFSETOF(wl_action_frame_v2_t, data) +
+		af_params->action_frame.len;
+	action_frame_v2_p->data_offset = OFFSETOF(wl_action_frame_v2_t, data);
+	action_frame_v2_p->da = af_params->action_frame.da;
+	action_frame_v2_p->len_data = af_params->action_frame.len;
+	action_frame_v2_p->packetId = af_params->action_frame.packetId;
+	err = memcpy_s(action_frame_v2_p->data, action_frame_v2_p->len_data,
+			af_params->action_frame.data, af_params->action_frame.len);
+	if (err) {
+		WL_ERR(("actframe :memcpy failed\n"));
+		return -ENOMEM;
+	}
+	/* check if local admin bit is set */
+	if (sa[0] & ETHER_LOCAL_ADDR) {
+		/* Use mask to avoid randomization, as the address from supplicant
+		 * is already randomized.
+		 */
+		eacopy(sa, &action_frame_v2_p->rand_mac_addr);
+		action_frame_v2_p->rand_mac_mask = rand_mac_mask;
+		action_frame_v2_p->flags |= WL_RAND_GAS_MAC;
+	}
+	return err;
+}
+
 /* Send an action frame immediately without doing channel synchronization.
  *
  * This function does not wait for a completion event before returning.
@@ -1678,12 +1721,16 @@ wl_cfgp2p_action_tx_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev
  */
 s32
 wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev,
-	wl_af_params_t *af_params, s32 bssidx)
+	wl_af_params_t *af_params, s32 bssidx, const u8 *sa)
 {
 	s32 ret = BCME_OK;
 	s32 evt_ret = BCME_OK;
 	s32 timeout = 0;
 	wl_eventmsg_buf_t buf;
+	wl_af_params_v2_t *af_params_v2_p = NULL;
+	u8 *af_params_iov_p = NULL;
+	s32 af_params_iov_len = 0;
+	uint16 wl_af_params_size = 0;
 
 	CFGP2P_DBG(("\n"));
 	CFGP2P_ACTION(("channel : %u , dwell time : %u wait_afrx:%d\n",
@@ -1706,12 +1753,37 @@ wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev,
 #ifdef WL_CFG80211_SYNC_GON
 	cfg->af_tx_sent_jiffies = jiffies;
 #endif /* WL_CFG80211_SYNC_GON */
+	if (cfg->actframe_params_ver) {
+		if (cfg->actframe_params_ver == WL_ACTFRAME_VERSION_MAJOR_2) {
+			wl_af_params_size = OFFSETOF(wl_af_params_v2_t, action_frame) +
+				OFFSETOF(wl_action_frame_v2_t, data) +
+				af_params->action_frame.len;
+			af_params_v2_p = MALLOCZ(cfg->osh, wl_af_params_size);
+			if (af_params_v2_p == NULL) {
+				WL_ERR(("unable to allocate frame\n"));
+				return -ENOMEM;
+			}
+			ret = wl_actframe_fillup_v2(af_params_v2_p, af_params, sa,
+					wl_af_params_size);
+			if (ret != BCME_OK) {
+				WL_ERR(("unable to fill actframe_params, ret %d\n", ret));
+				return ret;
+			}
+			af_params_iov_p = (u8 *)af_params_v2_p;
+			af_params_iov_len = wl_af_params_size;
+		} else {
+			return BCME_VERSION;
+		}
+	} else {
+		af_params_iov_p = (u8 *)af_params;
+		af_params_iov_len = sizeof(*af_params);
+	}
 
-	ret = wldev_iovar_setbuf_bsscfg(dev, "actframe", af_params, sizeof(*af_params),
+	ret = wldev_iovar_setbuf_bsscfg(dev, "actframe", af_params_iov_p, af_params_iov_len,
 		cfg->ioctl_buf, WLC_IOCTL_MAXLEN, bssidx, &cfg->ioctl_buf_sync);
 
 	if (ret < 0) {
-		CFGP2P_ACTION(("TX actfrm : ERROR\n"));
+		CFGP2P_ACTION(("TX actfrm : ERROR, %d\n", ret));
 		goto exit;
 	}
 
@@ -1742,7 +1814,9 @@ exit:
 		WL_ERR(("TX frame events revert back failed \n"));
 		return evt_ret;
 	}
-
+	if (cfg->actframe_params_ver) {
+		MFREE(cfg->osh, af_params_iov_p, af_params_iov_len);
+	}
 	return ret;
 }
 

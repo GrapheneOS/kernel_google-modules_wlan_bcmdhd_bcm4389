@@ -157,6 +157,10 @@ typedef enum {
 	ANDROID_NL80211_SUBCMD_TX_POWER_RANGE_START =	0x1900,
 	ANDROID_NL80211_SUBCMD_TX_POWER_RANGE_END =	0x19FF,
 
+	/* define all tx power related commands between 0x1920 and 0x192F */
+	ANDROID_NL80211_SUBCMD_MITIGATION_RANGE_START = 0x1920,
+	ANDROID_NL80211_SUBCMD_MITIGATION_RANGE_END =	0x192F,
+
 	/* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -244,7 +248,9 @@ enum andr_vendor_subcmd {
 	NAN_WIFI_SUBCMD_ENABLE_MERGE,						 /* 0x1712 */
 	APF_SUBCMD_GET_CAPABILITIES = ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START,
 	APF_SUBCMD_SET_FILTER,
+	APF_SUBCMD_READ_FILTER_DATA,
 	WIFI_SUBCMD_TX_POWER_SCENARIO = ANDROID_NL80211_SUBCMD_TX_POWER_RANGE_START,
+	WIFI_SUBCMD_THERMAL_MITIGATION = ANDROID_NL80211_SUBCMD_MITIGATION_RANGE_START,
 	/* Add more sub commands here */
 	VENDOR_SUBCMD_MAX
 };
@@ -574,7 +580,9 @@ typedef enum wl_vendor_event {
 	BRCM_VENDOR_EVENT_CU			= 38,
 	BRCM_VENDOR_EVENT_WIPS			= 39,
 	NAN_ASYNC_RESPONSE_DISABLED		= 40,
-	BRCM_VENDOR_EVENT_RCC_INFO		= 41
+	BRCM_VENDOR_EVENT_RCC_INFO		= 41,
+	BRCM_VENDOR_EVENT_ACS			= 42,
+	BRCM_VENDOR_EVENT_LAST
 } wl_vendor_event_t;
 
 enum andr_wifi_attr {
@@ -587,7 +595,9 @@ enum andr_wifi_attr {
 	ANDR_WIFI_ATTRIBUTE_TCPACK_SUP_VALUE,
 	ANDR_WIFI_ATTRIBUTE_LATENCY_MODE,
 	ANDR_WIFI_ATTRIBUTE_RANDOM_MAC,
-	ANDR_WIFI_ATTRIBUTE_TX_POWER_SCENARIO
+	ANDR_WIFI_ATTRIBUTE_TX_POWER_SCENARIO,
+	ANDR_WIFI_ATTRIBUTE_THERMAL_MITIGATION,
+	ANDR_WIFI_ATTRIBUTE_THERMAL_COMPLETION_WINDOW
 };
 enum apf_attributes {
 	APF_ATTRIBUTE_VERSION,
@@ -716,6 +726,25 @@ typedef enum {
 	SET_HAL_START_ATTRIBUTE_EVENT_SOCK_PID = 0x0003
 } SET_HAL_START_ATTRIBUTE;
 
+#ifdef WL_THERMAL_MITIGATION
+/* Wifi Thermal mitigation modes */
+typedef enum {
+	WIFI_MITIGATION_NONE      = 0,
+	WIFI_MITIGATION_LIGHT     = 1,
+	WIFI_MITIGATION_MODERATE  = 2,
+	WIFI_MITIGATION_SEVERE    = 3,
+	WIFI_MITIGATION_CRITICAL  = 4,
+	WIFI_MITIGATION_EMERGENCY = 5
+} wifi_thermal_mode;
+
+#define	DUTY_CYCLE_NONE		100u
+#define DUTY_CYCLE_LIGHT	90u
+#define DUTY_CYCLE_MODERATE	70u
+#define DUTY_CYCLE_SEVERE	50u
+#define DUTY_CYCLE_CRITICAL	30u
+#define DUTY_CYCLE_EMERGENCY	10u
+#endif /* WL_THERMAL_MITIGATION */
+
 /* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
 #define BRCM_VENDOR_SCMD_CAPA	"cap"
 #define MEMDUMP_PATH_LEN	128
@@ -827,4 +856,12 @@ int wl_cfgvendor_connect_params_handler(struct wiphy *wiphy, struct wireless_dev
 	const void  *data, int len);
 int wl_cfgvendor_start_ap_params_handler(struct wiphy *wiphy, struct wireless_dev *wdev,
 	const void  *data, int len);
+#ifdef WL_SOFTAP_ACS
+int
+wl_cfgscan_acs(struct wiphy *wiphy,
+        struct wireless_dev *wdev, const void *data, int len);
+#endif /* WL_SOFTAP_ACS */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+void wl_cfgvendor_send_alert_event(struct net_device *dev, uint32 reason);
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 #endif /* _wl_cfgvendor_h_ */

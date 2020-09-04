@@ -388,6 +388,25 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 
 #else /* OSLREGOPS */
 
+#ifdef DHD_DEBUG_REG_DUMP
+extern uint64 regs_addr;
+
+#define DUMP_R_REG_OFFSET(r) \
+{ \
+	if ((((uint64)r - regs_addr) >> 16) == 0) \
+		printf("**** R_REG : 0x%llx\n", (uint64)r - regs_addr); \
+}
+
+#define DUMP_W_REG_OFFSET(r, v) \
+{ \
+	if ((((uint64)r - regs_addr) >> 16) == 0) \
+		printf("$$$$ W_REG : 0x%llx %llu\n", (uint64)(r) - regs_addr, (uint64)(v)); \
+}
+#else /* !DHD_DEBUG_REG_DUMP */
+#define DUMP_R_REG_OFFSET(r)
+#define DUMP_W_REG_OFFSET(r, v)
+#endif /* DHD_DEBUG_REG_DUMP */
+
 #ifndef IL_BIGENDIAN
 #ifdef CONFIG_64BIT
 /* readq is defined only for 64 bit platform */
@@ -418,6 +437,7 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 	SELECT_BUS_READ(osh, \
 		({ \
 			__typeof(*(r)) __osl_v = 0; \
+			DUMP_R_REG_OFFSET(r); \
 			BCM_REFERENCE(osh);	\
 			switch (sizeof(*(r))) { \
 				case sizeof(uint8):	__osl_v = \
@@ -478,6 +498,7 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 	} while (0)
 #else
 #define W_REG(osh, r, v) do { \
+	DUMP_W_REG_OFFSET(r, v); \
 	SELECT_BUS_WRITE(osh, \
 		switch (sizeof(*(r))) { \
 			case sizeof(uint8):	writeb((uint8)(v), (volatile uint8*)(r)); break; \

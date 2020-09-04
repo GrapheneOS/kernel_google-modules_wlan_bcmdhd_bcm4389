@@ -239,16 +239,16 @@ static struct pci_device_id dhdpcie_pci_devid[] __devinitdata = {
 	class_mask: 0xffff00,
 	driver_data: 0,
 	},
-#ifdef USIPCI_DEV_ID
+#if (BCMPCI_DEV_ID != PCI_ANY_ID) && defined(BCMPCI_NOOTP_DEV_ID)
 	{ vendor: VENDOR_BROADCOM,
-	device: USIPCI_DEV_ID,
+	device: BCMPCI_NOOTP_DEV_ID,
 	subvendor: PCI_ANY_ID,
 	subdevice: PCI_ANY_ID,
 	class: PCI_CLASS_NETWORK_OTHER << 8,
 	class_mask: 0xffff00,
 	driver_data: 0,
 	},
-#endif
+#endif /* BCMPCI_DEV_ID != PCI_ANY_ID && BCMPCI_NOOTP_DEV_ID */
 	{ 0, 0, 0, 0, 0, 0, 0}
 };
 MODULE_DEVICE_TABLE(pci, dhdpcie_pci_devid);
@@ -635,7 +635,7 @@ dhd_bus_aer_config(dhd_bus_t *bus)
 {
 	uint32 val;
 
-	DHD_ERROR(("%s: Configure AER registers for EP\n", __FUNCTION__));
+	DHD_ERROR_MEM(("%s: Configure AER registers for EP\n", __FUNCTION__));
 	val = dhdpcie_ep_access_cap(bus, PCIE_ADVERRREP_CAPID,
 		PCIE_ADV_CORR_ERR_MASK_OFFSET, TRUE, FALSE, 0);
 	if (val != (uint32)-1) {
@@ -647,7 +647,7 @@ dhd_bus_aer_config(dhd_bus_t *bus)
 			__FUNCTION__, val));
 	}
 
-	DHD_ERROR(("%s: Configure AER registers for RC\n", __FUNCTION__));
+	DHD_ERROR_MEM(("%s: Configure AER registers for RC\n", __FUNCTION__));
 	val = dhdpcie_rc_access_cap(bus, PCIE_ADVERRREP_CAPID,
 		PCIE_ADV_CORR_ERR_MASK_OFFSET, TRUE, FALSE, 0);
 	if (val != (uint32)-1) {
@@ -1690,6 +1690,9 @@ Description:
 Access PCI configuration space, retrieve  PCI allocated resources , updates in resource structure.
 
  */
+#ifdef DHD_DEBUG_REG_DUMP
+uint64 regs_addr;
+#endif /* DHD_DEBUG_REG_DUMP */
 int dhdpcie_get_resource(dhdpcie_info_t *dhdpcie_info)
 {
 	phys_addr_t  bar0_addr, bar1_addr;
@@ -1774,7 +1777,10 @@ int dhdpcie_get_resource(dhdpcie_info_t *dhdpcie_info)
 			__FUNCTION__, dhdpcie_info->regs, bar0_addr));
 		DHD_TRACE(("%s:Phys addr : tcm_space = %p base addr 0x"PRINTF_RESOURCE" \n",
 			__FUNCTION__, dhdpcie_info->tcm, bar1_addr));
-
+#ifdef DHD_DEBUG_REG_DUMP
+		regs_addr = (uint64)dhdpcie_info->regs;
+		DHD_ERROR(("%s: saved regs_addr = 0x%llx\n", __FUNCTION__, regs_addr));
+#endif /* DHD_DEBUG_REG_DUMP */
 		return 0; /* SUCCESS  */
 	} while (0);
 err:
@@ -1826,12 +1832,12 @@ void dhdpcie_dump_resource(dhd_bus_t *bus)
 	}
 
 	/* BAR0 */
-	DHD_ERROR(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_ERROR_MEM(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->regs, pci_resource_start(bus->dev, 0),
 		DONGLE_REG_MAP_SIZE));
 
 	/* BAR1 */
-	DHD_ERROR(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_ERROR_MEM(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->tcm, pci_resource_start(bus->dev, 2),
 		pch->bar1_size));
 }
@@ -2410,7 +2416,10 @@ dhdpcie_alloc_resource(dhd_bus_t *bus)
 			__FUNCTION__, dhdpcie_info->regs, bar0_addr));
 		DHD_TRACE(("%s:Phys addr : tcm_space = %p base addr 0x"PRINTF_RESOURCE" \n",
 			__FUNCTION__, dhdpcie_info->tcm, bar1_addr));
-
+#ifdef DHD_DEBUG_REG_DUMP
+		regs_addr = (uint64)dhdpcie_info->regs;
+		DHD_ERROR(("%s: saved regs_addr = 0x%llx\n", __FUNCTION__, regs_addr));
+#endif /* DHD_DEBUG_REG_DUMP */
 		return 0;
 	} while (0);
 

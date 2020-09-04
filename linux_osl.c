@@ -499,7 +499,9 @@ osl_pci_write_config(osl_t *osh, uint offset, uint size, uint val)
 
 	/* only 4byte access supported */
 	ASSERT(size == 4);
-
+#ifdef DHD_DEBUG_REG_DUMP
+	printk("###### W_CFG : 0x%x 0x%x #######\n", offset, val);
+#endif /* DHD_DEBUG_REG_DUMP */
 	do {
 		pci_write_config_dword(osh->pdev, offset, val);
 		/* PR15065: PCI_BAR0_WIN is believed to be the only pci cfg write that can occur

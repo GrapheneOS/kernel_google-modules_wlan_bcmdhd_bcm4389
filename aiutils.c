@@ -177,6 +177,7 @@ ai_scan(si_t *sih, void *regs, uint devid)
 	uint32 erombase, *eromptr, *eromlim;
 	axi_wrapper_t * axi_wrapper = sii->axi_wrapper;
 
+	SI_MSG_DBG_REG(("%s: Enter\n", __FUNCTION__));
 	BCM_REFERENCE(devid);
 
 	erombase = R_REG(sii->osh, &cc->eromptr);
@@ -225,6 +226,7 @@ ai_scan(si_t *sih, void *regs, uint devid)
 		cia = get_erom_ent(sih, &eromptr, ER_TAG, ER_CI);
 		if (cia == (ER_END | ER_VALID)) {
 			SI_VMSG(("Found END of erom after %d cores\n", sii->numcores));
+			SI_MSG_DBG_REG(("%s: Exit\n", __FUNCTION__));
 			return;
 		}
 
@@ -474,6 +476,7 @@ ai_scan(si_t *sih, void *regs, uint devid)
 
 error:
 	sii->numcores = 0;
+	SI_MSG_DBG_REG(("%s: Exit\n", __FUNCTION__));
 	return;
 }
 
@@ -642,6 +645,10 @@ BCMPOSTTRAPFN(_ai_setcoreidx)(si_t *sih, uint coreidx, uint use_wrapn)
 	}
 
 	sii->curidx = coreidx;
+
+	if (regs) {
+		SI_MSG_DBG_REG(("%s: %d\n", __FUNCTION__, coreidx));
+	}
 
 	return regs;
 }

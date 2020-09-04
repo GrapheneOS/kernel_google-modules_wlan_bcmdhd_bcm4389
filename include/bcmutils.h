@@ -143,12 +143,25 @@ extern int bcm_ether_atoe(const char *p, struct ether_addr *ea);
 	} \
 }
 
+#define SPINWAIT_TRAP(exp, us) SPINWAIT(exp, us)
+
 #else
 #define SPINWAIT(exp, us) { \
 	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \
 	while (((exp) != 0) && (uint)(countdown >= SPINWAIT_POLL_PERIOD)) { \
 		OSL_DELAY(SPINWAIT_POLL_PERIOD); \
 		countdown -= SPINWAIT_POLL_PERIOD; \
+	} \
+}
+
+#define SPINWAIT_TRAP(exp, us) { \
+	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \
+	while (((exp) != 0) && (uint)(countdown >= SPINWAIT_POLL_PERIOD)) { \
+		OSL_DELAY(SPINWAIT_POLL_PERIOD); \
+		countdown -= SPINWAIT_POLL_PERIOD; \
+	} \
+	if ((exp)) { \
+		OSL_SYS_HALT(); \
 	} \
 }
 #endif /* BCMFUZZ */

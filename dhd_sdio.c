@@ -7573,6 +7573,13 @@ int dhd_bus_get_oob_irq_num(dhd_pub_t *dhdp)
 	return irq_num;
 }
 
+#ifdef LINUX
+struct device *dhd_bus_to_dev(struct dhd_bus *bus)
+{
+	return (struct device *)bcmsdh_get_dev(bus->sdh);
+}
+#endif /* LINUX */
+
 void dhd_bus_dev_pm_stay_awake(dhd_pub_t *dhdpub)
 {
 #ifdef LINUX

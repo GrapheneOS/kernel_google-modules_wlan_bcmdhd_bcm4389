@@ -6191,6 +6191,7 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 	int i = 0;
 	char *pcmd, *token;
 	int len = buflen;
+	uint16 channel = 0;
 
 	pcmd = bcmstrstr(cmd_str, FREQ_STR);
 	pcmd += strlen(FREQ_STR);
@@ -6245,8 +6246,10 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 			freq = wl_channel_to_frequency(sta_channel, sta_acs_band);
 			list->element[0] =
 				wl_freq_to_chanspec(freq);
+			channel = wf_chspec_ctlchan((chanspec_t)list->element[0]);
 			WL_INFORM_MEM(("Softap on same band as STA."
-				"Use SCC. chanspec:0x%x\n", chanspec));
+				"Use SCC.freq = %d, chanspec:0x%x, channel = %d\n",
+				 freq, chanspec, channel));
 		} else {
 			list->element[0] = chanspec;
 			WL_INFORM_MEM(("RSDB case chanspec:0x%x\n", chanspec));
@@ -6474,7 +6477,7 @@ done:
 	return (pos - cmd);
 }
 
-static int
+int
 wl_android_set_spect(struct net_device *dev, int spect)
 {
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
@@ -6504,7 +6507,7 @@ wl_android_set_spect(struct net_device *dev, int spect)
 	return err;
 }
 
-static int
+int
 wl_android_get_sta_channel(struct bcm_cfg80211 *cfg)
 {
 	chanspec_t *sta_chanspec = NULL;
@@ -6643,14 +6646,24 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 				break;
 			}
 			case (WLC_BAND_2G): {
+#ifdef WL_6G_BAND
+				if (band == WLC_BAND_6G) {
+					channel = APCS_DEFAULT_6G_CH;
+				} else
+#endif /* WL_6G_BAND */
 				if (band == WLC_BAND_5G) {
 					channel = APCS_DEFAULT_5G_CH;
-				}
+				} else if (band == WLC_BAND_AUTO) {
 #ifdef WL_6G_BAND
-				else if (band == WLC_BAND_6G) {
-					channel = APCS_DEFAULT_6G_CH;
+					if (cfg->band_6g_supported) {
+						channel = APCS_DEFAULT_6G_CH;
+					} else {
+						channel = APCS_DEFAULT_5G_CH;
+					}
+#else
+					channel = APCS_DEFAULT_5G_CH;
+#endif	/* WL_6G_BAND */
 				}
-#endif /* WL_6G_BAND */
 				break;
 			}
 			default:
@@ -6659,6 +6672,7 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 				break;
 		}
 		WL_DBG(("band = %d, sta_band=%d acs_channel = %d\n", band, sta_band, channel));
+		acs_band = wl_cfg80211_get_acs_band(band);
 		goto done2;
 	}
 
@@ -6709,6 +6723,8 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 			cfg->acs_chspec = (chanspec_t)list->element[0];
 			channel = wf_chspec_ctlchan((chanspec_t)list->element[0]);
 			acs_band = CHSPEC_BAND((chanspec_t)list->element[0]);
+			WL_DBG(("cfg->acs_chspec = 0x%x, channel =%d, acs_band =0x%x\n",
+				cfg->acs_chspec, channel, acs_band));
 			goto done2;
 		}
 	} else {

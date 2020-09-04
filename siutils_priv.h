@@ -52,6 +52,12 @@
 #define	SI_MSG(args)
 #endif	/* BCMDBG */
 
+#ifdef DHD_DEBUG_REG_DUMP
+#define	SI_MSG_DBG_REG(args)	printf args
+#else
+#define	SI_MSG_DBG_REG(args)
+#endif /* DHD_DEBUG_REG_DUMP */
+
 #ifdef BCMDBG_SI
 #define	SI_VMSG(args)	printf args
 #else

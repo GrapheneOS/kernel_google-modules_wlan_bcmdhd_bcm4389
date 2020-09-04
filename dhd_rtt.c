@@ -263,6 +263,10 @@ static const ftm_strmap_entry_t ftm_event_type_loginfo[] = {
 	{ WL_PROXD_EVENT_DELAY,			"delay" },
 	{ WL_PROXD_EVENT_VS_INITIATOR_RPT,	"initiator-report " }, /* rx initiator-rpt */
 	{ WL_PROXD_EVENT_RANGING,		"ranging " },
+#ifdef WL_RTT_LCI
+	{ WL_PROXD_EVENT_LCI_MEAS_REP,		"lci report" },
+	{ WL_PROXD_EVENT_CIVIC_MEAS_REP,	"civic report" },
+#endif /* WL_RTT_LCI */
 	{ WL_PROXD_EVENT_COLLECT,		"collect" },
 	{ WL_PROXD_EVENT_MF_STATS,		"mf_stats" },
 	{ WL_PROXD_EVENT_START_WAIT,		"start-wait"}
@@ -1020,6 +1024,9 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 	wl_proxd_ftm_session_status_t *p_data_info = NULL;
 	uint32 chan_data_entry = 0;
 	uint16 expected_rtt_result_ver = 0;
+#ifdef WL_RTT_LCI
+	bcm_xtlv_t *tlv = NULL;
+#endif /* WL_RTT_LCI */
 
 	BCM_REFERENCE(p_data_info);
 
@@ -1084,6 +1091,30 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 		DHD_RTT(("\tmf stats len=%u\n", len));
 		rtt_prhex("", p_data, len);
 		break;
+#ifdef WL_RTT_LCI
+	case WL_PROXD_TLV_ID_LCI:
+		tlv = (bcm_xtlv_t *)ctx;
+		DHD_RTT(("WL_PROXD_TLV_ID_LCI, IE data=%lx, len=%d\n",
+			(unsigned long)p_data, len));
+		rtt_prhex("", p_data, len);
+		if (tlv) {
+			tlv->id = WL_PROXD_TLV_ID_LCI;
+			tlv->len = len;
+			(void)memcpy_s(tlv->data, len, p_data, len);
+		}
+		break;
+	case WL_PROXD_TLV_ID_CIVIC:
+		tlv = (bcm_xtlv_t *)ctx;
+		DHD_RTT(("WL_PROXD_TLV_ID_CIVIC, IE data=%lx, len=%d\n",
+			(unsigned long)p_data, len));
+		rtt_prhex("", p_data, len);
+		if (tlv) {
+			tlv->id = WL_PROXD_TLV_ID_CIVIC;
+			tlv->len = len;
+			(void)memcpy_s(tlv->data, len, p_data, len);
+		}
+		break;
+#endif /* WL_RTT_LCI */
 	default:
 		DHD_RTT_ERR(("> Unsupported TLV ID %d\n", tlvid));
 		ret = BCME_ERROR;
@@ -2488,6 +2519,20 @@ dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt)
 			if (!bcmp(&mac_list[i], &rtt_status->rtt_config.target_info[j].addr,
 				ETHER_ADDR_LEN)) {
 				rtt_status->rtt_config.target_info[j].disable = TRUE;
+#ifdef WL_RTT_LCI
+				if (rtt_status->rtt_config.target_info[j].LCI) {
+					MFREE(dhd->osh, rtt_status->rtt_config.target_info[j].LCI,
+						rtt_status->rtt_config.target_info[j].LCI->len +
+						BCM_XTLV_HDR_SIZE);
+					rtt_status->rtt_config.target_info[j].LCI = NULL;
+				}
+				if (rtt_status->rtt_config.target_info[j].LCR) {
+					MFREE(dhd->osh, rtt_status->rtt_config.target_info[j].LCR,
+						rtt_status->rtt_config.target_info[j].LCR->len +
+						BCM_XTLV_HDR_SIZE);
+					rtt_status->rtt_config.target_info[j].LCR = NULL;
+				}
+#endif /* WL_RTT_LCI */
 			}
 		}
 	}
@@ -2857,6 +2902,16 @@ dhd_rtt_set_ftm_config_param(ftm_config_param_info_t *ftm_params,
 				/* set burst end and session end in ev mask by def */
 				uint32 event_mask = ((1 << WL_PROXD_EVENT_BURST_END) |
 						(1 << WL_PROXD_EVENT_SESSION_END));
+#ifdef WL_RTT_LCI
+				/* LCI request */
+				if (rtt_target && rtt_target->LCI_request) {
+					event_mask |= (1 << WL_PROXD_EVENT_LCI_MEAS_REP);
+				}
+				/* LCR request (CIVIC) */
+				if (rtt_target && rtt_target->LCR_request) {
+					event_mask |= (1 << WL_PROXD_EVENT_CIVIC_MEAS_REP);
+				}
+#endif /* WL_RTT_LCI */
 				/* only burst end for directed nan-rtt target */
 				if (rtt_target && (rtt_target->peer == RTT_PEER_NAN)) {
 					event_mask = (1 << WL_PROXD_EVENT_BURST_END);
@@ -2971,8 +3026,19 @@ dhd_rtt_start(dhd_pub_t *dhd)
 	/* configure the session 1 as initiator */
 	if  (ftm_cfg_cnt < FTM_MAX_CONFIGS) {
 		ftm_configs[ftm_cfg_cnt].enable = TRUE;
-		ftm_configs[ftm_cfg_cnt++].flags =
+		ftm_configs[ftm_cfg_cnt].flags =
 			WL_PROXD_SESSION_FLAG_INITIATOR | WL_PROXD_SESSION_FLAG_RANDMAC;
+#ifdef WL_RTT_LCI
+		/* LCI request */
+		if (rtt_target->LCI_request) {
+			ftm_configs[ftm_cfg_cnt].flags |= WL_PROXD_SESSION_FLAG_REQ_LCI;
+		}
+		/* LCR request (CIVIC) */
+		if (rtt_target->LCR_request) {
+			ftm_configs[ftm_cfg_cnt].flags |= WL_PROXD_SESSION_FLAG_REQ_CIV;
+		}
+#endif /* WL_RTT_LCI */
+		ftm_cfg_cnt++;
 		dhd_rtt_ftm_config(dhd, FTM_DEFAULT_SESSION, FTM_CONFIG_CAT_OPTIONS,
 				ftm_configs, ftm_cfg_cnt);
 	} else {
@@ -3961,6 +4027,20 @@ dhd_rtt_handle_directed_rtt_burst_end(dhd_pub_t *dhd, struct ether_addr *peer_ad
 		ret = dhd_rtt_parse_result_event(proxd_ev_data, tlvs_len, rtt_result);
 #ifdef WL_CFG80211
 		if (ret == BCME_OK) {
+#ifdef WL_RTT_LCI
+			rtt_target_info_t *target =
+				&rtt_status->rtt_config.target_info[rtt_status->cur_idx];
+			/* assign the cached location info */
+			if (target->LCI) {
+				rtt_result->report.LCI = (bcm_tlv_t*)target->LCI->data;
+				rtt_result->report_len += target->LCI->len;
+			}
+			if (target->LCR) {
+				rtt_result->report.LCR = (bcm_tlv_t*)target->LCR->data;
+				rtt_result->report_len += target->LCR->len;
+			}
+#endif /* WL_RTT_LCI */
+
 			list_add_tail(&rtt_result->list, &rtt_results_header->result_list);
 			rtt_results_header->result_cnt++;
 			rtt_results_header->result_tot_len += rtt_result->report_len +
@@ -4319,6 +4399,46 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 	case WL_PROXD_EVENT_VS_INITIATOR_RPT:
 		DHD_RTT(("WL_PROXD_EVENT_VS_INITIATOR_RPT\n "));
 		break;
+#ifdef WL_RTT_LCI
+	case WL_PROXD_EVENT_LCI_MEAS_REP:
+	case WL_PROXD_EVENT_CIVIC_MEAS_REP:
+		DHD_RTT(("WL_PROXD_EVENT_LCI/CIVIC_MEAS_REP\n"));
+		if (tlvs_len > 0) {
+			void *buffer = NULL;
+			if (!(buffer = (void *)MALLOCZ(dhd->osh, tlvs_len))) {
+				ret = -ENOMEM;
+				goto exit;
+			}
+			/* unpack TLVs and invokes the cbfn to print the event content TLVs */
+			ret = bcm_unpack_xtlv_buf(buffer,
+				(uint8 *)&p_event->tlvs[0], tlvs_len,
+				BCM_XTLV_OPTION_NONE, rtt_unpack_xtlv_cbfn);
+			if (ret != BCME_OK) {
+				DHD_RTT_ERR(("%s : Failed to unpack xtlv for event %d\n",
+					__FUNCTION__, event_type));
+				MFREE(dhd->osh, buffer, tlvs_len);
+				goto exit;
+			}
+			if (event_type == WL_PROXD_EVENT_LCI_MEAS_REP) {
+				/* free previous one and update it */
+				if (target->LCI) {
+					MFREE(dhd->osh, target->LCI,
+						target->LCI->len + BCM_XTLV_HDR_SIZE);
+				}
+				DHD_RTT(("WL_PROXD_EVENT_LCI_MEAS_REP: cache the LCI tlv\n"));
+				target->LCI = (bcm_xtlv_t *)buffer;
+			} else {
+				/* free previous one and update it */
+				if (target->LCR) {
+					MFREE(dhd->osh, target->LCR,
+						target->LCR->len + BCM_XTLV_HDR_SIZE);
+				}
+				DHD_RTT(("WL_PROXD_EVENT_CIVIC_MEAS_REP: cache the LCR tlv\n"));
+				target->LCR = (bcm_xtlv_t *)buffer;
+			}
+		}
+		break;
+#endif /* WL_RTT_LCI */
 	case WL_PROXD_EVENT_RANGING:
 		DHD_RTT(("WL_PROXD_EVENT_RANGING\n"));
 		break;
@@ -4694,6 +4814,10 @@ dhd_rtt_detach(dhd_pub_t *dhd)
 
 #ifdef WL_CFG80211
 	rtt_status_info_t *rtt_status;
+#ifdef WL_RTT_LCI
+	rtt_config_params_t *rtt_config;
+	int i;
+#endif /* WL_RTT_LCI */
 
 	NULL_CHECK(dhd, "dhd is NULL", err);
 	rtt_status = GET_RTTSTATE(dhd);
@@ -4707,6 +4831,22 @@ dhd_rtt_detach(dhd_pub_t *dhd)
 	}
 
 exit:
+#ifdef WL_RTT_LCI
+	/* free the cache of LCI/CIVIC IE */
+	rtt_config = &(rtt_status->rtt_config);
+	for (i = 0; i < rtt_config->rtt_target_cnt; i++) {
+		if (rtt_config->target_info[i].LCI) {
+			MFREE(dhd->osh, rtt_config->target_info[i].LCI,
+				rtt_config->target_info[i].LCI->len +
+				BCM_XTLV_HDR_SIZE);
+		}
+		if (rtt_config->target_info[i].LCR) {
+			MFREE(dhd->osh, rtt_config->target_info[i].LCR,
+				rtt_config->target_info[i].LCR->len +
+				BCM_XTLV_HDR_SIZE);
+		}
+	}
+#endif /* WL_RTT_LCI */
 	MFREE(dhd->osh, rtt_status->rtt_config.target_info,
 		TARGET_INFO_SIZE(RTT_MAX_TARGET_CNT));
 	MFREE(dhd->osh, dhd->rtt_state, sizeof(rtt_status_info_t));

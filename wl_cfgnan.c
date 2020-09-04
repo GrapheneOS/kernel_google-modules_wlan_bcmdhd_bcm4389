@@ -8475,7 +8475,8 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 			}
 #ifdef RTT_SUPPORT
 		} else if ((txs->type == WL_NAN_FRM_TYPE_RNG_RESP) ||
-			(txs->type == WL_NAN_FRM_TYPE_RNG_REQ)) {
+			(txs->type == WL_NAN_FRM_TYPE_RNG_REQ) ||
+			(txs->type == WL_NAN_FRM_TYPE_RNG_TERM)) {
 			xtlv = (bcm_xtlv_t *)(txs->opt_tlvs);
 			if (txs->opt_tlvs_len && xtlv->id == WL_NAN_XTLV_RNG_TXS) {
 				wl_nan_range_txs_t* txs_rng = (wl_nan_range_txs_t*)xtlv->data;

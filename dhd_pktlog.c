@@ -178,7 +178,7 @@ dhd_os_detach_pktlog(dhd_pub_t *dhdp)
 	dhd_cpkt_log_deinit_tt(dhdp);
 #endif	/* DHD_COMPACT_PKT_LOG */
 
-	DHD_ERROR(("%s(): dhd_os_attach_pktlog detach\n", __FUNCTION__));
+	DHD_INFO(("%s(): dhd_os_attach_pktlog detach\n", __FUNCTION__));
 
 	MFREE(dhdp->osh, dhdp->pktlog, sizeof(dhd_pktlog_t));
 
@@ -226,7 +226,7 @@ dhd_pktlog_ring_init(dhd_pub_t *dhdp, int size)
 	ring->dhdp = dhdp;
 	ring->pktlog_ring_lock = osl_spin_lock_init(dhdp->osh);
 
-	DHD_ERROR(("%s(): pktlog ring init success\n", __FUNCTION__));
+	DHD_INFO(("%s(): pktlog ring init success\n", __FUNCTION__));
 
 	return ring;
 fail:
@@ -300,7 +300,7 @@ dhd_pktlog_ring_deinit(dhd_pub_t *dhdp, dhd_pktlog_ring_t *ring)
 
 	MFREE(dhdp->osh, ring, sizeof(dhd_pktlog_ring_t));
 
-	DHD_ERROR(("%s(): pktlog ring deinit\n", __FUNCTION__));
+	DHD_INFO(("%s(): pktlog ring deinit\n", __FUNCTION__));
 
 	return ret;
 }
@@ -333,6 +333,11 @@ dhd_pktlog_ring_add_pkts(dhd_pub_t *dhdp, void *pkt, void *pktdata, uint32 pktid
 		pktlog_case = PKTLOG_TXPKT_CASE;
 	} else if ((direction == PKT_RX) || (direction == PKT_WAKERX)) {
 		pktlog_case = PKTLOG_RXPKT_CASE;
+	}
+
+	if (pktlog_filter && pktlog_filter->list_cnt == 0) {
+		/* There is no packet log list */
+		return BCME_OK;
 	}
 
 	if ((direction != PKT_WAKERX) &&
@@ -491,7 +496,7 @@ dhd_pktlog_filter_init(int size)
 
 	filter->enable = PKTLOG_TXPKT_CASE | PKTLOG_TXSTATUS_CASE | PKTLOG_RXPKT_CASE;
 
-	DHD_ERROR(("%s(): pktlog filter init success\n", __FUNCTION__));
+	DHD_INFO(("%s(): pktlog filter init success\n", __FUNCTION__));
 
 	return filter;
 fail:
@@ -517,7 +522,7 @@ dhd_pktlog_filter_deinit(dhd_pktlog_filter_t *filter)
 	}
 	kfree(filter);
 
-	DHD_ERROR(("%s(): pktlog filter deinit\n", __FUNCTION__));
+	DHD_INFO(("%s(): pktlog filter deinit\n", __FUNCTION__));
 
 	return ret;
 }

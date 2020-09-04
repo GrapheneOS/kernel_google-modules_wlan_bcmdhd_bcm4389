@@ -85,6 +85,7 @@ extern int dhd_bus_oob_intr_register(dhd_pub_t *dhdp);
 extern void dhd_bus_oob_intr_unregister(dhd_pub_t *dhdp);
 extern void dhd_bus_oob_intr_set(dhd_pub_t *dhdp, bool enable);
 extern int dhd_bus_get_oob_irq_num(dhd_pub_t *dhdp);
+extern struct device * dhd_bus_to_dev(struct dhd_bus *bus);
 extern void dhd_bus_dev_pm_stay_awake(dhd_pub_t *dhdpub);
 extern void dhd_bus_dev_pm_relax(dhd_pub_t *dhdpub);
 extern bool dhd_bus_dev_pm_enabled(dhd_pub_t *dhdpub);
@@ -243,8 +244,6 @@ extern void dhd_bus_aer_config(struct dhd_bus *bus);
 static INLINE void dhd_bus_aer_config(struct dhd_bus *bus) { }
 #endif /* LINUX || linux */
 
-extern struct device * dhd_bus_to_dev(struct dhd_bus *bus);
-
 extern int dhdpcie_cto_init(struct dhd_bus *bus, bool enable);
 extern int dhdpcie_cto_cfg_init(struct dhd_bus *bus, bool enable);
 
@@ -313,6 +312,7 @@ void dhdpcie_get_etd_preserve_logs(dhd_pub_t *dhd, uint8 *ext_trap_data,
 #endif
 
 extern uint16 dhd_get_chipid(struct dhd_bus *bus);
+extern uint16 dhd_get_chiprev(struct dhd_bus *bus);
 
 #ifdef BTLOG
 extern void dhd_bus_rx_bt_log(struct dhd_bus *bus, void* pkt);

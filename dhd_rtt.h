@@ -225,6 +225,10 @@ typedef struct rtt_target_info {
 	uint32 num_retries_per_ftmr;
 	uint8  LCI_request;
 	uint8  LCR_request;
+#ifdef WL_RTT_LCI
+	bcm_xtlv_t *LCI; /* LCI Report */
+	bcm_xtlv_t *LCR; /* Location Civic Report */
+#endif /* WL_RTT_LCI */
 	/*
 	* Applies to 1-sided and 2-sided RTT. Valid values will
 	* be 2-11 and 15 as specified by the 802.11mc std for

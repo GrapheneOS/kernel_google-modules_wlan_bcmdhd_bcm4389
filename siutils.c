@@ -271,6 +271,7 @@ si_attach(uint devid, osl_t *osh, volatile void *regs,
 {
 	si_info_t *sii;
 
+	SI_MSG_DBG_REG(("%s: Enter\n", __FUNCTION__));
 	/* alloc si_info_t */
 	/* freed after ucode download for firmware builds */
 	if ((sii = MALLOCZ_NOPERSIST(osh, sizeof(si_info_t))) == NULL) {
@@ -295,6 +296,7 @@ si_attach(uint devid, osl_t *osh, volatile void *regs,
 #if defined(BCM_SH_SFLASH) && !defined(BCM_SH_SFLASH_DISABLED)
 	sh_sflash_attach(osh, (si_t *)sii);
 #endif
+	SI_MSG_DBG_REG(("%s: Exit\n", __FUNCTION__));
 	return (si_t *)sii;
 }
 
@@ -6968,6 +6970,7 @@ si_sysmem_size(si_t *sih)
 	uint8 i;
 	uint nb, nrb;
 
+	SI_MSG_DBG_REG(("%s: Enter\n", __FUNCTION__));
 	/* Block ints and save current core */
 	INTR_OFF(sii, &intr_val);
 	origidx = si_coreidx(sih);
@@ -6997,6 +7000,7 @@ si_sysmem_size(si_t *sih)
 done:
 	INTR_RESTORE(sii, &intr_val);
 
+	SI_MSG_DBG_REG(("%s: Exit memsize=%d\n", __FUNCTION__, memsize));
 	return memsize;
 }
 
@@ -7187,6 +7191,7 @@ si_tcm_size(si_t *sih)
 	volatile uint32 *arm_bidx;
 	volatile uint32 *arm_binfo;
 
+	SI_MSG_DBG_REG(("%s: Enter\n", __FUNCTION__));
 	/* Block ints and save current core */
 	INTR_OFF(sii, &intr_val);
 	origidx = si_coreidx(sih);
@@ -7229,7 +7234,7 @@ si_tcm_size(si_t *sih)
 
 done:
 	INTR_RESTORE(sii, &intr_val);
-
+	SI_MSG_DBG_REG(("%s: Exit memsize=%d\n", __FUNCTION__, memsize));
 	return memsize;
 }
 

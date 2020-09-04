@@ -90,7 +90,7 @@ enum {
 
 #ifdef DEBUGABILITY
 #define DBG_RING_ACTIVE(dhdp, ring_id) \
-	((dhdp)->dbg->dbg_rings[(ring_id)].state == RING_ACTIVE)
+	((dhdp)->dbg && (dhdp)->dbg->dbg_rings[(ring_id)].state == RING_ACTIVE)
 #else
 #define DBG_RING_ACTIVE(dhdp, ring_id) 0
 #endif /* DEBUGABILITY */

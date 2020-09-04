@@ -29,6 +29,7 @@
 #include <bcmutils.h>
 #include <bcmstdlib_s.h>
 
+#include <bcmdevs.h>
 #include <bcmendian.h>
 #include <dngl_stats.h>
 #include <dhd.h>
@@ -142,13 +143,17 @@
 int log_print_threshold = 0;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
 
+/* dhd_msg_level : a default level to print to dmesg buffer
+ * dhd_log_level : a default level to log to DLD or Ring
+ * To keep one level operation(dhd_msg_level) in HW4,
+ * dhd_msg_level and dhd_log_level have the same level
+ */
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-int dbgring_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_INFO_VAL
-		| DHD_EVENT_VAL | DHD_PKT_MON_VAL | DHD_IOVAR_MEM_VAL;
 int dhd_msg_level = DHD_ERROR_VAL | DHD_EVENT_VAL
 	        | DHD_PKT_MON_VAL;
+int dhd_log_level = DHD_ERROR_VAL | DHD_EVENT_VAL
+		| DHD_PKT_MON_VAL | DHD_FWLOG_VAL | DHD_IOVAR_MEM_VAL;
 #else
-int dbgring_msg_level = 0;
 /* For CUSTOMER_HW4/Hikey do not enable DHD_ERROR_MEM_VAL by default */
 int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 	/* For CUSTOMER_HW4 do not enable DHD_IOVAR_MEM_VAL by default */
@@ -156,6 +161,14 @@ int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 	| DHD_IOVAR_MEM_VAL
 #endif
 	| DHD_PKT_MON_VAL;
+
+int dhd_log_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
+	/* For CUSTOMER_HW4 do not enable DHD_IOVAR_MEM_VAL by default */
+#if !defined(DHD_EFI) && !defined(BOARD_HIKEY)
+	| DHD_IOVAR_MEM_VAL
+#endif
+	| DHD_PKT_MON_VAL;
+
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 #ifdef NDIS
@@ -4752,6 +4765,10 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 				(int)infodesc->flow_id));
 		}
 		break;
+	case WLC_E_COUNTRY_CODE_CHANGED:
+		DHD_EVENT(("MACEVENT: %s: Country code changed to %s\n", event_name,
+			(char*)event_data));
+		break;
 	default:
 		DHD_INFO(("MACEVENT: %s %d, MAC %s, status %d, reason %d, auth %d\n",
 		       event_name, event_type, eabuf, (int)status, (int)reason,
@@ -4871,6 +4888,33 @@ dhd_parse_hck_common_sw_event(bcm_xtlv_t *wl_hc)
 }
 
 #endif /* PARSE_DONGLE_HOST_EVENT */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+static void
+dhd_send_error_alert_event(dhd_pub_t *dhdp, bcm_xtlv_t *wl_hc)
+{
+	uint16 id;
+
+	id = ltoh16(wl_hc->id);
+
+	switch (id) {
+		case WL_HC_DD_RX_STALL:
+			dhdp->alert_reason = ALERT_RX_STALL;
+			break;
+		case WL_HC_DD_TX_STALL:
+			dhdp->alert_reason = ALERT_TX_STALL;
+			break;
+		case WL_HC_DD_SCAN_STALL:
+			dhdp->alert_reason = ALERT_SCAN_STALL;
+			break;
+		case WL_HC_DD_TXQ_STALL:
+			dhdp->alert_reason = ALERT_FW_QUEUE_STALL;
+			break;
+		default:
+			return;
+	}
+	dhd_os_send_alert_message(dhdp);
+}
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 
 void
 dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
@@ -4986,6 +5030,9 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 #ifdef PARSE_DONGLE_HOST_EVENT
 						dhd_parse_hck_common_sw_event(wl_hc);
 #endif /* PARSE_DONGLE_HOST_EVENT */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+						dhd_send_error_alert_event(dhdp, wl_hc);
+#endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 						break;
 
 					}
@@ -7363,13 +7410,54 @@ static int traffic_mgmt_add_dwm_filter(dhd_pub_t *dhd,
 }
 #endif /* BCM_ROUTER_DHD */
 
+#ifdef DHD_LINUX_STD_FW_API
+int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t component,
+	char ** buffer, int *length)
+{
+	int ret = BCME_ERROR;
+	const struct firmware *fw = NULL;
+
+	if (file_path) {
+		ret = dhd_os_get_img_fwreq(dhd, &fw, file_path);
+		if (ret < 0) {
+			DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n", ret));
+			goto err;
+		} else {
+			DHD_ERROR(("dhd_os_get_img(Request Firmware API) success\n"));
+			if ((fw->size <= 0 || fw->size > *length)) {
+				*length = fw->size;
+				goto err;
+			}
+			*buffer = MALLOCZ(dhd->osh, fw->size);
+			if (*buffer == NULL) {
+				DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
+					__FUNCTION__, (int)fw->size));
+				goto err;
+			}
+			*length = fw->size;
+			ret = memcpy_s(*buffer, fw->size, fw->data, fw->size);
+			if (ret != BCME_OK) {
+				DHD_ERROR(("%s: memcpy_s failed, err : %d\n", __FUNCTION__, ret));
+				goto err;
+			}
+			ret = BCME_OK;
+		}
+	}
+err:
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+	return ret;
+}
+
+#else
+
 /* Given filename and download type,  returns a buffer pointer and length
 * for download to f/w. Type can be FW or NVRAM.
 *
 */
 int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t component,
 	char ** buffer, int *length)
-
 {
 	int ret = BCME_ERROR;
 	int len = 0;
@@ -7481,6 +7569,7 @@ err:
 
 	return ret;
 }
+#endif /* DHD_LINUX_STD_FW_API */
 
 int
 dhd_download_2_dongle(dhd_pub_t	*dhd, char *iovar, uint16 flag, uint16 dload_type,
@@ -7521,9 +7610,9 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 {
 	int chunk_len;
-#if !defined(LINUX) && !defined(linux)
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
 	int cumulative_len = 0;
-#endif /* !LINUX && !linux */
+#endif /* !LINUX && !linux || DHD_LINUX_STD_FW_API */
 	int size2alloc;
 	unsigned char *new_buf;
 	int err = 0, data_offset;
@@ -7535,7 +7624,7 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 	if ((new_buf = (unsigned char *)MALLOCZ(dhd->osh, size2alloc)) != NULL) {
 		do {
-#if !defined(LINUX) && !defined(linux)
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
 			if (len >= MAX_CHUNK_LEN)
 				chunk_len = MAX_CHUNK_LEN;
 			else
@@ -7552,7 +7641,7 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 				err = BCME_ERROR;
 				goto exit;
 			}
-#endif /* !LINUX && !linux */
+#endif /* !LINUX && !linux || DHD_LINUX_STD_FW_API */
 			if (len - chunk_len == 0)
 				dl_flag |= DL_END;
 
@@ -7563,13 +7652,13 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 			len = len - chunk_len;
 		} while ((len > 0) && (err == 0));
-#if !defined(LINUX) && !defined(linux)
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
 		MFREE(dhd->osh, new_buf, size2alloc);
 #endif /* !LINUX && !linux */
 	} else {
 		err = BCME_NOMEM;
 	}
-#if defined(LINUX) || defined(linux)
+#if (defined(LINUX) || defined(linux)) && !defined(DHD_LINUX_STD_FW_API)
 exit:
 	if (new_buf) {
 		MFREE(dhd->osh, new_buf, size2alloc);
@@ -7830,7 +7919,11 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 		clm_blob_path = clm_path;
 		DHD_TRACE(("clm path from module param:%s\n", clm_path));
 	} else {
+#ifdef DHD_LINUX_STD_FW_API
+		clm_blob_path = DHD_CLM_NAME;
+#else
 		clm_blob_path = VENDOR_PATH CONFIG_BCMDHD_CLM_PATH;
+#endif /* DHD_LINUX_STD_FW_API */
 	}
 
 	/* If CLM blob file is found on the filesystem, download the file.
@@ -7838,11 +7931,16 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 	 * validate the country code before proceeding with the initialization.
 	 * If country code is not valid, fail the initialization.
 	 */
-#if !defined(LINUX) && !defined(linux)
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
+	DHD_ERROR(("Clmblob file : %s\n", clm_blob_path));
 	len = MAX_CLM_BUF_SIZE;
 	dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
 #else
 	memblock = dhd_os_open_image1(dhd, (char *)clm_blob_path);
+	len = dhd_os_get_image_size(memblock);
+#endif /* !LINUX && !linux || DHD_LINUX_STD_FW_API */
+
+#if defined(LINUX) || defined(linux)
 	if (memblock == NULL) {
 #if defined(DHD_BLOB_EXISTENCE_CHECK)
 		if (dhd->is_blob) {
@@ -7858,9 +7956,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #endif /* DHD_BLOB_EXISTENCE_CHECK */
 		goto exit;
 	}
-
-	len = dhd_os_get_image_size(memblock);
-#endif /* !LINUX && !linux */
+#endif /* defined(LINUX) || defined(linux) */
 
 	if ((len > 0) && (len < MAX_CLM_BUF_SIZE) && memblock) {
 		status = dhd_check_current_clm_data(dhd);
@@ -7908,7 +8004,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 			err = BCME_ERROR;
 			goto exit;
 		} else {
-			DHD_INFO(("%s: CLM download succeeded \n", __FUNCTION__));
+			DHD_ERROR(("%s: CLM download succeeded \n", __FUNCTION__));
 		}
 	} else {
 		DHD_INFO(("Skipping the clm download. len:%d memblk:%p \n", len, memblock));
@@ -7925,7 +8021,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 exit:
 
 	if (memblock) {
-#if defined(LINUX) || defined(linux)
+#if (defined(LINUX) || defined(linux)) && !defined(DHD_LINUX_STD_FW_API)
 		dhd_os_close_image1(dhd, memblock);
 #else
 		dhd_free_download_buffer(dhd, memblock, MAX_CLM_BUF_SIZE);
@@ -11029,3 +11125,191 @@ exit:
 	}
 	return ret;
 }
+
+#ifdef DHD_DEBUG
+void
+dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int substr_type)
+{
+	char *type_str = NULL;
+
+	switch (type) {
+		case DUMP_TYPE_RESUMED_ON_TIMEOUT:
+			type_str = "resumed_on_timeout";
+			break;
+		case DUMP_TYPE_D3_ACK_TIMEOUT:
+			type_str = "D3_ACK_timeout";
+			break;
+		case DUMP_TYPE_DONGLE_TRAP:
+			type_str = "Dongle_Trap";
+			break;
+		case DUMP_TYPE_MEMORY_CORRUPTION:
+			type_str = "Memory_Corruption";
+			break;
+		case DUMP_TYPE_PKTID_AUDIT_FAILURE:
+			type_str = "PKTID_AUDIT_Fail";
+			break;
+		case DUMP_TYPE_PKTID_INVALID:
+			type_str = "PKTID_INVALID";
+			break;
+		case DUMP_TYPE_SCAN_TIMEOUT:
+			type_str = "SCAN_timeout";
+			break;
+		case DUMP_TYPE_SCAN_BUSY:
+			type_str = "SCAN_Busy";
+			break;
+		case DUMP_TYPE_BY_SYSDUMP:
+			if (substr_type == CMD_UNWANTED) {
+				type_str = "BY_SYSDUMP_FORUSER_unwanted";
+			} else if (substr_type == CMD_DISCONNECTED) {
+				type_str = "BY_SYSDUMP_FORUSER_disconnected";
+			} else {
+				type_str = "BY_SYSDUMP_FORUSER";
+			}
+			break;
+		case DUMP_TYPE_BY_LIVELOCK:
+			type_str = "BY_LIVELOCK";
+			break;
+		case DUMP_TYPE_AP_LINKUP_FAILURE:
+			type_str = "BY_AP_LINK_FAILURE";
+			break;
+		case DUMP_TYPE_AP_ABNORMAL_ACCESS:
+			type_str = "INVALID_ACCESS";
+			break;
+		case DUMP_TYPE_RESUMED_ON_TIMEOUT_RX:
+			type_str = "ERROR_RX_TIMED_OUT";
+			break;
+		case DUMP_TYPE_RESUMED_ON_TIMEOUT_TX:
+			type_str = "ERROR_TX_TIMED_OUT";
+			break;
+		case DUMP_TYPE_CFG_VENDOR_TRIGGERED:
+			type_str = "CFG_VENDOR_TRIGGERED";
+			break;
+		case DUMP_TYPE_RESUMED_ON_INVALID_RING_RDWR:
+			type_str = "BY_INVALID_RING_RDWR";
+			break;
+		case DUMP_TYPE_IFACE_OP_FAILURE:
+			type_str = "BY_IFACE_OP_FAILURE";
+			break;
+		case DUMP_TYPE_TRANS_ID_MISMATCH:
+			type_str = "BY_TRANS_ID_MISMATCH";
+			break;
+#ifdef DEBUG_DNGL_INIT_FAIL
+		case DUMP_TYPE_DONGLE_INIT_FAILURE:
+			type_str = "DONGLE_INIT_FAIL";
+			break;
+#endif /* DEBUG_DNGL_INIT_FAIL */
+		case DUMP_TYPE_DONGLE_HOST_EVENT:
+			type_str = "BY_DONGLE_HOST_EVENT";
+			break;
+		case DUMP_TYPE_SMMU_FAULT:
+			type_str = "SMMU_FAULT";
+			break;
+#ifdef DHD_ERPOM
+		case DUMP_TYPE_DUE_TO_BT:
+			type_str = "DUE_TO_BT";
+			break;
+#endif /* DHD_ERPOM */
+		case DUMP_TYPE_BY_USER:
+			type_str = "BY_USER";
+			break;
+		case DUMP_TYPE_LOGSET_BEYOND_RANGE:
+			type_str = "LOGSET_BEYOND_RANGE";
+			break;
+		case DUMP_TYPE_CTO_RECOVERY:
+			type_str = "CTO_RECOVERY";
+			break;
+		case DUMP_TYPE_SEQUENTIAL_PRIVCMD_ERROR:
+			type_str = "SEQUENTIAL_PRIVCMD_ERROR";
+			break;
+		case DUMP_TYPE_PROXD_TIMEOUT:
+			type_str = "PROXD_TIMEOUT";
+			break;
+		case DUMP_TYPE_INBAND_DEVICE_WAKE_FAILURE:
+			type_str = "INBAND_DEVICE_WAKE_FAILURE";
+			break;
+		case DUMP_TYPE_PKTID_POOL_DEPLETED:
+			type_str = "PKTID_POOL_DEPLETED";
+			break;
+		case DUMP_TYPE_ESCAN_SYNCID_MISMATCH:
+			type_str = "ESCAN_SYNCID_MISMATCH";
+			break;
+		case DUMP_TYPE_INVALID_SHINFO_NRFRAGS:
+			type_str = "INVALID_SHINFO_NRFRAGS";
+			break;
+		default:
+			type_str = "Unknown_type";
+			break;
+	}
+
+	strlcpy(buf, type_str, buf_len);
+}
+#endif /* DHD_DEBUG */
+
+#ifdef CUSTOMER_HW4_DEBUG
+bool dhd_validate_chipid(dhd_pub_t *dhdp)
+{
+	uint chipid = dhd_bus_chip_id(dhdp);
+	uint config_chipid;
+
+#ifdef BCM4389_CHIP_DEF
+	config_chipid = BCM4389_CHIP_ID;
+#elif defined(BCM4375_CHIP)
+	config_chipid = BCM4375_CHIP_ID;
+#elif defined(BCM4361_CHIP)
+	config_chipid = BCM4361_CHIP_ID;
+#elif defined(BCM4359_CHIP)
+	config_chipid = BCM4359_CHIP_ID;
+#elif defined(BCM4358_CHIP)
+	config_chipid = BCM4358_CHIP_ID;
+#elif defined(BCM4354_CHIP)
+	config_chipid = BCM4354_CHIP_ID;
+#elif defined(BCM4339_CHIP)
+	config_chipid = BCM4339_CHIP_ID;
+#elif defined(BCM4335_CHIP)
+	config_chipid = BCM4335_CHIP_ID;
+#elif defined(BCM43430_CHIP)
+	config_chipid = BCM43430_CHIP_ID;
+#elif defined(BCM43018_CHIP)
+	config_chipid = BCM43018_CHIP_ID;
+#elif defined(BCM43455_CHIP)
+	config_chipid = BCM4345_CHIP_ID;
+#elif defined(BCM43454_CHIP)
+	config_chipid = BCM43454_CHIP_ID;
+#elif defined(BCM43012_CHIP_)
+	config_chipid = BCM43012_CHIP_ID;
+#elif defined(BCM43013_CHIP)
+	config_chipid = BCM43012_CHIP_ID;
+#else
+	DHD_ERROR(("%s: Unknown chip id, if you use new chipset,"
+		" please add CONFIG_BCMXXXX into the Kernel and"
+		" BCMXXXX_CHIP definition into the DHD driver\n",
+		__FUNCTION__));
+	config_chipid = 0;
+
+	return FALSE;
+#endif /* BCM4354_CHIP */
+
+#if defined(BCM4354_CHIP) && defined(SUPPORT_MULTIPLE_REVISION)
+	if (chipid == BCM4350_CHIP_ID && config_chipid == BCM4354_CHIP_ID) {
+		return TRUE;
+	}
+#endif /* BCM4354_CHIP && SUPPORT_MULTIPLE_REVISION */
+#if defined(BCM4358_CHIP) && defined(SUPPORT_MULTIPLE_REVISION)
+	if (chipid == BCM43569_CHIP_ID && config_chipid == BCM4358_CHIP_ID) {
+		return TRUE;
+	}
+#endif /* BCM4358_CHIP && SUPPORT_MULTIPLE_REVISION */
+#if defined(BCM4359_CHIP)
+	if (chipid == BCM4355_CHIP_ID && config_chipid == BCM4359_CHIP_ID) {
+		return TRUE;
+	}
+#endif /* BCM4359_CHIP */
+#if defined(BCM4361_CHIP)
+	if (chipid == BCM4347_CHIP_ID && config_chipid == BCM4361_CHIP_ID) {
+		return TRUE;
+	}
+#endif /* BCM4361_CHIP */
+
+	return config_chipid == chipid;
+}
+#endif /* CUSTOMER_HW4_DEBUG */

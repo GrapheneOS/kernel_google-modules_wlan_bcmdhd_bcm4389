@@ -113,7 +113,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 			dbg_verbose_ring)) {
 			DHD_ERROR(("Failed to create /proc/dhd_trace procfs interface\n"));
 		} else {
-			DHD_ERROR(("Created /proc/dhd_trace procfs interface\n"));
+			DHD_INFO(("Created /proc/dhd_trace procfs interface\n"));
 		}
 	} else {
 		DHD_ERROR(("dbg_verbose_ring is NULL, /proc/dhd_trace not created\n"));
@@ -125,7 +125,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 		dhdp->ecntr_dbg_ring)) {
 		DHD_ERROR(("Failed to create /proc/dhd_ecounters procfs interface\n"));
 	} else {
-		DHD_ERROR(("Created /proc/dhd_ecounters procfs interface\n"));
+		DHD_INFO(("Created /proc/dhd_ecounters procfs interface\n"));
 	}
 #endif /* EWP_ECNTRS_LOGGING */
 
@@ -134,7 +134,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 		dhdp->rtt_dbg_ring)) {
 		DHD_ERROR(("Failed to create /proc/dhd_rtt procfs interface\n"));
 	} else {
-		DHD_ERROR(("Created /proc/dhd_rtt procfs interface\n"));
+		DHD_INFO(("Created /proc/dhd_rtt procfs interface\n"));
 	}
 #endif /* EWP_RTT_LOGGING */
 }
@@ -1814,6 +1814,28 @@ set_wl_debug_level(struct dhd_info *dhd, const char *buf, size_t count)
 
 static struct dhd_attr dhd_attr_wl_dbg_level =
 __ATTR(wl_dbg_level, 0660, show_wl_debug_level, set_wl_debug_level);
+
+#ifdef DHD_FILE_DUMP_EVENT
+static ssize_t
+show_dhd_dump_done(struct dhd_info *dhd, char *buf)
+{
+	ssize_t ret = 0;
+	bool dump_done;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return ret;
+	}
+
+	dump_done = DHD_BUS_BUSY_CHECK_IN_HALDUMP(&dhd->pub) ? TRUE : FALSE;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d \n", dump_done);
+
+	return ret;
+}
+
+static struct dhd_attr dhd_attr_dump_done =
+__ATTR(dump_done, 0660, show_dhd_dump_done, NULL);
+#endif /* DHD_FILE_DUMP_EVENT */
 #endif /* WL_CFG80211 */
 
 /* Attribute object that gets registered with "wifi" kobject tree */
@@ -1893,6 +1915,9 @@ static struct attribute *default_file_attrs[] = {
 #endif /* PWRSTATS_SYSFS */
 #if defined(WL_CFG80211)
 	&dhd_attr_wl_dbg_level.attr,
+#if defined(DHD_FILE_DUMP_EVENT)
+	&dhd_attr_dump_done.attr,
+#endif /* DHD_FILE_DUMP_EVENT */
 #endif /* WL_CFG80211 */
 	&dhd_attr_dhd_debug_data.attr,
 #if defined(AGG_H2D_DB)
