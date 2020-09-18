@@ -515,6 +515,72 @@ enum {
 	/* signature package is invalid */
 	BCM_FWSIGN_E_PACKAGE_INVALID		= -4121,
 
+	/* chip info mismatch */
+	BCM_FWSIGN_E_CHIP_INFO_MISMATCH		= -4122,
+
+	/* key use is not valid */
+	BCM_FWSIGN_E_KEY_USE_NOT_VALID		= -4123,
+
+	/* fw tag type invalid */
+	BCM_FWSIGN_E_TAG_TYPE_INVALID		= -4124,
+
+	/* fwenc header invalid */
+	BCM_FWSIGN_E_FWENC_HDR_INVALID		= -4125,
+
+	/* firmware encryption header version mismatch */
+	BCM_FWSIGN_E_FWENC_HDR_VERSION		= -4126,
+
+	/* firmware encryption cipher type not supported */
+	BCM_FWSIGN_E_FWENC_CIPHER_TYPE_UNSUPPORTED = -4127,
+
+	/* firmware encryption tlv type not supported */
+	BCM_FWSIGN_E_FWENC_TLV_TYPE_UNSUPPORTED	= -4128,
+
+	/* firmware encryption invalid kdf info */
+	BCM_FWSIGN_E_FWENC_INVALID_KDFINFO	= -4129,
+
+	/* firmware encryption invalid ec group type length */
+	BCM_FWSIGN_E_FWENC_INVALID_ECG_TYPE_LEN	= -4130,
+
+	/* firmware encryption invalid epub */
+	BCM_FWSIGN_E_FWENC_INVALID_EPUB		= -4131,
+
+	/* firmware encryption invalid iv */
+	BCM_FWSIGN_E_FWENC_INVALID_IV		= -4132,
+
+	/* firmware encryption invalid aad */
+	BCM_FWSIGN_E_FWENC_INVALID_AAD		= -4133,
+
+	/* firmware encryption invalid ROM key */
+	BCM_FWSIGN_E_FWENC_INVALID_ROMKEY	= -4134,
+
+	/* firmware encryption invalid sysmem key */
+	BCM_FWSIGN_E_FWENC_INVALID_SYSMEMKEY	= -4135,
+
+	/* firmware encryption invalid OTP key */
+	BCM_FWSIGN_E_FWENC_INVALID_OTPKEY	= -4136,
+
+	/* firmware encryption key unwrap fail */
+	BCM_FWSIGN_E_FWENC_KEY_UNWRAP_FAIL	= -4137,
+
+	/* firmware encryption generate share secret fail */
+	BCM_FWSIGN_E_FWENC_GEN_SECRET_FAIL	= -4138,
+
+	/* firmware encryption symmetric key derivation fail */
+	BCM_FWSIGN_E_FWENC_KEY_DERIVATION_FAIL	= -4139,
+
+	/* firmware encryption RNG read fail */
+	BCM_FWSIGN_E_FWENC_RNG_FAIL		= -4140,
+
+	/* firmware encryption MAC tampered during decryption */
+	BCM_FWSIGN_E_FWENC_MAC_TAMPERED		= -4141,
+
+	/* firmware encryption decryption failed */
+	BCM_FWSIGN_E_FWENC_DECRYPT_FAIL		= -4142,
+
+	/* firmware encryption decryption in progress */
+	BCM_FWSIGN_E_FWENC_DECRYPT_IN_PROGRESS	= -4143,
+
 	/* last error */
 	BCM_FWSIGN_E_LAST			= -5119
 };

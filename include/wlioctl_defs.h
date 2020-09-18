@@ -1361,6 +1361,8 @@
 #define WL_TX_POWER_F_TXCAP		0x200
 #define WL_TX_POWER_F_HE		0x400
 #define WL_TX_POWER_F_RU_RATE		0x800
+#define WL_TX_POWER_TPE_PSD		0x1000
+#define WL_TX_POWER_TPE_LOC		0x2000
 
 /* Message levels */
 #define WL_ERROR_VAL		0x00000001
@@ -1558,11 +1560,19 @@
  * It is preserved only for compatibility with older branches that use it
  */
 #ifdef WL_BAND6G
+#ifdef WL_BAND5P9G
+#ifdef WL11AC_80P80
+#define WL_NUMCHANSPECS 466
+#else
+#define WL_NUMCHANSPECS 370
+#endif
+#else
 #ifdef WL11AC_80P80
 #define WL_NUMCHANSPECS 446
 #else
 #define WL_NUMCHANSPECS 350
 #endif
+#endif /* WL_BAND5P9G */
 #else
 #if defined(WL11AC_80P80)
 #define WL_NUMCHANSPECS 206

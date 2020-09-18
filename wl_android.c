@@ -268,8 +268,10 @@
 #define CMD_GETOKCMODE "GETOKCMODE"
 #define CMD_SETOKCMODE "SETOKCMODE"
 
-#define CMD_OKC_SET_PMK         "SET_PMK"
-#define CMD_OKC_ENABLE          "OKC_ENABLE"
+#define CMD_OKC_SET_PMK "SET_PMK"
+#define CMD_OKC_ENABLE "OKC_ENABLE"
+
+#define CMD_SET_5G160 "CONFIG_5G160"
 
 typedef struct android_wifi_reassoc_params {
 	unsigned char bssid[18];
@@ -616,6 +618,27 @@ static const wl_natoe_sub_cmd_t natoe_cmd_list[] = {
 #ifdef SET_PCIE_IRQ_CPU_CORE
 #define CMD_PCIE_IRQ_CORE	"PCIE_IRQ_CORE"
 #endif /* SET_PCIE_IRQ_CPU_CORE */
+
+#ifdef WLADPS_PRIVATE_CMD
+#define CMD_SET_ADPS	"SET_ADPS"
+#define CMD_GET_ADPS	"GET_ADPS"
+#ifdef WLADPS_ENERGY_GAIN
+#define CMD_GET_GAIN_ADPS	"GET_GAIN_ADPS"
+#define CMD_RESET_GAIN_ADPS	"RESET_GAIN_ADPS"
+#ifndef ADPS_GAIN_2G_PM0_IDLE
+#define ADPS_GAIN_2G_PM0_IDLE 0
+#endif
+#ifndef ADPS_GAIN_5G_PM0_IDLE
+#define ADPS_GAIN_5G_PM0_IDLE 0
+#endif
+#ifndef ADPS_GAIN_2G_TX_PSPOLL
+#define ADPS_GAIN_2G_TX_PSPOLL 0
+#endif
+#ifndef ADPS_GAIN_5G_TX_PSPOLL
+#define ADPS_GAIN_5G_TX_PSPOLL 0
+#endif
+#endif	/* WLADPS_ENERGY_GAIN */
+#endif /* WLADPS_PRIVATE_CMD */
 
 #ifdef DHD_PKT_LOGGING
 #define CMD_PKTLOG_FILTER_ENABLE	"PKTLOG_FILTER_ENABLE"
@@ -2949,6 +2972,75 @@ wl_android_set_pmk(struct net_device *dev, char *command, int total_len)
 	DHD_ERROR(("\n"));
 #endif
 	return error;
+}
+
+#define BW_5G160_DISABLE   0x7u
+#define BW_5G160_ENABLE    0xFu
+static int
+wl_android_config_5g160(struct net_device *dev, char *command)
+{
+	int ret = 0;
+	u32 enable = 0;
+	wl_bw_cap_t cap;
+	char buf[WLC_IOCTL_SMLEN] = {0};
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	s32 iftype;
+	u32 wlc_up = 0;
+
+	bzero(&cap, sizeof(wl_bw_cap_t));
+	enable = command[strlen(CMD_SET_5G160) + 1] - '0';
+
+	if (bcmcfg_to_prmry_ndev(cfg) != dev) {
+		WL_ERR(("band config on non-sta interface\n"));
+		return -EINVAL;
+	}
+
+	if (wl_get_drv_status(cfg, CONNECTED, dev)) {
+
+		/* Check whether we can do wl down */
+		iftype = wl_cfg80211_get_sec_iface(cfg);
+		if (iftype != WL_IFACE_NOT_PRESENT) {
+			/* Concurrent mode. Skip bw setting. */
+			WL_ERR(("concurrent iface present :%d\n", iftype));
+			return -ENOTSUPP;
+		}
+
+		/* If STA is connected, disassoc before band change */
+		wl_cfg80211_disassoc(dev, WLAN_REASON_DEAUTH_LEAVING);
+	}
+
+	cap.band = WLC_BAND_5G;
+	if (enable) {
+		cap.bw_cap = BW_5G160_ENABLE;
+	} else {
+		cap.bw_cap = BW_5G160_DISABLE;
+	}
+
+	/* bw_cap is down restricted */
+	ret = wldev_ioctl_set(dev, WLC_DOWN, &wlc_up, sizeof(wlc_up));
+	if (ret) {
+		WL_ERR(("%s: WLC_DOWN failed: code: %d\n", __func__, ret));
+		return ret;
+	}
+
+	ret = wldev_iovar_setbuf(dev, "bw_cap", &cap, sizeof(wl_bw_cap_t),
+		buf, sizeof(buf), NULL);
+	if (ret) {
+		WL_ERR(("Failed to %s 5g160, error = %d\n",
+			enable ? "enable" : "disable", ret));
+	} else {
+		WL_INFORM(("bw_cap (0x%x) set successfully!\n", cap.bw_cap));
+	}
+
+	/* fall through to set wlc up */
+	wlc_up = 1;
+	ret = wldev_ioctl_set(dev, WLC_UP, &wlc_up, sizeof(wlc_up));
+	if (ret) {
+		WL_ERR(("%s: WLC_UP failed: code: %d\n", __func__, ret));
+		return ret;
+	}
+
+	return ret;
 }
 
 static int
@@ -6191,7 +6283,10 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 	int i = 0;
 	char *pcmd, *token;
 	int len = buflen;
-	uint16 channel = 0;
+	u32 freq_bands = 0;
+#ifdef WL_6G_BAND
+	struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
+#endif /* WL_6G_BAND */
 
 	pcmd = bcmstrstr(cmd_str, FREQ_STR);
 	pcmd += strlen(FREQ_STR);
@@ -6209,7 +6304,10 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 		/* Convert chanspec from frequency */
 		if ((freq > 0) &&
 			((chanspec = wl_freq_to_chanspec(freq)) != INVCHANSPEC)) {
-			WL_DBG(("Adding chanspec in list : 0x%x at the index %d\n", chanspec, i));
+			WL_DBG(("%s:Adding chanspec in list : 0x%x at the index %d\n",
+				__FUNCTION__, chanspec, i));
+			/* mark all the bands found */
+			freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chanspec));
 			list->element[i] = chanspec;
 			len -= sizeof(list->element[i]);
 			i++;
@@ -6229,6 +6327,7 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 			}
 #endif /* WL_5G_SOFTAP_ONLY_ON_DEF_CHAN */
 		}
+		WL_DBG(("** freq_bands=0x%x\n", freq_bands));
 	}
 
 	list->count = i;
@@ -6239,24 +6338,54 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 		* check with the highest band entry.
 		*/
 		chanspec = list->element[i-1];
-		if (CHSPEC_BAND(chanspec) == sta_acs_band) {
-			/* softap request is for same band. Use SCC
-			 * Convert sta channel to freq
-			 */
-			freq = wl_channel_to_frequency(sta_channel, sta_acs_band);
-			list->element[0] =
-				wl_freq_to_chanspec(freq);
-			channel = wf_chspec_ctlchan((chanspec_t)list->element[0]);
-			WL_INFORM_MEM(("Softap on same band as STA."
-				"Use SCC.freq = %d, chanspec:0x%x, channel = %d\n",
-				 freq, chanspec, channel));
-		} else {
-			list->element[0] = chanspec;
-			WL_INFORM_MEM(("RSDB case chanspec:0x%x\n", chanspec));
+		if (sta_acs_band == WL_CHANSPEC_BAND_2G) {
+#ifdef WL_6G_BAND
+			if ((freq_bands & WLC_BAND_6G) && cfg->band_6g_supported) {
+				list->element[0] = wl_freq_to_chanspec(APCS_DEFAULT_6G_FREQ);
+			} else
+#endif /* WL_6G_BAND */
+			if (freq_bands & WLC_BAND_5G) {
+				list->element[0] = wl_freq_to_chanspec(APCS_DEFAULT_5G_FREQ);
+			} else {
+				freq = wl_channel_to_frequency(sta_channel, sta_acs_band);
+				list->element[0] = wl_freq_to_chanspec(freq);
+				WL_INFORM_MEM(("Softap on same band as STA."
+						"Use SCC chanspec:0x%x\n",
+						list->element[0]));
+			}
+		} else if (sta_acs_band == WL_CHANSPEC_BAND_5G) {
+			if (freq_bands & WLC_BAND_5G) {
+				if (sta_channel == APCS_DEFAULT_5G_CH) {
+					list->element[0] =
+						wl_freq_to_chanspec(APCS_DEFAULT_5G_FREQ);
+				} else {
+					list->element[0] =
+						wl_freq_to_chanspec(APCS_DEFAULT_2G_FREQ);
+				}
+			} else {
+				list->element[0] = wl_freq_to_chanspec(APCS_DEFAULT_2G_FREQ);
+			}
+		} else
+#ifdef WL_6G_BAND
+		if (sta_acs_band == WL_CHANSPEC_BAND_6G) {
+			if ((freq_bands & WLC_BAND_6G) && cfg->band_6g_supported) {
+				freq = wl_channel_to_frequency(sta_channel, sta_acs_band);
+				list->element[0] = wl_freq_to_chanspec(freq);
+				WL_INFORM_MEM(("Softap on same band as STA."
+						"Use SCC chanspec:0x%x\n",
+						list->element[0]));
+			} else
+			{
+				list->element[0] = wl_freq_to_chanspec(APCS_DEFAULT_2G_FREQ);
+			}
+		} else
+#endif /* WL_6G_BAND */
+		{
+			WL_ERR(("ACS: Invalid sta acs band: sta_acs_band = 0x%x\n", sta_acs_band));
+			return BCME_ERROR;
 		}
-		list->count = 1;
-		return ret;
 	}
+	list->count = 1;
 	return ret;
 }
 
@@ -6635,44 +6764,68 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 	sta_band = WL_GET_BAND(sta_channel);
 	if (sta_channel && (band != WLC_BAND_INVALID)) {
 		switch (sta_band) {
-			case (WLC_BAND_5G):
-#ifdef WL_6G_BAND
-			case (WLC_BAND_6G):
-#endif /* WL_6G_BAND */
-			{
-				if (band == WLC_BAND_2G || band == WLC_BAND_AUTO) {
+			case (WLC_BAND_5G): {
+				if ((sta_channel == APCS_DEFAULT_5G_CH) &&
+					(band == WLC_BAND_5G || band == WLC_BAND_AUTO)) {
+					/* SCC is allowed only for DEF_5G Channel */
+					channel = sta_channel;
+					acs_band = wl_cfg80211_get_acs_band(sta_band);
+				} else {
 					channel = APCS_DEFAULT_2G_CH;
+					acs_band = wl_cfg80211_get_acs_band(WLC_BAND_2G);
 				}
 				break;
 			}
+#ifdef WL_6G_BAND
+			case (WLC_BAND_6G):
+			{
+				if (band == WLC_BAND_6G || band == WLC_BAND_AUTO) {
+					/* scc */
+					channel = sta_channel;
+					acs_band = wl_cfg80211_get_acs_band(sta_band);
+				} else {
+					channel = APCS_DEFAULT_2G_CH;
+					acs_band = wl_cfg80211_get_acs_band(WLC_BAND_2G);
+				}
+				break;
+			}
+#endif /* WL_6G_BAND */
 			case (WLC_BAND_2G): {
 #ifdef WL_6G_BAND
 				if (band == WLC_BAND_6G) {
 					channel = APCS_DEFAULT_6G_CH;
+					acs_band = wl_cfg80211_get_acs_band(WLC_BAND_6G);
 				} else
 #endif /* WL_6G_BAND */
 				if (band == WLC_BAND_5G) {
 					channel = APCS_DEFAULT_5G_CH;
+					acs_band = wl_cfg80211_get_acs_band(WLC_BAND_5G);
 				} else if (band == WLC_BAND_AUTO) {
 #ifdef WL_6G_BAND
 					if (cfg->band_6g_supported) {
 						channel = APCS_DEFAULT_6G_CH;
+						acs_band = wl_cfg80211_get_acs_band(WLC_BAND_6G);
 					} else {
 						channel = APCS_DEFAULT_5G_CH;
+						acs_band = wl_cfg80211_get_acs_band(WLC_BAND_5G);
 					}
 #else
 					channel = APCS_DEFAULT_5G_CH;
+					acs_band = wl_cfg80211_get_acs_band(WLC_BAND_5G);
 #endif	/* WL_6G_BAND */
+				} else {
+					/* scc */
+					channel = sta_channel;
+					acs_band = wl_cfg80211_get_acs_band(sta_band);
 				}
 				break;
 			}
 			default:
 				/* Intentional fall through to use same sta channel for softap */
 				channel = sta_channel;
+				acs_band = wl_cfg80211_get_acs_band(sta_band);
 				break;
 		}
-		WL_DBG(("band = %d, sta_band=%d acs_channel = %d\n", band, sta_band, channel));
-		acs_band = wl_cfg80211_get_acs_band(band);
 		goto done2;
 	}
 
@@ -6723,8 +6876,10 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 			cfg->acs_chspec = (chanspec_t)list->element[0];
 			channel = wf_chspec_ctlchan((chanspec_t)list->element[0]);
 			acs_band = CHSPEC_BAND((chanspec_t)list->element[0]);
-			WL_DBG(("cfg->acs_chspec = 0x%x, channel =%d, acs_band =0x%x\n",
-				cfg->acs_chspec, channel, acs_band));
+			WL_INFORM_MEM(("chosen acs_chspec = 0x%x, channel =%d, acs_band =0x%x, "
+				"sta_channel =%d, sta_acs_band = 0x%x\n",
+				cfg->acs_chspec, channel, acs_band,
+				sta_channel, wl_cfg80211_get_acs_band(sta_band)));
 			goto done2;
 		}
 	} else {
@@ -6808,7 +6963,8 @@ done2:
 		MFREE(cfg->osh, reqbuf, CHANSPEC_BUF_SIZE);
 	}
 
-	WL_INFORM_MEM(("ACS: Channel = %d, acs_band = 0x%x\n", channel, acs_band));
+	WL_INFORM_MEM(("band = %d, sta_band=%d acs_channel = %d, acs_band = 0x%x\n",
+			band, sta_band, channel, acs_band));
 	if (channel && (acs_band != WLC_ACS_BAND_INVALID)) {
 		freq = wl_channel_to_frequency(channel, acs_band);
 		if (!freq) {
@@ -9786,6 +9942,125 @@ exit:
 	MFREE(cfg->osh, command, (buf_size + 1));
 	return ret;
 }
+#ifdef WLADPS_PRIVATE_CMD
+static int
+wl_android_set_adps_mode(struct net_device *dev, const char* string_num)
+{
+	int err = 0, adps_mode;
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
+#ifdef DHD_PM_CONTROL_FROM_FILE
+	if (g_pm_control) {
+		return -EPERM;
+	}
+#endif	/* DHD_PM_CONTROL_FROM_FILE */
+
+	adps_mode = bcm_atoi(string_num);
+	WL_ERR(("%s: SET_ADPS %d\n", __FUNCTION__, adps_mode));
+
+	if (!(adps_mode == 0 || adps_mode == 1)) {
+		WL_ERR(("wl_android_set_adps_mode: Invalid value %d.\n", adps_mode));
+		return -EINVAL;
+	}
+
+	err = dhd_enable_adps(dhdp, adps_mode);
+	if (err != BCME_OK) {
+		WL_ERR(("failed to set adps mode %d, error = %d\n", adps_mode, err));
+		return -EIO;
+	}
+	return err;
+}
+static int
+wl_android_get_adps_mode(
+	struct net_device *dev, char *command, int total_len)
+{
+	int bytes_written, err = 0;
+	uint len;
+	char buf[WLC_IOCTL_SMLEN];
+
+	bcm_iov_buf_t iov_buf;
+	bcm_iov_buf_t *ptr = NULL;
+	wl_adps_params_v1_t *data = NULL;
+
+	uint8 *pdata = NULL;
+	uint8 band, mode = 0;
+
+	bzero(&iov_buf, sizeof(iov_buf));
+
+	len = OFFSETOF(bcm_iov_buf_t, data) + sizeof(band);
+
+	iov_buf.version = WL_ADPS_IOV_VER;
+	iov_buf.len = sizeof(band);
+	iov_buf.id = WL_ADPS_IOV_MODE;
+
+	pdata = (uint8 *)&iov_buf.data;
+
+	for (band = 1; band <= MAX_BANDS; band++) {
+		pdata[0] = band;
+		err = wldev_iovar_getbuf(dev, "adps", &iov_buf, len,
+			buf, WLC_IOCTL_SMLEN, NULL);
+		if (err != BCME_OK) {
+			WL_ERR(("wl_android_get_adps_mode fail to get adps band %d(%d).\n",
+					band, err));
+			return -EIO;
+		}
+		ptr = (bcm_iov_buf_t *) buf;
+		data = (wl_adps_params_v1_t *) ptr->data;
+		mode = data->mode;
+		if (mode != OFF) {
+			break;
+		}
+	}
+
+	bytes_written = snprintf(command, total_len, "%s %d",
+		CMD_GET_ADPS, mode);
+	return bytes_written;
+}
+
+#ifdef WLADPS_ENERGY_GAIN
+static int
+wl_android_get_gain_adps(
+	struct net_device *dev, char *command, int total_len)
+{
+	int bytes_written;
+
+	int ret = 0;
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
+
+	ret = dhd_event_log_filter_adps_energy_gain(dhdp);
+	if (ret < 0) {
+		return ret;
+	}
+
+	WL_INFORM(("%s ADPS Energy Gain: %d uAh\n", __FUNCTION__, ret));
+
+	bytes_written = snprintf(command, total_len, "%s %d uAm",
+		CMD_GET_GAIN_ADPS, ret);
+
+	return bytes_written;
+}
+
+static int
+wl_android_reset_gain_adps(
+	struct net_device *dev, char *command)
+{
+	int ret = BCME_OK;
+
+	bcm_iov_buf_t iov_buf;
+	char buf[WLC_IOCTL_SMLEN] = {0, };
+
+	iov_buf.version = WL_ADPS_IOV_VER;
+	iov_buf.id = WL_ADPS_IOV_RESET_GAIN;
+	iov_buf.len = 0;
+
+	if ((ret = wldev_iovar_setbuf(dev, "adps", &iov_buf, sizeof(iov_buf),
+		buf, sizeof(buf), NULL)) < 0) {
+		WL_ERR(("%s fail to reset adps gain (%d)\n", __FUNCTION__, ret));
+	}
+
+	return ret;
+}
+#endif	/* WLADPS_ENERGY_GAIN */
+#endif /* WLADPS_PRIVATE_CMD */
 
 #ifdef WL_BCNRECV
 #define BCNRECV_ATTR_HDR_LEN 30
@@ -11433,7 +11708,6 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	} else if (strnicmp(command, CMD_ASSOC_CLIENTS,	strlen(CMD_ASSOC_CLIENTS)) == 0) {
 		bytes_written = wl_android_get_assoclist(net, command, priv_cmd.total_len);
 	}
-
 #ifdef CUSTOMER_HW4_PRIVATE_CMD
 	else if (strnicmp(command, CMD_ROAM_VSIE_ENAB_SET, strlen(CMD_ROAM_VSIE_ENAB_SET)) == 0) {
 		bytes_written = wl_android_set_roam_vsie_enab(net, command, priv_cmd.total_len);
@@ -11458,6 +11732,9 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	}
 	else if (strnicmp(command, CMD_OKC_ENABLE, strlen(CMD_OKC_ENABLE)) == 0) {
 		bytes_written = wl_android_okc_enable(net, command);
+	}
+	else if (strnicmp(command, CMD_SET_5G160, strlen(CMD_SET_5G160)) == 0) {
+		bytes_written = wl_android_config_5g160(net, command);
 	}
 	else if (wl_android_legacy_check_command(net, command)) {
 		bytes_written = wl_android_legacy_private_command(net, command, priv_cmd.total_len);
@@ -11997,6 +12274,23 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	else if (strnicmp(command, CMD_GET_SNR, strlen(CMD_GET_SNR)) == 0) {
 		bytes_written = wl_android_get_snr(net, command, priv_cmd.total_len);
 	}
+#ifdef WLADPS_PRIVATE_CMD
+	else if (strnicmp(command, CMD_SET_ADPS, strlen(CMD_SET_ADPS)) == 0) {
+		int skip = strlen(CMD_SET_ADPS) + 1;
+		bytes_written = wl_android_set_adps_mode(net, (const char*)command+skip);
+	}
+	else if (strnicmp(command, CMD_GET_ADPS, strlen(CMD_GET_ADPS)) == 0) {
+		bytes_written = wl_android_get_adps_mode(net, command, priv_cmd.total_len);
+	}
+#ifdef WLADPS_ENERGY_GAIN
+	else if (strnicmp(command, CMD_GET_GAIN_ADPS, strlen(CMD_GET_GAIN_ADPS)) == 0) {
+		bytes_written = wl_android_get_gain_adps(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_RESET_GAIN_ADPS, strlen(CMD_RESET_GAIN_ADPS)) == 0) {
+		bytes_written = wl_android_reset_gain_adps(net, command);
+	}
+#endif	/* WLADPS_ENERGY_GAIN */
+#endif /* WLADPS_PRIVATE_CMD */
 #ifdef DHD_PKT_LOGGING
 	else if (strnicmp(command, CMD_PKTLOG_FILTER_ENABLE,
 		strlen(CMD_PKTLOG_FILTER_ENABLE)) == 0) {

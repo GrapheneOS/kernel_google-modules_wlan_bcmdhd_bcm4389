@@ -388,9 +388,10 @@ dhd_os_dbg_start_pkt_monitor(dhd_pub_t *dhdp)
 }
 
 int
-dhd_os_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid)
+dhd_os_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
+	frame_type type, uint8 mgmt_acked)
 {
-	return dhd_dbg_monitor_tx_pkts(dhdp, pkt, pktid);
+	return dhd_dbg_monitor_tx_pkts(dhdp, pkt, pktid, type, mgmt_acked);
 }
 
 int
@@ -401,9 +402,9 @@ dhd_os_dbg_monitor_tx_status(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
 }
 
 int
-dhd_os_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt)
+dhd_os_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt, frame_type type)
 {
-	return dhd_dbg_monitor_rx_pkts(dhdp, pkt);
+	return dhd_dbg_monitor_rx_pkts(dhdp, pkt, type);
 }
 
 int

@@ -1801,6 +1801,10 @@ typedef enum sup_auth_status {
 	WLC_SUP_KEYXCHANGE_PREP_G2	/**< Preparing to send handshake msg G2 */
 } sup_auth_status_t;
 
+#define WLC_SUP_TD_POLICY_XTLV_ID		0x1u
+#define WLC_SUP_TD_POLICY_XTLV_ELEM_SIZE	0x4u	/* 4B aligned */
+#define WLC_SUP_TD_POLICY_XTLV_SIZE	(BCM_XTLV_HDR_SIZE + WLC_SUP_TD_POLICY_XTLV_ELEM_SIZE)
+
 typedef struct wl_wsec_key {
 	uint32		index;		/**< key index */
 	uint32		len;		/**< key length */
@@ -3225,6 +3229,7 @@ typedef struct {
 #define WL_TXPPR_LENGTH	(sizeof(wl_txppr_t))
 #define TX_POWER_T_VERSION	45
 #define TX_POWER_T_VERSION_V2	46
+#define TX_POWER_T_VERSION_V3	47
 
 /* curpower ppr types */
 enum {
@@ -3486,6 +3491,7 @@ typedef struct wl_mws_ocl_override {
 #define OCL_DISABLED_IDLE_TSSICAL	0x200
 #define OCL_DISABLED_TONE		0x400	/* Disabled if the tone is active */
 #define OCL_DISABLED_NOISECAL		0x800	/* Disabled if the noise cal is active */
+#define OCL_DISABLED_INIT              0x1000	/* Disabled during phy init */
 
 /* Bits for hw_status */
 #define OCL_HWCFG			0x01   /* State of OCL config bit in phy HW */
@@ -9561,6 +9567,52 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	int8  antgain[3];			/**< Ant gain for each band - from SROM */
 	uint8  pprdata[1];		/**< ppr serialization buffer */
 } BWL_POST_PACKED_STRUCT tx_pwr_rpt_v2_t;
+
+#define WL_TPC_MAX_BW_TX_PWR_LEN  8u
+#define WL_TPC_MAX_RU_TX_PWR_LEN  8u
+#define WL_TPE_MAX_TX_PWRS_LEN    16u
+
+typedef BWL_PRE_PACKED_STRUCT struct wl_tpc_bw_txpwr {
+	wl_tx_bw_t bw;
+	int8 txpwr;
+} BWL_POST_PACKED_STRUCT wl_tpc_bw_txpwr_t;
+
+typedef BWL_PRE_PACKED_STRUCT struct wl_tpc_ru_txpwr {
+	int ru;       /* RU of wl_he_rate_type_t type */
+	int8 txpwr;
+} BWL_POST_PACKED_STRUCT wl_tpc_ru_txpwr_t;
+
+typedef BWL_PRE_PACKED_STRUCT struct {
+	uint32 flags;
+	chanspec_t chanspec;       /**< txpwr report for this channel */
+	chanspec_t local_chanspec; /**< channel on which we are associated */
+	uint8 local_max;           /**< local max according to the AP */
+	uint8 local_constraint;    /**< local constraint according to the AP */
+	int8  pad[2];              /**< unused */
+	uint8 rf_cores;            /**< count of RF Cores being reported */
+	uint8 est_Pout[4];         /**< Latest tx power out estimate per RF chain */
+	uint8 est_Pout_act[4];     /**< Latest tx power out estimate per RF chain w/o adjustment */
+	uint8 est_Pout_cck;        /**< Latest CCK tx power out estimate */
+	uint8 tx_power_max[4];     /**< Maximum target power among all rates */
+	uint32 tx_power_max_rate_ind[4];  /**< Index of the rate with the max target power */
+	int8 sar;                  /**< SAR limit for display by wl executable */
+	int8 channel_bandwidth;    /**< 20, 40 or 80 MHz bandwidth? */
+	uint8 version;             /**< Version of the data format wlu <--> driver */
+	uint8 display_core;        /**< Displayed curpower core */
+	int8 target_offsets[4];    /**< Target power offsets for current rate per core */
+	uint32 last_tx_ratespec;   /**< Ratespec for last transmition */
+	uint32 user_target;        /**< user limit */
+	uint32 ppr_len;            /**< length of each ppr serialization buffer */
+	int8 SARLIMIT[MAX_STREAMS_SUPPORTED];
+	int8  antgain[3];          /**< Ant gain for each band - from SROM */
+	uint8 tpe_txpwrs_len;      /**< # max txpwrs rcvd in TPE elem */
+	int8 tpe_txpwrs[WL_TPE_MAX_TX_PWRS_LEN];  /**< TPE parsed max txpwrs */
+	uint8 sb_txpwrs_len;       /**< No of TPE sb_txpwrs present */
+	wl_tpc_bw_txpwr_t sb_txpwrs[WL_TPC_MAX_BW_TX_PWR_LEN];  /**< TPE Subband max txpwrs */
+	uint8 ru_txpwrs_len;       /**< No of TPE RU txpwrs present */
+	wl_tpc_ru_txpwr_t ru_txpwrs[WL_TPC_MAX_RU_TX_PWR_LEN];  /**< TPE RU max txpwrs */
+	uint8  pprdata[1];         /**< ppr serialization buffer */
+} BWL_POST_PACKED_STRUCT tx_pwr_rpt_v3_t;
 #include <packed_section_end.h>
 
 typedef struct tx_pwr_ru_rate_info {
@@ -16135,7 +16187,6 @@ typedef uint64 wl_ftm_session_mask_t;
 
 /* flags relevant to MC sessions */
 #define FTM_MC_CONFIG_MASK \
-	(FTM_COMMON_CONFIG_MASK) | \
 	(WL_FTM_SESSION_FLAG_AUTO_VHTACK \
 	| WL_FTM_SESSION_FLAG_MBURST_NODELAY \
 	| WL_FTM_SESSION_FLAG_ASAP_CAPABLE \
@@ -16151,13 +16202,12 @@ typedef uint64 wl_ftm_session_mask_t;
 
 /* flags relevant to NTB sessions */
 #define FTM_NTB_CONFIG_MASK \
-	(FTM_COMMON_CONFIG_MASK) | \
 	(WL_FTM_SESSION_FLAG_R2I_TOA_PHASE_SHIFT \
 	| WL_FTM_SESSION_FLAG_I2R_TOA_PHASE_SHIFT \
 	| WL_FTM_SESSION_FLAG_I2R_IMMEDIATE_RPT \
 	| WL_FTM_SESSION_FLAG_R2I_IMMEDIATE_RPT)
 
-/* flages relevant to TB sessions. To be expanded */
+/* flags relevant to TB sessions. To be expanded */
 #define FTM_TB_CONFIG_MASK (FTM_NTB_CONFIG_MASK)
 
 /** time units - mc supports up to 0.1ns resolution */
@@ -21011,6 +21061,7 @@ enum wl_otp_xtlv_id {
 	WL_OTP_XTLV_SBOOT_WAFER_Y		= 25u,	/* Chip wafer Y 9 bits */
 	WL_OTP_XTLV_SBOOT_UNLOCK_HASH_VAL	= 26u,	/* Unlock Hash Val 128 bits */
 	WL_OTP_XTLV_SBOOT_PRODUCTION_CHIP	= 27u,	/* Production chip bit */
+	WL_OTP_XTLV_SBOOT_ENCRYPTION_KEY	= 28u,	/* AES wrapped fw encryption key 320 bits */
 };
 
 #define WL_LEAKY_AP_STATS_GT_TYPE	0
@@ -23410,6 +23461,19 @@ typedef struct wl_ulmu_disable_stats {
 	uint16 avg_latency;	/* Avg latency by AP to re-act for UL OFDMA disable request (ms) */
 } wl_ulmu_disable_stats_v1_t;
 
+#define WL_TPE_TXPWR_CONFIG_VERSION_1	1u
+#define WL_TPE_TXPWR_MAX_LEN		8u
+
+typedef struct wl_tpe_txpwr_config {
+	uint16	version;
+	uint16	len;
+	uint8	idx;				/* Index of profile */
+	uint8	cat;				/* Transmit Power Info category */
+	uint8	intr;				/* Transmit Power Info Interpretation */
+	uint8	cnt;				/* Transmit Power Info count */
+	int8	txpwr[WL_TPE_TXPWR_MAX_LEN];	/* Maximum TX power */
+} wl_tpe_txpwr_config_v1_t;
+
 /* sub-xtlv IDs within WL_STATS_XTLV_WL_SLICE_TX_HISTOGRAMS */
 enum wl_tx_histogram_id {
 	WL_TX_HIST_TXQ_ID		= 1,
@@ -24761,6 +24825,10 @@ enum {
 	BCM_TRACE_E_MSCH	= 2,
 	BCM_TRACE_E_SC		= 3,
 	BCM_TRACE_E_SCAN	= 4,
+	BCM_TRACE_E_ASSOC	= 5,
+	BCM_TRACE_E_SCAN_STATE	= 6,
+	BCM_TRACE_E_RX_STALL	= 7,
+	BCM_TRACE_E_TX_STALL	= 8,
 	BCM_TRACE_E_LAST
 };
 
@@ -24811,4 +24879,75 @@ typedef struct wl_auth_start_evt {
 	uint32 key_mgmt_suite;
 	uint8 opt_tlvs[];
 } wl_auth_start_evt_t;
+
+/* Additional header pushed to the logged mgmt frame in aml(assoc mgmt frame logger) */
+typedef struct wl_aml_header_v1 {
+	uint16 version;		/* Header version, now 1 */
+	uint16 length;		/* frame length excluding this header */
+	uint16 flags;		/* flag to indicate tx/rx, acked/noack and others */
+	uint8 pad[2];		/* pad bytes for align */
+} wl_aml_header_v1_t;
+
+/* Version for aml header */
+#define WL_AML_HEADER_VERSION	1u
+
+/* Flags for aml header */
+#define WL_AML_F_DIRECTION 0x0001	/* This flag indicates this is Tx mgmt, otherwise Rx */
+#define WL_AML_F_ACKED     0x0002	/* This flag indicates the frame is acked */
+
+/* Version for IOVAR 'aml' */
+#define WL_AML_IOV_MAJOR_VER 1u
+#define WL_AML_IOV_MINOR_VER 0u
+#define WL_AML_IOV_MAJOR_VER_SHIFT 8u
+#define WL_AML_IOV_VERSION \
+	((WL_AML_IOV_MAJOR_VER << WL_AML_IOV_MAJOR_VER_SHIFT) | WL_AML_IOV_MINOR_VER)
+
+/* Common header for IOVAR 'aml' */
+typedef struct wl_aml_iov_cmnhdr {
+	uint16 ver;	/* IOVAR cmd structure version */
+	uint16 len;	/* IOVAR cmd structure total len (cmnhdr + following subcmd) */
+	uint16 subcmd;	/* IOVAR subcmd */
+	uint8 pad[2];
+} wl_aml_iov_cmnhdr_t;
+
+/* IOVAR 'aml' data structure, cmn header is followed by subcmd structure */
+typedef struct wl_aml_iovar {
+	wl_aml_iov_cmnhdr_t hdr;
+	uint32 data[0];
+} wl_aml_iovar_t;
+
+/* IOVAR 'aml' subcmd list */
+enum wl_aml_subcmd_ids {
+	WL_AML_SUBCMD_ENABLE = 1,	/* Enable/disable aml feature */
+	WL_AML_SUBCMD_LAST
+};
+
+/* IOVAR 'aml' subcmd structure for uint32 data
+ * Subcmd 'enable' uses this structure
+ */
+typedef struct wl_aml_iov_uint_data {
+	uint32 val;
+} wl_aml_iov_uint_data_t;
+
+/* IOVAR 'aml enable' subcmd bit numbers
+ *  wl_aml_iov_uint_data.val is popluated with following bits
+ */
+enum wl_aml_cmd_enable_bitnums {
+	WL_AML_ASSOC_ENABLE = 0,	/* Logging for association */
+	WL_AML_ROAM_ENABLE = 1,		/* Logging for roaming */
+	WL_AML_ENABLE_LAST
+};
+
+/* Snapshot of various timestamps */
+#define WL_TIMESTAMP_VERSION_1 1
+typedef struct wl_timestamps_v1 {
+	uint16	version;	/**< structure version */
+	uint16	length;		/**< length of this struct */
+	uint64	cpu_cycles;	/**< CPU Cycle count */
+	uint64	ptm;		/**< Local PTM master timestamp in nano seconds */
+	uint64	pmu_timer;	/**< Legacy PMU timer in micsoseconds */
+	uint32	tsf_main;	/**< Main slice TSF */
+	uint32	tsf_aux;	/**< Aux slice TSF */
+	uint32	tsf_scan;	/**< Scan core TSF */
+} wl_timestamps_v1_t;
 #endif /* _wlioctl_h_ */

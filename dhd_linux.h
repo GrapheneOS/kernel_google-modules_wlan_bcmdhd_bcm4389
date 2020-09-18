@@ -65,6 +65,32 @@
 #endif /* HOST_RADIOTAP_CONV */
 #endif /* WL_MONITOR */
 
+#ifdef DHD_COREDUMP
+#define PC_FOUND_BIT 0x01
+#define LR_FOUND_BIT 0x02
+#define ALL_ADDR_VAL (PC_FOUND_BIT | LR_FOUND_BIT)
+#define READ_NUM_BYTES 1000
+#define DHD_FUNC_STR_LEN 80
+#endif /* DHD_COREDUMP */
+
+#ifdef BCMDBUS
+#define DBUS_NRXQ	50
+#define DBUS_NTXQ	100
+#endif /* BCMDBUS */
+
+#ifdef DHD_WAKE_RX_STATUS
+#define ETHER_ICMP6_HEADER	20
+#define ETHER_IPV6_SADDR (ETHER_ICMP6_HEADER + 2)
+#define ETHER_IPV6_DAADR (ETHER_IPV6_SADDR + IPV6_ADDR_LEN)
+#define ETHER_ICMPV6_TYPE (ETHER_IPV6_DAADR + IPV6_ADDR_LEN)
+#endif /* DHD_WAKE_RX_STATUS */
+
+#ifdef SUPPORT_AP_POWERSAVE
+#define RXCHAIN_PWRSAVE_PPS			10
+#define RXCHAIN_PWRSAVE_QUIET_TIME		10
+#define RXCHAIN_PWRSAVE_STAS_ASSOC_CHECK	0
+#endif /* SUPPORT_AP_POWERSAVE */
+
 #define DHD_REGISTRATION_TIMEOUT  12000  /* msec : allowed time to finished dhd registration */
 
 typedef struct wifi_adapter_info {
@@ -429,12 +455,12 @@ void dhd_update_psta_interface_for_sta(dhd_pub_t *dhdp, char* ifname,
 int dhd_net_bus_get(struct net_device *dev);
 int dhd_net_bus_put(struct net_device *dev);
 #endif /* BT_OVER_SDIO */
-#if defined(WLADPS)
+#if defined(WLADPS) || defined(WLADPS_PRIVATE_CMD)
 #define ADPS_ENABLE	1
 #define ADPS_DISABLE	0
 
 int dhd_enable_adps(dhd_pub_t *dhd, uint8 on);
-#endif
+#endif /* WLADPS || WLADPS_PRIVATE_CMD */
 #ifdef DHDTCPSYNC_FLOOD_BLK
 extern void dhd_reset_tcpsync_info_by_ifp(dhd_if_t *ifp);
 extern void dhd_reset_tcpsync_info_by_dev(struct net_device *dev);

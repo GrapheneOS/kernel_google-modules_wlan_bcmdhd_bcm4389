@@ -1172,7 +1172,7 @@ done:
 }
 
 void *
-pktq_peek(struct pktq *pq, int *prec_out)
+BCMPOSTTRAPFN(pktq_peek)(struct pktq *pq, int *prec_out)
 {
 	int prec;
 	void *p = NULL;

@@ -193,6 +193,7 @@ struct wl_ibss;
 #endif /* IL_BIGENDIAN */
 
 #define WL_DBG_NONE	0
+#define WL_DBG_PNO	(1 << 6)
 #define WL_DBG_P2P_ACTION	(1 << 5)
 #define WL_DBG_TRACE	(1 << 4)
 #define WL_DBG_SCAN	(1 << 3)
@@ -434,6 +435,8 @@ do {	\
 		WL_DBG_PRINT_SYSTEM_TIME;				\
 		pr_cont(CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		pr_cont args;							\
+		DHD_LOG_DUMP_WRITE_TS_FN;	\
+		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_ERR_MEM(args)	\
@@ -602,7 +605,15 @@ do {									\
 #else				/* !(WL_DBG_LEVEL > 0) */
 #define	WL_DBG(args)
 #endif				/* (WL_DBG_LEVEL > 0) */
-#define WL_PNO(x)
+#define WL_PNO(args)							\
+do {									\
+	if (wl_dbg_level & WL_DBG_PNO) {				\
+		WL_DBG_PRINT_SYSTEM_TIME;                               \
+		pr_cont(CFG80211_SCAN_TEXT "%s :", __func__);		\
+		pr_cont args;						\
+	}								\
+} while (0)
+
 #define WL_SD(x)
 
 #define WL_SCAN_RETRY_MAX   3
@@ -1474,9 +1485,8 @@ typedef struct wl_bssid_prune_evt_info wl_bssid_pruned_evt_info_t;
 #endif /* WL_NAN2P */
 #endif /* WL_NAN */
 
-#ifdef WL_IFACE_MGMT
 #define WL_IFACE_NOT_PRESENT -1
-
+#ifdef WL_IFACE_MGMT
 typedef enum iface_conc_policy {
 	WL_IF_POLICY_DEFAULT		= 0,
 	WL_IF_POLICY_FCFS		= 1,
@@ -1656,6 +1666,11 @@ typedef struct wl_event_idx {
 	u32 min_connect_idx;
 } wl_event_idx_t;
 
+typedef struct {
+	u32 band;
+	u32 bw_cap;
+} wl_bw_cap_t;
+
 /* private data of cfg80211 interface */
 struct bcm_cfg80211 {
 	struct wireless_dev *wdev;	/* representing cfg cfg80211 device */
@@ -1812,9 +1827,9 @@ struct bcm_cfg80211 {
 	s32 tdls_mgmt_freq;
 #endif /* WLTDLS */
 	bool need_wait_afrx;
-#ifdef QOS_MAP_SET
+#if defined(QOS_MAP_SET) || defined(WL_CUSTOM_MAPPING_OF_DSCP)
 	uint8	 *up_table;	/* user priority table, size is UP_TABLE_MAX */
-#endif /* QOS_MAP_SET */
+#endif /* QOS_MAP_SET || WL_CUSTOM_MAPPING_OF_DSCP */
 	struct ether_addr last_roamed_addr;
 	bool rcc_enabled;	/* flag for Roam channel cache feature */
 	u16 ap_oper_channel;
@@ -2649,6 +2664,7 @@ wl_iftype_to_str(int wl_iftype)
 #define IS_AKM_SUITE_FT(sec) ({BCM_REFERENCE(sec); FALSE;})
 #endif /* WLFBT */
 
+#define IS_AKM_SUITE_SAE_FT(sec) (sec->wpa_auth == WLAN_AKM_SUITE_FT_OVER_SAE)
 #define IS_AKM_SUITE_CCKM(sec) ({BCM_REFERENCE(sec); FALSE;})
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
@@ -2908,9 +2924,9 @@ do {                                    \
 	}                               \
 } while (0)
 
-#ifdef QOS_MAP_SET
+#if defined(QOS_MAP_SET) || defined(WL_CUSTOM_MAPPING_OF_DSCP)
 extern uint8 *wl_get_up_table(dhd_pub_t * dhdp, int idx);
-#endif /* QOS_MAP_SET */
+#endif /* QOS_MAP_SET || WL_CUSTOM_MAPPING_OF_DSCP */
 
 #define P2PO_COOKIE     65535
 u64 wl_cfg80211_get_new_roc_id(struct bcm_cfg80211 *cfg);
@@ -3053,4 +3069,25 @@ extern s32 wl_handle_auth_event(struct bcm_cfg80211 *cfg, struct net_device *nde
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 extern int wl_cfg80211_alert(struct net_device *dev);
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
+
+#ifdef AUTH_ASSOC_STATUS_EXT
+typedef enum auth_assoc_status_ext {
+	/* WLC_E_SET_SSID */
+	AUTH_ASSOC_STATUS_NO_NETWORKS	= 1025,
+	/* WLC_E_AUTH */
+	AUTH_ASSOC_STATUS_OPEN_AUTH_NOACK,
+	AUTH_ASSOC_STATUS_OPEN_AUTH_NORESP,
+	AUTH_ASSOC_STATUS_OPEN_AUTH_FAIL,
+	AUTH_ASSOC_STATUS_SAE_AUTH_NOACK,
+	AUTH_ASSOC_STATUS_SAE_AUTH_NORESP,
+	AUTH_ASSOC_STATUS_SAE_AUTH_FAIL,
+	/* WLC_E_ASSOC */
+	AUTH_ASSOC_STATUS_ASSOC_NOACK,
+	AUTH_ASSOC_STATUS_ASSOC_NORESP,
+	AUTH_ASSOC_STATUS_ASSOC_FAIL,
+	AUTH_ASSOC_STATUE_MAX		/* MAX Status Code */
+} auth_assoc_status_ext_t;
+extern s32 wl_get_auth_assoc_status_ext(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, const wl_event_msg_t *e);
+#endif	/* AUTH_ASSOC_STATUS_EXT */
 #endif /* _wl_cfg80211_h_ */

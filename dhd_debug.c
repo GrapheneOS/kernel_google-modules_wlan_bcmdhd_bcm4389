@@ -38,6 +38,10 @@
 #include <event_log.h>
 #include <event_trace.h>
 #include <msgtrace.h>
+#if defined(DBG_PKT_MON)
+#include <dhd_linux_priv.h>
+#include <dhd_linux_wq.h>
+#endif /* DBG_PKT_MON */
 
 #if defined(DHD_EVENT_LOG_FILTER)
 #include <dhd_event_log_filter.h>
@@ -1496,6 +1500,83 @@ __dhd_dbg_map_tx_status_to_pkt_fate(uint16 status)
 #endif /* DBG_PKT_MON || DHD_PKT_LOGGING */
 
 #ifdef DBG_PKT_MON
+static int do_iovar_aml_enable(dhd_pub_t *dhdp, uint val);
+static void dhd_do_aml_disable(void *handle, void *event_info, u8 event);
+void dhd_schedule_aml_disable(dhd_pub_t *dhdp);
+
+static int
+do_iovar_aml_enable(dhd_pub_t *dhdp, uint val)
+{
+	wl_aml_iovar_t *iov_in;
+	wl_aml_iov_uint_data_t *subcmd;
+	int buf_size, alloc_len, ret = BCME_OK;
+
+	buf_size = OFFSETOF(wl_aml_iovar_t, data);
+	alloc_len = buf_size + sizeof(wl_aml_iov_uint_data_t);
+
+	iov_in = MALLOCZ(dhdp->osh, alloc_len);
+	if (!iov_in) {
+		DHD_ERROR(("%s: Error allocating %u bytes for aml enable\n",
+			__FUNCTION__, alloc_len));
+		return BCME_NOMEM;
+	}
+
+	iov_in->hdr.ver = htod16(WL_AML_IOV_VERSION);
+	iov_in->hdr.len = htod16(alloc_len);
+	iov_in->hdr.subcmd = htod16(WL_AML_SUBCMD_ENABLE);
+
+	if (val & ~(1u << WL_AML_ASSOC_ENABLE | 1u << WL_AML_ROAM_ENABLE)) {
+		ret = BCME_BADARG;
+		goto fail;
+	}
+
+	subcmd = (wl_aml_iov_uint_data_t *)iov_in->data;
+	subcmd->val = htod32(val);
+
+	ret = dhd_iovar(dhdp, 0, "aml", (char *)iov_in, alloc_len, NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s aml failed %d\n", __FUNCTION__, ret));
+		ret = BCME_ERROR;
+		goto fail;
+	}
+
+fail:
+	if (iov_in) {
+		MFREE(dhdp->osh, iov_in, alloc_len);
+	}
+
+	return ret;
+}
+
+static void dhd_do_aml_disable(void *handle, void *event_info, u8 event)
+{
+	dhd_info_t *dhd = (dhd_info_t *)handle;
+	dhd_pub_t *dhdp = NULL;
+	uint val = 0; /* Disabled */
+
+	dhdp = &dhd->pub;
+	if (!dhdp) {
+		DHD_ERROR(("%s: dhdp is NULL\n", __FUNCTION__));
+		return;
+	}
+
+	if (do_iovar_aml_enable(dhdp, val) == BCME_OK) {
+		dhdp->aml_enable = FALSE;
+	}
+
+	return;
+}
+
+void dhd_schedule_aml_disable(dhd_pub_t *dhdp)
+{
+	if (dhdp->dbg->pkt_mon.tx_pkt_state == PKT_MON_STOPPED &&
+			dhdp->dbg->pkt_mon.rx_pkt_state == PKT_MON_STOPPED) {
+		DHD_ERROR(("%s: scheduling aml iovar..\n", __FUNCTION__));
+		dhd_deferred_schedule_work(dhdp->info->dhd_deferred_wq, NULL,
+			DHD_WQ_WORK_AML_IOVAR, dhd_do_aml_disable, DHD_WQ_WORK_PRIORITY_HIGH);
+	}
+}
+
 static int
 __dhd_dbg_free_tx_pkts(dhd_pub_t *dhdp, dhd_dbg_tx_info_t *tx_pkts,
 	uint16 pkt_count)
@@ -1714,6 +1795,10 @@ dhd_dbg_start_pkt_monitor(dhd_pub_t *dhdp)
 		return -EINVAL;
 	}
 
+	if (do_iovar_aml_enable(dhdp, 1) == BCME_OK) {
+		dhdp->aml_enable = TRUE;
+	}
+
 	DHD_PKT_MON_LOCK(dhdp->dbg->pkt_mon_lock, flags);
 	tx_pkt_state = dhdp->dbg->pkt_mon.tx_pkt_state;
 	tx_status_state = dhdp->dbg->pkt_mon.tx_status_state;
@@ -1765,7 +1850,7 @@ dhd_dbg_start_pkt_monitor(dhd_pub_t *dhdp)
 }
 
 int
-dhd_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid)
+dhd_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, frame_type type, uint8 mgmt_acked)
 {
 	dhd_dbg_tx_report_t *tx_report;
 	dhd_dbg_tx_info_t *tx_pkts;
@@ -1791,19 +1876,35 @@ dhd_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid)
 			pkt_hash = __dhd_dbg_pkt_hash((uintptr_t)pkt, pktid);
 			driver_ts = __dhd_dbg_driver_ts_usec();
 
-			tx_pkts[pkt_pos].info.pkt = PKTDUP(dhdp->osh, pkt);
+			if (type == FRAME_TYPE_80211_MGMT) {
+				tx_pkts[pkt_pos].info.pkt = pkt;
+				if (mgmt_acked) {
+					tx_pkts[pkt_pos].fate = TX_PKT_FATE_ACKED;
+				} else {
+					tx_pkts[pkt_pos].fate = TX_PKT_FATE_SENT;
+				}
+			} else {
+				tx_pkts[pkt_pos].info.pkt = PKTDUP(dhdp->osh, pkt);
+				tx_pkts[pkt_pos].fate = TX_PKT_FATE_DRV_QUEUED;
+			}
+
 			tx_pkts[pkt_pos].info.pkt_len = PKTLEN(dhdp->osh, pkt);
 			tx_pkts[pkt_pos].info.pkt_hash = pkt_hash;
 			tx_pkts[pkt_pos].info.driver_ts = driver_ts;
 			tx_pkts[pkt_pos].info.firmware_ts = 0U;
-			tx_pkts[pkt_pos].info.payload_type = FRAME_TYPE_ETHERNET_II;
-			tx_pkts[pkt_pos].fate = TX_PKT_FATE_DRV_QUEUED;
+			tx_pkts[pkt_pos].info.payload_type = type;
 
 			tx_report->pkt_pos++;
 		} else {
+			if (type == FRAME_TYPE_80211_MGMT) {
+				PKTFREE(dhdp->osh, pkt, TRUE);
+			}
 			dhdp->dbg->pkt_mon.tx_pkt_state = PKT_MON_STOPPED;
 			DHD_PKT_MON(("%s(): tx pkt logging stopped, reached "
 				"max limit\n", __FUNCTION__));
+			if (dhdp->aml_enable) {
+				dhd_schedule_aml_disable(dhdp);
+			}
 		}
 	}
 
@@ -1892,7 +1993,7 @@ dhd_dbg_monitor_tx_status(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
 }
 
 int
-dhd_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt)
+dhd_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt, frame_type type)
 {
 	dhd_dbg_rx_report_t *rx_report;
 	dhd_dbg_rx_info_t *rx_pkts;
@@ -1917,19 +2018,29 @@ dhd_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt)
 			rx_pkts = rx_report->rx_pkts;
 			driver_ts = __dhd_dbg_driver_ts_usec();
 
-			rx_pkts[pkt_pos].info.pkt = PKTDUP(dhdp->osh, pkt);
+			if (type == FRAME_TYPE_80211_MGMT) {
+				rx_pkts[pkt_pos].info.pkt = pkt;
+			} else {
+				rx_pkts[pkt_pos].info.pkt = PKTDUP(dhdp->osh, pkt);
+			}
 			rx_pkts[pkt_pos].info.pkt_len = PKTLEN(dhdp->osh, pkt);
 			rx_pkts[pkt_pos].info.pkt_hash = 0U;
 			rx_pkts[pkt_pos].info.driver_ts = driver_ts;
 			rx_pkts[pkt_pos].info.firmware_ts = 0U;
-			rx_pkts[pkt_pos].info.payload_type = FRAME_TYPE_ETHERNET_II;
+			rx_pkts[pkt_pos].info.payload_type = type;
 			rx_pkts[pkt_pos].fate = RX_PKT_FATE_SUCCESS;
 
 			rx_report->pkt_pos++;
 		} else {
+			if (type == FRAME_TYPE_80211_MGMT) {
+				PKTFREE(dhdp->osh, pkt, TRUE);
+			}
 			dhdp->dbg->pkt_mon.rx_pkt_state = PKT_MON_STOPPED;
 			DHD_PKT_MON(("%s(): rx pkt logging stopped, reached "
 					"max limit\n", __FUNCTION__));
+			if (dhdp->aml_enable) {
+				dhd_schedule_aml_disable(dhdp);
+			}
 		}
 	}
 
@@ -2072,7 +2183,7 @@ dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 	if (!pkt_count) {
 		DHD_ERROR(("%s(): no tx_status in tx completion messages, "
 			"make sure that 'd11status' is enabled in firmware, "
-			"status_pos=%u", __FUNCTION__, pkt_count));
+			"status_pos=%u\n", __FUNCTION__, pkt_count));
 	}
 
 	return BCME_OK;

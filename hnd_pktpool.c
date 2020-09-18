@@ -1170,7 +1170,7 @@ BCMPOSTTRAPFN(pktpool_avail_notify)(pktpool_t *pktp)
 #ifdef APP_RX
 /* Update freelist and avail count for a given packet pool */
 void
-BCMFASTPATH(pktpool_update_freelist)(pktpool_t *pktp, void *p, uint pkts_consumed)
+BCMPOSTTRAPFASTPATH(pktpool_update_freelist)(pktpool_t *pktp, void *p, uint pkts_consumed)
 {
 	ASSERT_FP(pktp->avail >= pkts_consumed);
 

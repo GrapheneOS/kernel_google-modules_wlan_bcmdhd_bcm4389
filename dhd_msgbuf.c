@@ -843,9 +843,12 @@ static void dhd_prot_process_flow_ring_resume_response(dhd_pub_t *dhd, void* msg
 static void dhd_prot_process_flow_ring_suspend_response(dhd_pub_t *dhd, void* msg);
 
 /* Monitor Mode */
-#ifdef WL_MONITOR
+#if defined(WL_MONITOR)
 extern bool dhd_monitor_enabled(dhd_pub_t *dhd, int ifidx);
 extern void dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx);
+#if defined(DBG_PKT_MON)
+extern void dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx);
+#endif /* DBG_PKT_MON */
 #endif /* WL_MONITOR */
 
 /* Configure a soft doorbell per D2H ring */
@@ -6361,6 +6364,14 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 					DHD_ERROR(("Received non 802.11 packet, "
 						"when monitor mode is enabled\n"));
 				}
+#ifdef DBG_PKT_MON
+			} else {
+				if (msg->flags & BCMPCIE_PKT_FLAGS_FRAME_802_11) {
+					DHD_TRACE(("Received 802.11 packet for PKT MON\n"));
+					dhd_80211_mon_pkt(dhd, msg, pkt, ifidx);
+					continue;
+				}
+#endif /* DBG_PKT_MON */
 			}
 #endif /* WL_MONITOR */
 
@@ -7638,7 +7649,7 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 	pktlen  = PKTLEN(dhd->osh, PKTBUF);
 
 	/* TODO: XXX: re-look into dropped packets */
-	DHD_DBG_PKT_MON_TX(dhd, PKTBUF, pktid);
+	DHD_DBG_PKT_MON_TX(dhd, PKTBUF, pktid, FRAME_TYPE_ETHERNET_II, 0);
 
 	dhd_handle_pktdata(dhd, ifidx, PKTBUF, pktdata, pktid,
 		pktlen, NULL, &dhd_udr, TRUE, FALSE, TRUE);

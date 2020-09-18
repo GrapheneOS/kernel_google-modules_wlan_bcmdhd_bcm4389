@@ -1249,11 +1249,13 @@ void
 dhd_sdtc_etb_deinit(dhd_pub_t *dhd)
 {
 	dhd->sdtc_etb_inited = FALSE;
+	dhd->sdtc_etb_dump_len = 0;
 }
 
 int
 dhd_sdtc_etb_mempool_init(dhd_pub_t *dhd)
 {
+	dhd->sdtc_etb_dump_len = 0;
 	dhd->sdtc_etb_mempool = (uint8 *) MALLOCZ(dhd->osh, DHD_SDTC_ETB_MEMPOOL_SIZE);
 	if (dhd->sdtc_etb_mempool == NULL) {
 		DHD_ERROR(("%s: MALLOC of sdtc_etb_mempool failed\n",
@@ -4198,11 +4200,16 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		break;
 
 #ifdef WL_CLIENT_SAE
-		case WLC_E_AUTH_START:
-			DHD_EVENT(("MACEVENT: %s, MAC %s, reason %d\n", event_name,
-				eabuf, (int)reason));
-			break;
+	case WLC_E_AUTH_START:
+		DHD_EVENT(("MACEVENT: %s, MAC %s, reason %d\n", event_name,
+			eabuf, (int)reason));
+		break;
 #endif /* WL_CLIENT_SAE */
+
+	case WLC_E_BSSID:
+		DHD_EVENT(("MACEVENT: %s, MAC %s, reason %d datalen %d\n", event_name,
+			eabuf, (int)reason, datalen));
+		break;
 
 	case WLC_E_ASSOC:
 	case WLC_E_REASSOC:

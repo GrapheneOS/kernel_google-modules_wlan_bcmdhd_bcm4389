@@ -1920,6 +1920,8 @@ dhd_rtt_update_geofence_sessions_cnt(dhd_pub_t *dhd, bool incr,
 			geofence_cfg->geofence_sessions_cnt--;
 		}
 	}
+
+exit:
 	if (peer_addr) {
 		WL_INFORM_MEM(("session cnt update, upd = %d, cnt = %d, cnt_bef_upd = %d, "
 			" peer : "MACDBG", ret = %d\n", incr, geofence_cfg->geofence_sessions_cnt,
@@ -1930,7 +1932,6 @@ dhd_rtt_update_geofence_sessions_cnt(dhd_pub_t *dhd, bool incr,
 			 geofence_ssn_cnt_before_upd, ret));
 	}
 
-exit:
 	return ret;
 }
 
@@ -2146,7 +2147,7 @@ dhd_rtt_remove_geofence_target(dhd_pub_t *dhd, struct ether_addr *peer_addr)
 	int err = BCME_OK;
 	rtt_status_info_t *rtt_status;
 	rtt_geofence_target_info_t  *geofence_target_info;
-	int8 geofence_target_cnt, j, index = 0;
+	int8 geofence_target_cnt, j, index = DHD_RTT_INVALID_TARGET_INDEX;
 	struct net_device *dev;
 	struct bcm_cfg80211 *cfg;
 
@@ -2165,14 +2166,15 @@ dhd_rtt_remove_geofence_target(dhd_pub_t *dhd, struct ether_addr *peer_addr)
 		goto exit;
 	}
 
-	/* Get the geofence_target via peer addr */
-	geofence_target_info = dhd_rtt_get_geofence_target(dhd, peer_addr, &index);
-	if (geofence_target_info == NULL) {
+	/* Get the geofence_target index via peer addr */
+	dhd_rtt_get_geofence_target(dhd, peer_addr, &index);
+	if (index == DHD_RTT_INVALID_TARGET_INDEX) {
 		DHD_RTT(("Geofencing RTT target not found, remove request dropped\n"));
 		err = BCME_NOTFOUND;
 		goto exit;
 	}
 
+	geofence_target_info = rtt_status->geofence_cfg.geofence_target_info;
 	/* left shift all the valid entries, as we dont keep holes in list */
 	for (j = index; j < geofence_target_cnt; j++) {
 		/*
@@ -2180,8 +2182,8 @@ dhd_rtt_remove_geofence_target(dhd_pub_t *dhd, struct ether_addr *peer_addr)
 		 * statically allocated
 		 */
 		if ((j + 1) < geofence_target_cnt) {
-			(void)memcpy_s(&geofence_target_info[j], sizeof(geofence_target_info[j]),
-				&geofence_target_info[j + 1], sizeof(geofence_target_info[j + 1]));
+			(void)memcpy_s(&geofence_target_info[j], sizeof(rtt_geofence_target_info_t),
+				&geofence_target_info[j + 1], sizeof(rtt_geofence_target_info_t));
 		} else {
 			/* reset the last target info */
 			bzero(&geofence_target_info[j], sizeof(rtt_geofence_target_info_t));

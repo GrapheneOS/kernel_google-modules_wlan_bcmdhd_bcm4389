@@ -1212,7 +1212,7 @@ dhd_flow_rings_delete_for_peer(dhd_pub_t *dhdp, uint8 ifindex, char *addr)
 	uint32 id;
 	flow_ring_table_t *flow_ring_table;
 
-	DHD_ERROR(("%s: ifindex %u\n", __FUNCTION__, ifindex));
+	DHD_INFO(("%s: ifindex %u\n", __FUNCTION__, ifindex));
 
 	ASSERT(ifindex < DHD_MAX_IFS);
 	if (ifindex >= DHD_MAX_IFS)
@@ -1237,7 +1237,7 @@ dhd_flow_rings_delete_for_peer(dhd_pub_t *dhdp, uint8 ifindex, char *addr)
 			(!memcmp(flow_ring_table[id].flow_info.da, addr, ETHER_ADDR_LEN)) &&
 			((flow_ring_table[id].status == FLOW_RING_STATUS_OPEN) ||
 			(flow_ring_table[id].status == FLOW_RING_STATUS_CREATE_PENDING))) {
-			DHD_ERROR(("%s: deleting flowid %d\n",
+			DHD_INFO(("%s: deleting flowid %d\n",
 				__FUNCTION__, flow_ring_table[id].flowid));
 			dhd_bus_flow_ring_delete_request(dhdp->bus,
 				(void *) &flow_ring_table[id]);

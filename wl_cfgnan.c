@@ -4294,7 +4294,7 @@ wl_cfgnan_suspend_all_geofence_rng_sessions(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
 	dhd_pub_t *dhd = (struct dhd_pub *)(cfg->pub);
 
-	WL_INFORM_MEM(("Suspending all geofence sessions: "
+	WL_MEM(("Suspending all geofence sessions: "
 		"suspend_reason = %d\n", suspend_reason));
 
 	cancel_flags |= NAN_RNG_TERM_FLAG_IMMEDIATE;
@@ -4495,8 +4495,7 @@ wl_cfgnan_trigger_geofencing_ranging(struct net_device *dev,
 
 exit:
 	if (ret) {
-		WL_ERR(("wl_cfgnan_trigger_geofencing_ranging: Failed to "
-			"trigger ranging, peer: " MACDBG " ret"
+		WL_ERR(("Failed to trigger ranging, peer: " MACDBG " ret"
 			" = (%d), err_at = %d\n", MAC2STRDBG(peer_addr),
 			ret, err_at));
 	}
@@ -7956,21 +7955,21 @@ exit:
 static void
 wl_nan_print_status(wl_nan_conf_status_t *nstatus)
 {
-	WL_INFORM_MEM(("> NMI: " MACDBG " Cluster_ID: " MACDBG "\n",
+	WL_DBG(("> NMI: " MACDBG " Cluster_ID: " MACDBG "\n",
 		MAC2STRDBG(nstatus->nmi.octet),
 		MAC2STRDBG(nstatus->cid.octet)));
 
-	WL_INFORM_MEM(("> NAN Device Role %s\n", nan_role_to_str(nstatus->role)));
-	WL_INFORM_MEM(("> Social channels: %d, %d\n",
+	WL_DBG(("> NAN Device Role %s\n", nan_role_to_str(nstatus->role)));
+	WL_DBG(("> Social channels: %d, %d\n",
 		nstatus->social_chans[0], nstatus->social_chans[1]));
 
-	WL_INFORM_MEM(("> Master_rank: " NMRSTR " AMR : " NMRSTR " Hop Count : %d, AMBTT : %d\n",
+	WL_DBG(("> Master_rank: " NMRSTR " AMR : " NMRSTR " Hop Count : %d, AMBTT : %d\n",
 		NMR2STR(nstatus->mr),
 		NMR2STR(nstatus->amr),
 		nstatus->hop_count,
 		nstatus->ambtt));
 
-	WL_INFORM_MEM(("> Cluster TSF_H: %x , Cluster TSF_L: %x\n",
+	WL_DBG(("> Cluster TSF_H: %x , Cluster TSF_L: %x\n",
 		nstatus->cluster_tsf_h, nstatus->cluster_tsf_l));
 }
 
@@ -8091,7 +8090,7 @@ wl_cfgnan_reset_geofence_ranging(struct bcm_cfg80211 *cfg,
 		mutex_lock(&rtt_status->rtt_mutex);
 	}
 
-	WL_INFORM_MEM(("wl_cfgnan_reset_geofence_ranging: "
+	WL_MEM(("wl_cfgnan_reset_geofence_ranging: "
 		"sched_reason = %d, cur_idx = %d, target_cnt = %d\n",
 		sched_reason, rtt_status->geofence_cfg.cur_target_idx,
 		rtt_status->geofence_cfg.geofence_target_cnt));
@@ -8110,7 +8109,7 @@ wl_cfgnan_reset_geofence_ranging(struct bcm_cfg80211 *cfg,
 		 * Remove all valid ranging inst
 		 */
 		if (rng_inst) {
-			WL_INFORM_MEM(("Removing Ranging Instance " MACDBG "\n",
+			WL_MEM(("Removing Ranging Instance " MACDBG "\n",
 				MAC2STRDBG(&(rng_inst->peer_addr))));
 			bzero(rng_inst, sizeof(*rng_inst));
 		}
@@ -8166,7 +8165,7 @@ wl_cfgnan_reset_geofence_ranging(struct bcm_cfg80211 *cfg,
 
 exit:
 	if (reset_req_drop) {
-		WL_INFORM_MEM(("reset geofence req dropped, reason = %d\n",
+		WL_MEM(("reset geofence req dropped, reason = %d\n",
 			reset_req_drop));
 	}
 	if (need_rtt_mutex == TRUE) {
@@ -8329,9 +8328,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		/* get nan status info as-is */
 		bcm_xtlv_t *xtlv = (bcm_xtlv_t *)event_data;
 		wl_nan_conf_status_t *nstatus = (wl_nan_conf_status_t *)xtlv->data;
-		WL_INFORM_MEM((">> Nan Mac Event Received: %s (num=%d, len=%d)\n",
+		WL_DBG((">> Nan Mac Event Received: %s (num=%d, len=%d)\n",
 			nan_event_to_str(event_num), event_num, data_len));
-		WL_INFORM_MEM(("Nan Device Role %s\n", nan_role_to_str(nstatus->role)));
+		WL_DBG(("Nan Device Role %s\n", nan_role_to_str(nstatus->role)));
 		/* Mapping to common struct between DHD and HAL */
 		nan_event_data->enabled = nstatus->enabled;
 		ret = memcpy_s(&nan_event_data->local_nmi, ETHER_ADDR_LEN,
@@ -8615,9 +8614,18 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 						&rng_inst->peer_addr);
 					if (!wl_cfgnan_geofence_retry_check(rng_inst,
 							range_term->reason_code)) {
-						/* Report on ranging failure */
-						wl_cfgnan_disc_result_on_geofence_cancel(cfg,
-							rng_inst);
+						if ((range_term->reason_code !=
+							NAN_RNG_TERM_USER_REQ) &&
+							range_term->reason_code !=
+							NAN_RNG_TERM_PEER_REQ) {
+							/*
+							 * Report on ranging failure
+							 * Dont report for self or peer
+							 * termination reason codes
+							 */
+							wl_cfgnan_disc_result_on_geofence_cancel
+								(cfg, rng_inst);
+						}
 						WL_TRACE(("Reset the state on terminate\n"));
 						geofence_target = dhd_rtt_get_geofence_target(dhd,
 							&rng_inst->peer_addr, &index);

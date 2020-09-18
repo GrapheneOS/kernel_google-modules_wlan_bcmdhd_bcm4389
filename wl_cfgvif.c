@@ -477,7 +477,6 @@ wl_cfg80211_get_iface_policy(struct net_device *ndev)
 #endif /* WL_IFACE_MGMT */
 #endif /* WL_IFACE_MGMT_CONF */
 
-#ifdef WL_IFACE_MGMT
 /* Get active secondary data iface type */
 wl_iftype_t
 wl_cfg80211_get_sec_iface(struct bcm_cfg80211 *cfg)
@@ -528,6 +527,7 @@ wl_cfg80211_get_sec_iface(struct bcm_cfg80211 *cfg)
 	return WL_IFACE_NOT_PRESENT;
 }
 
+#ifdef WL_IFACE_MGMT
 /*
 * Handle incoming data interface request based on policy.
 * If there is any conflicting interface, that will be
@@ -834,12 +834,13 @@ wl_cfg80211_handle_if_role_conflict(struct bcm_cfg80211 *cfg,
 {
 	s32 ret = BCME_OK;
 
-	WL_INFORM_MEM(("Incoming iface = %s\n", wl_iftype_to_str(new_wl_iftype)));
+	WL_DBG_MEM(("Incoming iface = %s\n", wl_iftype_to_str(new_wl_iftype)));
 
 	if (!is_discovery_iface(new_wl_iftype)) {
 		/* Incoming data interface request */
 		if (wl_cfg80211_get_sec_iface(cfg) != WL_IFACE_NOT_PRESENT) {
 			/* active interface present - Apply interface data policy */
+			WL_INFORM_MEM(("apply iface policy for %d\n", new_wl_iftype));
 			ret = wl_cfg80211_data_if_mgmt(cfg, new_wl_iftype);
 			if (ret != BCME_OK) {
 				WL_ERR(("if_mgmt fail:%d\n", ret));

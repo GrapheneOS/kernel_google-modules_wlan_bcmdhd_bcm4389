@@ -174,6 +174,14 @@ BWL_PRE_PACKED_STRUCT struct	ether_addr {
 				 (((const uint16 *)(a))[6] ^ ((const uint16 *)(b))[6]))
 #endif /* DONGLEBUILD && __ARM_ARCH_7A__ */
 
+#define eacmp_nogrp(a, b) \
+			(((((const uint8 *)(a))[0] & 0x0e) ^ (((const uint8 *)(b))[0] & 0x0e)) | \
+	                (((const uint8 *)(a))[1] ^ ((const uint8 *)(b))[1]) | \
+	                (((const uint8 *)(a))[2] ^ ((const uint8 *)(b))[2]) | \
+	                (((const uint8 *)(a))[3] ^ ((const uint8 *)(b))[3]) | \
+	                (((const uint8 *)(a))[4] ^ ((const uint8 *)(b))[4]) | \
+	                (((const uint8 *)(a))[5] ^ ((const uint8 *)(b))[5]))
+
 #define	ether_cmp(a, b)	eacmp(a, b)
 
 /* copy an ethernet address - assumes the pointers can be referenced as shorts */

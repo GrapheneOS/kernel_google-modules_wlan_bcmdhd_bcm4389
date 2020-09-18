@@ -10588,7 +10588,7 @@ dhd_bus_inb_ack_pending_ds_req(dhd_bus_t *bus)
 	*/
 	if ((dhdpcie_bus_get_pcie_inband_dw_state(bus) ==
 		DW_DEVICE_DS_DEV_SLEEP_PEND) &&
-		(bus->host_active_cnt == 0)) {
+		(bus->host_active_cnt == 0) && (!bus->skip_ds_ack)) {
 		dhdpcie_bus_set_pcie_inband_dw_state(bus, DW_DEVICE_DS_DEV_SLEEP);
 		dhdpcie_send_mb_data(bus, H2D_HOST_DS_ACK);
 	}
@@ -10711,7 +10711,7 @@ dhd_bus_inb_set_device_wake(struct dhd_bus *bus, bool val)
 			bus->inband_dw_deassert_cnt++;
 		} else if ((dhdpcie_bus_get_pcie_inband_dw_state(bus) ==
 			DW_DEVICE_DS_DEV_SLEEP_PEND) &&
-			(bus->host_active_cnt == 0)) {
+			(bus->host_active_cnt == 0) && (!bus->skip_ds_ack)) {
 			dhdpcie_bus_set_pcie_inband_dw_state(bus, DW_DEVICE_DS_DEV_SLEEP);
 			dhdpcie_send_mb_data(bus, H2D_HOST_DS_ACK);
 		}
@@ -11838,9 +11838,7 @@ dhdpcie_readshared(dhd_bus_t *bus)
 #endif /* defined(PCIE_INB_DW) */
 	uint32 timeout = MAX_READ_TIMEOUT;
 	uint32 elapsed;
-#ifndef CUSTOMER_HW4_DEBUG
 	uint32 intstatus;
-#endif /* OEM_ANDROID */
 
 	if (MULTIBP_ENAB(bus->sih)) {
 		dhd_bus_pcie_pwr_req(bus);
@@ -11869,10 +11867,14 @@ dhdpcie_readshared(dhd_bus_t *bus)
 	if (addr == (uint32)-1) {
 		DHD_ERROR(("%s: ##### pciedev shared address is 0xffffffff ####\n", __FUNCTION__));
 
-#ifdef CUSTOMER_HW4_DEBUG
+/* In phones sometimes NOC is seen for any further access after readshared fails */
+#ifdef DHD_NO_DUMP_FOR_READSHARED_FAIL
+		DHD_ERROR(("%s:### NO dumps will be colelcted and will be marked as linkdown ###\n",
+			__FUNCTION__));
 		bus->is_linkdown = 1;
-		DHD_ERROR(("%s : PCIe link might be down\n", __FUNCTION__));
-#else
+		return BCME_ERROR;
+#endif /* DHD_NO_DUMP_FOR_READSHARED_FAIL */
+
 		dhd_bus_dump_imp_cfg_registers(bus);
 		dhd_bus_dump_dar_registers(bus);
 		/* Check the PCIe link status by reading intstatus register */
@@ -11884,22 +11886,17 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		} else {
 #if defined(DHD_FW_COREDUMP)
 #ifdef DHD_SSSR_DUMP
-#ifdef BOARD_HIKEY
 			DHD_ERROR(("%s : Set collect_sssr and fis_enab as TRUE\n", __FUNCTION__));
 			bus->dhd->collect_sssr = TRUE;
 			fis_enab = TRUE;
-#endif /* BOARD_HIKEY */
 #endif /* DHD_SSSR_DUMP */
 			/* save core dump or write to a file */
 			if (bus->dhd->memdump_enabled) {
-				/* since dhdpcie_readshared() is invoked only during init or trap */
-				bus->dhd->memdump_type = bus->dhd->dongle_trap_data ?
-					DUMP_TYPE_DONGLE_TRAP : DUMP_TYPE_DONGLE_INIT_FAILURE;
+				bus->dhd->memdump_type = DUMP_TYPE_READ_SHM_FAIL;
 				dhdpcie_mem_dump(bus);
 			}
 #endif /* DHD_FW_COREDUMP */
 		}
-#endif /* CUSTOMER_HW4_DEBUG */
 		return BCME_ERROR;
 	}
 
@@ -14903,6 +14900,55 @@ dhdpcie_sssr_dump_get_after_sr(dhd_pub_t *dhd)
 	return BCME_OK;
 }
 
+#define GCI_CHIPSTATUS_AUX	GCI_CHIPSTATUS_10
+#define GCI_CHIPSTATUS_MAIN	GCI_CHIPSTATUS_11
+#define GCI_CHIPSTATUS_DIG	GCI_CHIPSTATUS_12
+#define GCI_CHIPSTATUS_SCAN	GCI_CHIPSTATUS_13
+
+#define GCI_CHIPSTATUS_ILLEGAL_INSTR_BITMASK	(1u << 3)
+int
+dhdpcie_validate_gci_chip_intstatus(dhd_pub_t *dhd)
+{
+	int gci_intstatus;
+	si_t *sih = dhd->bus->sih;
+
+	/* For now validate only for 4389 chip */
+	if (si_chipid(sih) != BCM4389_CHIP_ID) {
+		DHD_ERROR(("%s: skipping for chipid:0x%x\n", __FUNCTION__, si_chipid(sih)));
+		return BCME_OK;
+	}
+
+	gci_intstatus = si_gci_chipstatus(sih, GCI_CHIPSTATUS_MAIN);
+	if (gci_intstatus & GCI_CHIPSTATUS_ILLEGAL_INSTR_BITMASK) {
+		DHD_ERROR(("%s: Illegal instruction set for MAIN core 0x%x\n",
+			__FUNCTION__, gci_intstatus));
+		return BCME_ERROR;
+	}
+
+	gci_intstatus = si_gci_chipstatus(sih, GCI_CHIPSTATUS_AUX);
+	if (gci_intstatus & GCI_CHIPSTATUS_ILLEGAL_INSTR_BITMASK) {
+		DHD_ERROR(("%s: Illegal instruction set for AUX core 0x%x\n",
+			__FUNCTION__, gci_intstatus));
+		return BCME_ERROR;
+	}
+
+	gci_intstatus = si_gci_chipstatus(sih, GCI_CHIPSTATUS_SCAN);
+	if (gci_intstatus & GCI_CHIPSTATUS_ILLEGAL_INSTR_BITMASK) {
+		DHD_ERROR(("%s: Illegal instruction set for SCAN core 0x%x\n",
+			__FUNCTION__, gci_intstatus));
+		return BCME_ERROR;
+	}
+
+	gci_intstatus = si_gci_chipstatus(sih, GCI_CHIPSTATUS_DIG);
+	if (gci_intstatus & GCI_CHIPSTATUS_ILLEGAL_INSTR_BITMASK) {
+		DHD_ERROR(("%s: Illegal instruction set for DIG core 0x%x\n",
+			__FUNCTION__, gci_intstatus));
+		return BCME_ERROR;
+	}
+
+	return BCME_OK;
+}
+
 int
 dhdpcie_sssr_dump(dhd_pub_t *dhd)
 {
@@ -14918,6 +14964,11 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 		return BCME_ERROR;
 	}
 
+	if (dhdpcie_validate_gci_chip_intstatus(dhd) != BCME_OK) {
+		DHD_ERROR(("%s: ## Invalid GCI Chip intstatus, Abort SSSR ##\n",
+			__FUNCTION__));
+		return BCME_ERROR;
+	}
 	DHD_ERROR(("%s: Before WL down (powerctl: pcie:0x%x chipc:0x%x) "
 		"PMU rctl:0x%x res_state:0x%x\n", __FUNCTION__,
 		si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
@@ -15152,6 +15203,8 @@ dhdpcie_fis_dump(dhd_pub_t *dhd)
 {
 	int i;
 	uint8 num_d11cores;
+	struct dhd_bus *bus = dhd->bus;
+	uint32 save_idx = 0;
 
 	DHD_ERROR(("%s\n", __FUNCTION__));
 
@@ -15189,6 +15242,16 @@ dhdpcie_fis_dump(dhd_pub_t *dhd)
 
 	dhdpcie_d11_check_outofreset(dhd);
 
+	/* take sysmem out of reset - otherwise
+	 * socram collected again will read only
+	 * 0xffff
+	 */
+	save_idx = si_coreidx(bus->sih);
+	if (si_setcore(bus->sih, SYSMEM_CORE_ID, 0)) {
+		si_core_reset(bus->sih, 0, 0);
+		si_setcoreidx(bus->sih, save_idx);
+	}
+
 	DHD_ERROR(("%s: Collecting Dump after SR\n", __FUNCTION__));
 	if (dhdpcie_sssr_dump_get_after_sr(dhd) != BCME_OK) {
 		DHD_ERROR(("%s: dhdpcie_sssr_dump_get_after_sr failed\n", __FUNCTION__));
@@ -15196,6 +15259,9 @@ dhdpcie_fis_dump(dhd_pub_t *dhd)
 	}
 	dhd->sssr_dump_collected = TRUE;
 	dhd_write_sssr_dump(dhd, SSSR_DUMP_MODE_FIS);
+
+	/* re-read socram into buffer */
+	dhdpcie_get_mem_dump(bus);
 
 	return BCME_OK;
 }

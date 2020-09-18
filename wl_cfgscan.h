@@ -145,6 +145,11 @@ extern int wl_android_get_roam_scan_chanlist(struct bcm_cfg80211 *cfg);
 extern s32 wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 	struct net_device *dev, wlcfg_assoc_info_t *info);
 extern void wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg);
+
+#define APCS_DEFAULT_2G_FREQ	2437u
+#define APCS_DEFAULT_5G_FREQ	5745u
+#define APCS_DEFAULT_6G_FREQ	5975u
+
 #ifdef DHD_GET_VALID_CHANNELS
 typedef enum {
 	WIFI_BAND_UNSPECIFIED,

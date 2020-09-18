@@ -2525,6 +2525,7 @@ BCMPOSTTRAPFN(si_gci_chipcontrol)(si_t *sih, uint reg, uint32 mask, uint32 val)
 	si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_indirect_addr), ~0, reg);
 	return si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_chipctrl), mask, val);
 }
+#endif /* !defined(BCMDONGLEHOST) */
 
 /* Read the gci chip status register indexed by 'reg' */
 uint32
@@ -2541,7 +2542,6 @@ BCMPOSTTRAPFN(si_gci_chipstatus)(si_t *sih, uint reg)
 	/* setting mask and value to '0' to use si_corereg for read only purpose */
 	return si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_chipsts), 0, 0);
 }
-#endif /* !defined(BCMDONGLEHOST) */
 
 uint16
 si_chipid(const si_t *sih)

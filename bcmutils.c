@@ -95,13 +95,15 @@ BCMRAMFN(privacy_addrmask_get)(void)
 
 #ifndef BCM_ARM_BACKTRACE
 /* function pointers for firmware stack backtrace utility */
-void (*const print_btrace_int_fn)(int depth, uint32 pc, uint32 lr, uint32 sp) = NULL;
-void (*const print_btrace_fn)(int depth) = NULL;
+void (*const BCMPOST_TRAP_RODATA(print_btrace_int_fn))(int depth, uint32 pc, uint32 lr, uint32 sp) =
+	NULL;
+void (*const BCMPOST_TRAP_RODATA(print_btrace_fn))(int depth) = NULL;
 #else
 void print_backtrace(int depth);
-void (*const print_btrace_fn)(int depth) = print_backtrace;
+void (*const BCMPOST_TRAP_RODATA(print_btrace_fn))(int depth) = print_backtrace;
 void print_backtrace_int(int depth, uint32 pc, uint32 lr, uint32 sp);
-void (*const print_btrace_int_fn)(int depth, uint32 pc, uint32 lr, uint32 sp) = print_backtrace_int;
+void (*const BCMPOST_TRAP_RODATA(print_btrace_int_fn))(int depth, uint32 pc, uint32 lr, uint32 sp) =
+	print_backtrace_int;
 #endif
 
 #if !defined(BCMDONGLEHOST)
@@ -535,7 +537,7 @@ BCMFASTPATH(pktfrag_trim_tailbytes)(osl_t * osh, void* p, uint16 trim_len, uint8
 
 /* copy a pkt buffer chain into a buffer */
 uint
-pktcopy(osl_t *osh, void *p, uint offset, uint len, uchar *buf)
+BCMPOSTTRAPFN(pktcopy)(osl_t *osh, void *p, uint offset, uint len, uchar *buf)
 {
 	uint n, ret = 0;
 
@@ -1180,6 +1182,11 @@ BCMFASTPATH(pktsetprio_qms)(void *pkt, uint8* up_table, bool update_vtag)
 			user_priority = dscp2up(up_table, dscp);
 			PKTSETPRIO(pkt, user_priority);
 		}
+#ifdef WL_CUSTOM_MAPPING_OF_DSCP
+		else {
+			return pktsetprio(pkt, update_vtag);
+		}
+#endif /* WL_CUSTOM_MAPPING_OF_DSCP */
 
 		return (rc | user_priority);
 	} else {
@@ -2817,7 +2824,7 @@ bcm_ipv6_ntoa(void *ipv6, char *buf)
 }
 
 #if !defined(BCMROMOFFLOAD_EXCLUDE_BCMUTILS_FUNCS)
-const unsigned char bcm_ctype[256] = {
+const unsigned char BCMPOST_TRAP_RODATA(bcm_ctype)[256] = {
 
 	_BCM_C,_BCM_C,_BCM_C,_BCM_C,_BCM_C,_BCM_C,_BCM_C,_BCM_C,			/* 0-7 */
 	_BCM_C, _BCM_C|_BCM_S, _BCM_C|_BCM_S, _BCM_C|_BCM_S, _BCM_C|_BCM_S, _BCM_C|_BCM_S, _BCM_C,
@@ -3172,7 +3179,7 @@ bcm_atoipv4(const char *p, struct ipv4_addr *ip)
 #endif	/* !BCMROMOFFLOAD_EXCLUDE_BCMUTILS_FUNCS */
 
 const struct ether_addr ether_bcast = {{255, 255, 255, 255, 255, 255}};
-const struct ether_addr ether_null = {{0, 0, 0, 0, 0, 0}};
+const struct ether_addr BCMPOST_TRAP_RODATA(ether_null) = {{0, 0, 0, 0, 0, 0}};
 const struct ether_addr ether_ipv6_mcast = {{0x33, 0x33, 0x00, 0x00, 0x00, 0x01}};
 
 int

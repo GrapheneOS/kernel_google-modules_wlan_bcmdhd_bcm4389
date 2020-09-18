@@ -346,8 +346,8 @@ wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	wl_af_params_t *af_params, s32 bssidx, const u8 *sa);
 
 extern s32
-wl_actframe_fillup_v2(wl_af_params_v2_t *af_params_v2_p, wl_af_params_t *af_params,
-	const u8 *sa, uint16 wl_af_params_size);
+wl_actframe_fillup_v2(struct net_device *dev, wl_af_params_v2_t *af_params_v2_p,
+	wl_af_params_t *af_params, const u8 *sa, uint16 wl_af_params_size);
 
 extern void
 wl_cfgp2p_generate_bss_mac(struct bcm_cfg80211 *cfg, struct ether_addr *primary_addr);

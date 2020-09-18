@@ -216,6 +216,7 @@ typedef struct dot11_action_vs_frmhdr dot11_action_vs_frmhdr_t;
 
 #define DOT11_BA_CTL_MTID		0x0002	/* multi tid BA */
 #define DOT11_BA_CTL_COMPRESSED		0x0004	/* compressed bitmap */
+#define DOT11_BA_CTL_GCR		0x0008	/* GCR BAR */
 
 #define DOT11_BA_CTL_NUMMSDU_MASK	0x0FC0	/* num msdu in bitmap mask */
 #define DOT11_BA_CTL_NUMMSDU_SHIFT	6	/* num msdu in bitmap shift */
@@ -238,6 +239,14 @@ BWL_PRE_PACKED_STRUCT struct dot11_bar {
 	uint16			seqnum;		/* Starting Sequence control */
 } BWL_POST_PACKED_STRUCT;
 #define DOT11_BAR_LEN		4		/* BAR frame payload length */
+
+/** GCR BAR frame payload */
+BWL_PRE_PACKED_STRUCT struct dot11_gcr_bar {
+	uint16				bar_control;	/* BAR Control */
+	uint16				seqnum;		/* Starting Sequence control */
+	struct ether_addr		gcr;		/* GCR address */
+} BWL_POST_PACKED_STRUCT;
+#define DOT11_GCR_BAR_LEN		10u		/* GCR BAR frame payload length */
 
 #define DOT11_BA_BITMAP_LEN	128		/* bitmap length */
 #define DOT11_BA_CMP_BITMAP_LEN	8		/* compressed bitmap length */
@@ -3993,7 +4002,9 @@ typedef struct dot11_mprep dot11_mprep_t;
 /* HT-SIG1 */
 #define HT_SIG1_MCS_MASK        0x00007F
 #define HT_SIG1_CBW             0x000080
+#define HT_SIG1_CBW_SHIFT       7u
 #define HT_SIG1_HT_LENGTH       0xFFFF00
+#define HT_SIG1_HT_LENGTH_SHIFT 8u
 
 /* HT-SIG2 */
 #define HT_SIG2_SMOOTHING       0x000001
@@ -5219,6 +5230,7 @@ typedef struct dot11_ftm_ranging_ndpa dot11_ftm_ranging_ndpa_t;
 #define DOT11_NDPA_TYPE_VHT      0x00
 #define DOT11_NDPA_TYPE_RANGING  0x01
 #define DOT11_NDPA_TYPE_HE       0x02
+#define DOT11_NPDA_TOKEN_SHIFT 2u
 
 #define DOT11_FTM_ERR_NOT_CONT_OFFSET 1
 #define DOT11_FTM_ERR_NOT_CONT_MASK 0x80
@@ -5890,11 +5902,18 @@ BWL_PRE_PACKED_STRUCT struct supp_op_classes_ie {
 } BWL_POST_PACKED_STRUCT;
 typedef struct supp_op_classes_ie supp_op_classes_ie_t;
 
-/* Transition mode (bit number) */
-#define TRANSISION_MODE_WPA3_PSK		0u
-#define TRANSITION_MODE_SAE_PK			1u
-#define TRANSITION_MODE_WPA3_ENTERPRISE		2u
-#define TRANSITION_MODE_ENHANCED_OPEN		3u
+/* WPA3 Transition Mode bits */
+#define TRANSISION_MODE_WPA3_PSK		BCM_BIT(0)
+#define TRANSITION_MODE_WPA3_PSK		BCM_BIT(0)
+#define TRANSITION_MODE_SAE_PK			BCM_BIT(1)
+#define TRANSITION_MODE_WPA3_ENTERPRISE		BCM_BIT(2)
+#define TRANSITION_MODE_ENHANCED_OPEN		BCM_BIT(3)
+
+#define TRANSITION_MODE_SUPPORTED_MASK (\
+	TRANSITION_MODE_WPA3_PSK | \
+	TRANSITION_MODE_SAE_PK | \
+	TRANSITION_MODE_WPA3_ENTERPRISE | \
+	TRANSITION_MODE_ENHANCED_OPEN)
 
 /* This marks the end of a packed structure section. */
 #include <packed_section_end.h>

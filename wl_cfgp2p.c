@@ -1673,8 +1673,8 @@ wl_cfgp2p_action_tx_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev
 
 #define ETHER_LOCAL_ADDR 0x02
 s32
-wl_actframe_fillup_v2(wl_af_params_v2_t *af_params_v2_p, wl_af_params_t *af_params,
-	const u8 *sa, uint16 wl_af_params_size)
+wl_actframe_fillup_v2(struct net_device *dev, wl_af_params_v2_t *af_params_v2_p,
+	wl_af_params_t *af_params, const u8 *sa, uint16 wl_af_params_size)
 {
 	s32 err = 0;
 	wl_action_frame_v2_t *action_frame_v2_p;
@@ -1699,8 +1699,9 @@ wl_actframe_fillup_v2(wl_af_params_v2_t *af_params_v2_p, wl_af_params_t *af_para
 		WL_ERR(("actframe :memcpy failed\n"));
 		return -ENOMEM;
 	}
-	/* check if local admin bit is set */
-	if (sa[0] & ETHER_LOCAL_ADDR) {
+	/* check if local admin bit is set and addr is different from ndev addr */
+	if ((sa[0] & ETHER_LOCAL_ADDR) &&
+			memcmp(sa, dev->dev_addr, ETH_ALEN)) {
 		/* Use mask to avoid randomization, as the address from supplicant
 		 * is already randomized.
 		 */
@@ -1763,7 +1764,7 @@ wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev,
 				WL_ERR(("unable to allocate frame\n"));
 				return -ENOMEM;
 			}
-			ret = wl_actframe_fillup_v2(af_params_v2_p, af_params, sa,
+			ret = wl_actframe_fillup_v2(dev, af_params_v2_p, af_params, sa,
 					wl_af_params_size);
 			if (ret != BCME_OK) {
 				WL_ERR(("unable to fill actframe_params, ret %d\n", ret));

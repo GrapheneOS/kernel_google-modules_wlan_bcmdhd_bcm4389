@@ -3556,7 +3556,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		pno_time = PNO_TIME;
 	}
 
-	WL_DBG(("Enter. ssids:%d match_sets:%d pno_time:%d pno_repeat:%d channels:%d\n",
+	WL_INFORM(("Enter. ssids:%d match_sets:%d pno_time:%d pno_repeat:%d channels:%d\n",
 		request->n_ssids, request->n_match_sets,
 		pno_time, pno_repeat, request->n_channels));
 
@@ -3689,8 +3689,7 @@ wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 
-	WL_DBG(("Enter \n"));
-	WL_PNO((">>> SCHED SCAN STOP\n"));
+	WL_INFORM((">>> SCHED SCAN STOP\n"));
 
 #if defined(BCMDONGLEHOST)
 	if (dhd_dev_pno_stop_for_ssid(dev) < 0) {
@@ -5412,10 +5411,10 @@ static int wl_cfgscan_acs_parse_result(acs_selected_channels_t *pResult,
 		return BCME_BADARG;
 	}
 
-	chspec_ctl_freq = wl_channel_to_frequency(wf_chspec_ctlchan(ch_chosen),
-			CHSPEC_BAND(ch_chosen));
-	chspec_center_ch = CHSPEC_CHANNEL(ch_chosen);
-	chspec_band = CHSPEC_BAND(ch_chosen);
+	chspec_ctl_freq = wl_channel_to_frequency(wf_chspec_ctlchan((chanspec_t)ch_chosen),
+			CHSPEC_BAND((chanspec_t)ch_chosen));
+	chspec_center_ch = wf_chspec_ctlchan((chanspec_t)ch_chosen);
+	chspec_band = CHSPEC_BAND((chanspec_t)ch_chosen);
 	chspec_bw = CHSPEC_BW(ch_chosen);
 	chspec_sb = CHSPEC_CTL_SB(ch_chosen);
 	WL_TRACE(("%s: ctl_freq=%d, center_ch=%d, band=0x%X, bw=0x%X, sb=0x%X\n",
@@ -5813,7 +5812,7 @@ static void wl_cfgscan_acs_result_event(struct work_struct *work)
 
 		/* construct result */
 		if (wl_cfgscan_acs_parse_result(&result, ch_chosen, pParameter) < 0) {
-			WL_ERR(("%s: fail to conver the result\n", __FUNCTION__));
+			WL_ERR(("%s: fail to convert the result\n", __FUNCTION__));
 			ret = BCME_BADARG;
 			break;
 		}
@@ -5837,14 +5836,14 @@ static void wl_cfgscan_acs_result_event(struct work_struct *work)
 		}
 		WL_TRACE(("%s: good to get skb=0x%p\n", __FUNCTION__, skb));
 
-		if ((nla_put_u16(skb, BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ, result.pri_freq) < 0) ||
-		    (nla_put_u16(skb, BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ, result.sec_freq) < 0) ||
+		if ((nla_put_u32(skb, BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ, result.pri_freq) < 0) ||
+		    (nla_put_u32(skb, BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ, result.sec_freq) < 0) ||
 		    (nla_put_u8(skb, BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL,
 				result.vht_seg0_center_ch) < 0) ||
 		    (nla_put_u8(skb, BRCM_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL,
 				result.vht_seg1_center_ch) < 0) ||
 		    (nla_put_u16(skb, BRCM_VENDOR_ATTR_ACS_CHWIDTH, result.ch_width) < 0) ||
-		    (nla_put_u32(skb, BRCM_VENDOR_ATTR_ACS_HW_MODE, result.hw_mode) < 0)) {
+		    (nla_put_u8(skb, BRCM_VENDOR_ATTR_ACS_HW_MODE, result.hw_mode) < 0)) {
 			WL_ERR(("%s: Error, fail to fill the result\n", __FUNCTION__));
 			ret = BCME_BADARG;
 			break;
@@ -5899,7 +5898,7 @@ static int wl_cfgscan_acs_do_apcs(struct net_device *dev, int band, chanspec_t *
 			case (WLC_BAND_6G):
 #endif /* WL_6G_BAND */
 				if ((band == WLC_BAND_2G) || (band == WLC_BAND_AUTO)) {
-					chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_2G_CH);
+					chosen = wl_freq_to_chanspec(APCS_DEFAULT_2G_FREQ);
 				} else {
 					chosen = CH20MHZ_CHSPEC(channel);
 				}
@@ -5907,20 +5906,20 @@ static int wl_cfgscan_acs_do_apcs(struct net_device *dev, int band, chanspec_t *
 			case (WLC_BAND_2G):
 #ifdef WL_6G_BAND
 				if (band & WLC_BAND_6G) {
-					chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_6G_CH);
+					chosen = wl_freq_to_chanspec(APCS_DEFAULT_6G_FREQ);
 				} else
 #endif /* WL_6G_BAND */
 				if (band & WLC_BAND_5G) {
-					chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_5G_CH);
+					chosen = wl_freq_to_chanspec(APCS_DEFAULT_5G_FREQ);
 				} else if (band == WLC_BAND_AUTO) {
 #ifdef WL_6G_BAND
 					if (cfg->band_6g_supported) {
-						chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_6G_CH);
+						chosen = wl_freq_to_chanspec(APCS_DEFAULT_6G_FREQ);
 					} else {
-						chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_5G_CH);
+						chosen = wl_freq_to_chanspec(APCS_DEFAULT_5G_FREQ);
 					}
 #else
-					chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_5G_CH);
+					chosen = wl_freq_to_chanspec(APCS_DEFAULT_5G_FREQ);
 #endif /* WL_6G_BAND */
 				} else {
 					chosen = CH20MHZ_CHSPEC(channel);

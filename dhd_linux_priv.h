@@ -455,10 +455,10 @@ int dhd_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcp
 int dhd_register_cpuhp_callback(dhd_info_t *dhd);
 int dhd_unregister_cpuhp_callback(dhd_info_t *dhd);
 #endif /* DHD_LB */
-
-#if defined(DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON)
+#if defined(SET_PCIE_IRQ_CPU_CORE) || defined(DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON)
 void dhd_irq_set_affinity(dhd_pub_t *dhdp, const struct cpumask *cpumask);
-#endif /* DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON */
+#endif /* SET_PCIE_IRQ_CPU_CORE ||  DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON */
+
 #ifdef DHD_SSSR_DUMP
 extern uint sssr_enab;
 extern uint fis_enab;

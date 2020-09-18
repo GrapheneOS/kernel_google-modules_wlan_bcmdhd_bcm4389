@@ -816,6 +816,7 @@ bool wl_cfgnan_ranging_is_in_prog_for_peer(struct bcm_cfg80211 *cfg,
 #endif /* RTT_SUPPORT */
 
 typedef enum {
+	NAN_ATTRIBUTE_INVALID				= 0,
 	NAN_ATTRIBUTE_HEADER                            = 100,
 	NAN_ATTRIBUTE_HANDLE                            = 101,
 	NAN_ATTRIBUTE_TRANSAC_ID                        = 102,
@@ -946,7 +947,8 @@ typedef enum {
 	NAN_ATTRIBUTE_DISCOVERY_BEACON_INTERVAL		= 224,
 	NAN_ATTRIBUTE_NSS				= 225,
 	NAN_ATTRIBUTE_ENABLE_RANGING			= 226,
-	NAN_ATTRIBUTE_DW_EARLY_TERM			= 227
+	NAN_ATTRIBUTE_DW_EARLY_TERM			= 227,
+	NAN_ATTRIBUTE_MAX				= 228
 } NAN_ATTRIBUTE;
 
 enum geofence_suspend_reason {
