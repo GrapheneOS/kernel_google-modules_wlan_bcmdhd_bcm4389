@@ -5436,7 +5436,8 @@ wl_config_roam_env_detection(struct bcm_cfg80211 *cfg, struct net_device *dev)
 				sizeof(roam_trigger)) == BCME_OK) &&
 			(roam_trigger[0] == WL_AUTO_ROAM_TRIGGER-10);
 #endif /* SKIP_ROAM_TRIGGER_RESET */
-		if (is_roamtrig_reset && is_roam_env_ok) {
+		if (is_roamtrig_reset && is_roam_env_ok &&
+				(dhdp->wbtext_policy != WL_BSSTRANS_POLICY_PRODUCT_WBTEXT)) {
 			roam_trigger[0] = WL_AUTO_ROAM_TRIGGER;
 			roam_trigger[1] = WLC_BAND_ALL;
 			err = wldev_ioctl_set(dev, WLC_SET_ROAM_TRIGGER, roam_trigger,
