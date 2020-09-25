@@ -3617,7 +3617,12 @@ dhd_set_mac_address(struct net_device *dev, void *addr)
 		}
 #endif /* WL_STATIC_IF */
 		wl_cfg80211_handle_macaddr_change(dev, dhdif->mac_addr);
-		return _dhd_set_mac_address(dhd, ifidx, dhdif->mac_addr);
+		ret = _dhd_set_mac_address(dhd, ifidx, dhdif->mac_addr);
+		if (ret == BCME_OK) {
+			/* Notify Dev/Address change to upperlayer */
+			netdev_state_change(dev);
+		}
+		return ret;
 	}
 #endif /* WL_CFG80211 */
 
