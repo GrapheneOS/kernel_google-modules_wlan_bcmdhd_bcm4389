@@ -20071,9 +20071,13 @@ void dhd_set_version_info(dhd_pub_t *dhdp, char *fw)
 	if (!dhdp)
 		return;
 
-	i = snprintf(&info_string[i], sizeof(info_string) - i,
+	i += snprintf(&info_string[i], sizeof(info_string) - i,
 		"\n  Chip: %x Rev %x Pkg %x", dhd_bus_chip_id(dhdp),
 		dhd_bus_chiprev_id(dhdp), dhd_bus_chippkg_id(dhdp));
+#if defined(USE_CID_CHECK)
+	i += snprintf(&info_string[i], sizeof(info_string) - i,
+		" VID %x", cur_vid_info);
+#endif /* USE_CID_CHECK */
 }
 #endif /* BCMSDIO || BCMPCIE */
 int dhd_ioctl_entry_local(struct net_device *net, wl_ioctl_t *ioc, int cmd)
@@ -20573,6 +20577,9 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #ifdef DHD_SSSR_DUMP
 #define DUMP_SSSR_DUMP_MAX_COUNT	8
 #endif
+#ifdef DHD_COREDUMP
+char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
+#endif /* DHD_COREDUMP */
 static void
 dhd_mem_dump(void *handle, void *event_info, u8 event)
 {
@@ -20587,7 +20594,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #ifdef DHD_COREDUMP
 	char pc_fn[DHD_FUNC_STR_LEN] = "\0";
 	char lr_fn[DHD_FUNC_STR_LEN] = "\0";
-	char *map_path = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
 	trap_t *tr;
 #endif /* DHD_COREDUMP */
 

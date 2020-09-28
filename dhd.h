@@ -3179,6 +3179,7 @@ typedef struct {
 	char nvram_ext[MAX_EXTENSION];
 	char fw_ext[MAX_EXTENSION];
 } naming_info_t;
+extern uint32 cur_vid_info;
 #ifdef DHD_EXPORT_CNTL_FILE
 extern char cidinfostr[MAX_VNAME_LEN];
 #endif /* DHD_EXPORT_CNTL_FILE */

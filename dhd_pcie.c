@@ -3132,6 +3132,11 @@ static int concate_revision_bcm4359(dhd_bus_t *bus, char *fw_path, char *nv_path
 }
 
 #define NVRAM_FEM_MURATA	"_murata"
+#if defined(SUPPORT_MIXED_MODULES) && defined(USE_CID_CHECK) && defined(DHD_COREDUMP) \
+	&& defined(SUPPORT_MULTIPLE_REVISION_MAP)
+extern char map_path[PATH_MAX];
+#endif /* SUPPORT_MIXED_MODULES && USE_CID_CHECK && DHD_COREDUMP && SUPPORT_MULTIPLE_REVISION_MAP */
+
 static int
 concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 {
@@ -3166,6 +3171,10 @@ concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 #endif /* BCM4361_CHIP */
 		strncat(nv_path, info->nvram_ext, strlen(info->nvram_ext));
 		strncat(fw_path, info->fw_ext, strlen(info->fw_ext));
+#if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
+		if (!bcmstrnstr(map_path, PATH_MAX, info->fw_ext, strlen(info->fw_ext)))
+			strncat(map_path, info->fw_ext, strlen(info->fw_ext));
+#endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
 	} else {
 		DHD_ERROR(("%s:failed to find extension for nvram and firmware\n", __FUNCTION__));
 		ret = BCME_ERROR;
