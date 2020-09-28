@@ -144,11 +144,6 @@ dbg_ring_poll_worker(struct work_struct *work)
 
 	rlen = dhd_dbg_pull_from_ring(dhdp, ringid, buf, buflen);
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
-	if (!ring->sched_pull) {
-		ring->sched_pull = TRUE;
-	}
-
 	hdr = (dhd_dbg_ring_entry_t *)buf;
 	while (rlen > 0) {
 		ring_status.read_bytes += ENTRY_LENGTH(hdr);
@@ -159,8 +154,13 @@ dbg_ring_poll_worker(struct work_struct *work)
 		rlen -= ENTRY_LENGTH(hdr);
 		hdr = (dhd_dbg_ring_entry_t *)((char *)hdr + ENTRY_LENGTH(hdr));
 	}
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 	MFREE(dhdp->osh, buf, buflen);
+
+	DHD_DBG_RING_LOCK(ring->lock, flags);
+	if (!ring->sched_pull) {
+		ring->sched_pull = TRUE;
+	}
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 exit:
 	if (sched) {
