@@ -33,8 +33,14 @@
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 /* Only for writing to ring */
 #define DHD_INFO_RING(args)	DHD_ERROR(args)
+/* FW_VERBOSE RING */
+#define DHD_LOG_DUMP_FWLOG	DHD_LOG_DUMP_WRITE_EX
+#define DHD_LOG_DUMP_FWLOG_TS	DHD_LOG_DUMP_WRITE_EX_TS
 #else
 #define DHD_INFO_RING(args)
+/* DLD_BUF_TYPE_GENERAL */
+#define DHD_LOG_DUMP_FWLOG	DHD_LOG_DUMP_WRITE
+#define DHD_LOG_DUMP_FWLOG_TS	DHD_LOG_DUMP_WRITE_TS
 #endif
 
 #if defined(CUSTOMER_DBG_SYSTEM_TIME) && defined(DHD_DEBUGABILITY_LOG_DUMP_RING)
@@ -222,8 +228,8 @@ do {	\
 		}	\
 	}	\
 	if (dhd_log_level & DHD_EVENT_VAL) {	\
-		DHD_LOG_DUMP_WRITE_TS;		\
-		DHD_LOG_DUMP_WRITE args;	\
+		DHD_LOG_DUMP_FWLOG_TS;		\
+		DHD_LOG_DUMP_FWLOG args;	\
 	}	\
 } while (0)
 /* Re-using 'DHD_MSGTRACE_VAL' for controlling printing of ecounter binary event
@@ -321,14 +327,6 @@ do {	\
 #define DHD_FWLOG(args) DHD_MSGTRACE_LOG(args)
 #elif defined(DHD_LOG_PRINT_RATE_LIMIT)
 
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-/* FW_VERBOSE RING */
-#define DHD_LOG_DUMP_FWLOG	DHD_LOG_DUMP_WRITE_EX
-#else
-/* DLD_BUF_TYPE_GENERAL */
-#define DHD_LOG_DUMP_FWLOG	DHD_LOG_DUMP_WRITE
-#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
-
 #define DHD_FWLOG(args)	\
 do { \
 	if (dhd_msg_level & DHD_FWLOG_VAL) { \
@@ -336,7 +334,7 @@ do { \
 			printf args; \
 	} \
 	if (dhd_log_level & DHD_FWLOG_VAL) { \
-		DHD_LOG_DUMP_WRITE_EX_TS;	\
+		DHD_LOG_DUMP_FWLOG_TS;	\
 		DHD_LOG_DUMP_FWLOG args; \
 	} \
 } while (0)
