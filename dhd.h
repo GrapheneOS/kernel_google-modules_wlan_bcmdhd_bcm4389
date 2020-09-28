@@ -4321,11 +4321,12 @@ int dhd_8023_llc_to_ether_hdr(osl_t *osh, struct ether_header *eh8023, void *p);
 #endif
 int dhd_schedule_socram_dump(dhd_pub_t *dhdp);
 
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+#if defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined (DHD_DEBUGABILITY_EVENT_RING)
 #ifndef DEBUGABILITY
-#error "DHD_DEBUGABILITY_LOG_DUMP_RING without DEBUGABILITY"
+#error "DHD_DEBUGABILITY_LOG_DUMP_RING or DHD_DEBUGABILITY_EVENT_RING without DEBUGABILITY"
 #endif /* DEBUGABILITY */
-#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
+#endif /* defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined(DHD_DEBUGABILITY_EVENT_RING) */
+
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 typedef enum dhd_alert_reason_codes {
 	ALERT_BCN_LOST = 0,

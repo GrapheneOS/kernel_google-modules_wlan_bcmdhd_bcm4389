@@ -2796,6 +2796,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	if (ret)
 		goto error;
 
+#ifdef DHD_DEBUGABILITY_EVENT_RING
 	buf = MALLOCZ(dhdp->osh, DHD_EVENT_RING_SIZE);
 	if (!buf)
 		goto error;
@@ -2803,6 +2804,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 			(uint8 *)DHD_EVENT_RING_NAME, DHD_EVENT_RING_SIZE, buf, FALSE);
 	if (ret)
 		goto error;
+#endif /* DHD_DEBUGABILITY_EVENT_RING */
 
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	buf = MALLOCZ(dhdp->osh, DRIVER_LOG_RING_SIZE);
