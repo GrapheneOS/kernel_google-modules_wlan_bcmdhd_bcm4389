@@ -770,7 +770,7 @@ static struct dhd_attr dhd_attr_nvram_path =
 
 #ifdef PWRSTATS_SYSFS
 static struct dhd_attr dhd_attr_pwrstats_path =
-	__ATTR(power_stats, 0660, show_pwrstats_path, NULL);
+	__ATTR(power_stats, 0664, show_pwrstats_path, NULL);
 #endif /* PWRSTATS_SYSFS */
 
 #define to_dhd(k) container_of(k, struct dhd_info, dhd_kobj)
