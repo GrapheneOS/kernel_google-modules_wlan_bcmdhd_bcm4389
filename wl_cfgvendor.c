@@ -5282,11 +5282,6 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cfg->nancfg->ranging_enable = nla_get_u32(iter);
-			if (cfg->nancfg->ranging_enable == 0) {
-				WL_ERR((" ranging enable is not set \n"));
-				cmd_data->status = BCME_BADARG;
-				goto exit;
-			}
 			break;
 		case NAN_ATTRIBUTE_DW_EARLY_TERM:
 			if (nla_len(iter) != sizeof(uint32)) {
