@@ -25285,18 +25285,18 @@ dhd_cleanup_m4_state_work(dhd_pub_t *dhdp, int ifidx)
 void
 get_debug_dump_time(char *str)
 {
-	struct timeval curtime;
-	unsigned long local_time;
+	struct timespec64 curtime;
+	unsigned long long local_time;
 	struct rtc_time tm;
 
 	if (!strlen(str)) {
-		do_gettimeofday(&curtime);
-		local_time = (u32)(curtime.tv_sec -
+		GET_TIME_OF_DAY(&curtime);
+		local_time = (u64)(curtime.tv_sec -
 				(sys_tz.tz_minuteswest * DHD_LOG_DUMP_TS_MULTIPLIER_VALUE));
 		rtc_time_to_tm(local_time, &tm);
 		snprintf(str, DEBUG_DUMP_TIME_BUF_LEN, DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSSMSMS,
 				tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-				tm.tm_sec, (int)(curtime.tv_usec/NSEC_PER_USEC));
+				tm.tm_sec, (int)(curtime.tv_nsec/NSEC_PER_MSEC));
 	}
 }
 

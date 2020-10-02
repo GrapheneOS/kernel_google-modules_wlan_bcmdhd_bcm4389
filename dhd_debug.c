@@ -1455,16 +1455,16 @@ __dhd_dbg_pkt_hash(uintptr_t pkt, uint32 pktid)
 			(__pkt + __pktid * __pktid));
 }
 
-#define __TIMESPEC_TO_US(ts) \
-	(((uint32)(ts).tv_sec * USEC_PER_SEC) + ((ts).tv_nsec / NSEC_PER_USEC))
+#define __TIMESPEC64_TO_US(ts) \
+	(((ts).tv_sec * USEC_PER_SEC) + ((ts).tv_nsec / NSEC_PER_USEC))
 
 uint32
 __dhd_dbg_driver_ts_usec(void)
 {
-	struct timespec ts;
+	struct timespec64 ts;
 
-	get_monotonic_boottime(&ts);
-	return ((uint32)(__TIMESPEC_TO_US(ts)));
+	GET_MONOTONIC_BOOT_TIME(&ts);
+	return ((uint32)(__TIMESPEC64_TO_US(ts)));
 }
 
 wifi_tx_packet_fate
@@ -2911,17 +2911,17 @@ char*
 dhd_dbg_get_system_timestamp(void)
 {
 	static char timebuf[DEBUG_DUMP_TIME_BUF_LEN];
-	struct timeval tv;
-	unsigned long local_time;
+	struct timespec64 ts;
+	unsigned long long local_time;
 	struct rtc_time tm;
 
 	memset_s(timebuf, DEBUG_DUMP_TIME_BUF_LEN, 0, DEBUG_DUMP_TIME_BUF_LEN);
-	do_gettimeofday(&tv);
-	local_time = (u32)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+	GET_TIME_OF_DAY(&ts);
+	local_time = (u64)(ts.tv_sec - (sys_tz.tz_minuteswest * 60));
 	rtc_time_to_tm(local_time, &tm);
 	scnprintf(timebuf, DEBUG_DUMP_TIME_BUF_LEN,
 			"%02d:%02d:%02d.%06lu",
-			tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec/NSEC_PER_USEC);
 	return timebuf;
 }
 

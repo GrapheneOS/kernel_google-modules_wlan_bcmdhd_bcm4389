@@ -401,13 +401,13 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool updat
 	signal = notif_bss_info->rssi * 100;
 	if (!mgmt->u.probe_resp.timestamp) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-		struct timespec ts;
-		get_monotonic_boottime(&ts);
-		mgmt->u.probe_resp.timestamp = ((u64)ts.tv_sec*1000000)
-				+ ts.tv_nsec / 1000;
+		struct timespec64 ts;
+		GET_MONOTONIC_BOOT_TIME(&ts);
+		mgmt->u.probe_resp.timestamp = ((u64)ts.tv_sec*USEC_PER_SEC)
+				+ (ts.tv_nsec / NSEC_PER_USEC);
 #else
 		struct timeval tv;
-		do_gettimeofday(&tv);
+		GET_TIME_OF_DAY(&tv);
 		mgmt->u.probe_resp.timestamp = ((u64)tv.tv_sec*1000000)
 				+ tv.tv_usec;
 #endif
@@ -629,7 +629,7 @@ wl_bcnrecv_result_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	s32 err = BCME_OK;
 	struct wiphy *wiphy = NULL;
 	wl_bcnrecv_result_t *bcn_recv = NULL;
-	struct timespec ts;
+	struct timespec64 ts;
 	if (!bi) {
 		WL_ERR(("%s: bi is NULL\n", __func__));
 		err = BCME_NORESOURCE;
@@ -662,9 +662,9 @@ wl_bcnrecv_result_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		bcn_recv->beacon_interval = bi->beacon_period;
 
 		/* kernal timestamp */
-		get_monotonic_boottime(&ts);
-		bcn_recv->system_time = ((u64)ts.tv_sec*1000000)
-				+ ts.tv_nsec / 1000;
+		GET_MONOTONIC_BOOT_TIME(&ts);
+		bcn_recv->system_time = ((u64)ts.tv_sec*USEC_PER_SEC)
+				+ ts.tv_nsec / NSEC_PER_USEC;
 		bcn_recv->timestamp[0] = bi->timestamp[0];
 		bcn_recv->timestamp[1] = bi->timestamp[1];
 		if ((err = wl_android_bcnrecv_event(cfgdev_to_wlc_ndev(cfgdev, cfg),

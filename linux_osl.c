@@ -1345,12 +1345,12 @@ osl_sleep(uint ms)
 uint64
 osl_sysuptime_us(void)
 {
-	struct timeval tv;
+	struct timespec64 ts;
 	uint64 usec;
 
-	do_gettimeofday(&tv);
-	/* tv_usec content is fraction of a second */
-	usec = (uint64)tv.tv_sec * 1000000ul + tv.tv_usec;
+	GET_TIME_OF_DAY(&ts);
+	/* tv_nsec content is fraction of a second */
+	usec = (uint64)ts.tv_sec * USEC_PER_SEC + (ts.tv_nsec / NSEC_PER_USEC);
 #ifdef BCMSLTGT
 	/* scale down the time to match the slow target roughly */
 	usec /= htclkratio;
@@ -1396,14 +1396,14 @@ osl_get_localtime(uint64 *sec, uint64 *usec)
 uint64
 osl_systztime_us(void)
 {
-	struct timeval tv;
+	struct timespec64 ts;
 	uint64 tzusec;
 
-	do_gettimeofday(&tv);
+	GET_TIME_OF_DAY(&ts);
 	/* apply timezone */
-	tzusec = (uint64)((tv.tv_sec - (sys_tz.tz_minuteswest * 60)) *
+	tzusec = (uint64)((ts.tv_sec - (sys_tz.tz_minuteswest * 60)) *
 		USEC_PER_SEC);
-	tzusec += tv.tv_usec;
+	tzusec += ts.tv_nsec / NSEC_PER_USEC;
 
 	return tzusec;
 }

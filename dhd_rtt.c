@@ -70,7 +70,7 @@ static DEFINE_SPINLOCK(noti_list_lock);
 		}\
 	} while (0)
 
-#define TIMESPEC_TO_US(ts)  (((uint64)(ts).tv_sec * USEC_PER_SEC) + \
+#define TIMESPEC64_TO_US(ts)  (((ts).tv_sec * USEC_PER_SEC) + \
 							(ts).tv_nsec / NSEC_PER_USEC)
 
 #undef DHD_RTT_MEM
@@ -3275,7 +3275,7 @@ dhd_rtt_convert_results_to_host_v1(rtt_result_t *rtt_result, const uint8 *p_data
 	wl_proxd_session_state_t session_state;
 	wl_proxd_status_t proxd_status;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-	struct timespec ts;
+	struct timespec64 ts;
 #endif /* LINUX_VER >= 2.6.39 */
 	uint32 ratespec;
 	uint32 avg_dist;
@@ -3394,8 +3394,8 @@ dhd_rtt_convert_results_to_host_v1(rtt_result_t *rtt_result, const uint8 *p_data
 	/* time stamp */
 	/* get the time elapsed from boot time */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-	get_monotonic_boottime(&ts);
-	rtt_report->ts = (uint64)TIMESPEC_TO_US(ts);
+	GET_MONOTONIC_BOOT_TIME(&ts);
+	rtt_report->ts = (uint64)TIMESPEC64_TO_US(ts);
 #endif /* LINUX_VER >= 2.6.39 */
 
 	if (proxd_status == WL_PROXD_E_REMOTE_FAIL) {
@@ -3488,7 +3488,7 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	wl_proxd_session_state_t session_state;
 	wl_proxd_status_t proxd_status;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-	struct timespec ts;
+	struct timespec64 ts;
 #endif /* LINUX_VER >= 2.6.39 */
 	uint32 ratespec;
 	uint32 avg_dist;
@@ -3648,8 +3648,8 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	/* time stamp */
 	/* get the time elapsed from boot time */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-	get_monotonic_boottime(&ts);
-	rtt_report->ts = (uint64)TIMESPEC_TO_US(ts);
+	GET_MONOTONIC_BOOT_TIME(&ts);
+	rtt_report->ts = (uint64)TIMESPEC64_TO_US(ts);
 #endif /* LINUX_VER >= 2.6.39 */
 
 	if (proxd_status == WL_PROXD_E_REMOTE_FAIL) {
