@@ -42,11 +42,19 @@ extern dhd_pub_t* g_dhd_pub;
 static int dhd_ring_proc_open(struct inode *inode, struct file *file);
 ssize_t dhd_ring_proc_read(struct file *file, char *buffer, size_t tt, loff_t *loff);
 
-static const struct file_operations dhd_ring_proc_fops = {
-	.open = dhd_ring_proc_open,
-	.read = dhd_ring_proc_read,
-	.release = single_release,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0))
+static const struct file_operations dhd_ring_proc_ops = {
+        .open = dhd_ring_proc_open,
+        .read = dhd_ring_proc_read,
+        .release = single_release,
 };
+#else
+static const struct proc_ops dhd_ring_proc_ops = {
+	.proc_open = dhd_ring_proc_open,
+	.proc_read = dhd_ring_proc_read,
+	.proc_release = single_release,
+};
+#endif
 
 static int
 dhd_ring_proc_open(struct inode *inode, struct file *file)
@@ -109,7 +117,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 
 	dbg_verbose_ring = dhd_dbg_get_ring_from_ring_id(dhdp, FW_VERBOSE_RING_ID);
 	if (dbg_verbose_ring) {
-		if (!proc_create_data("dhd_trace", S_IRUSR, NULL, &dhd_ring_proc_fops,
+		if (!proc_create_data("dhd_trace", S_IRUSR, NULL, &dhd_ring_proc_ops,
 			dbg_verbose_ring)) {
 			DHD_ERROR(("Failed to create /proc/dhd_trace procfs interface\n"));
 		} else {
@@ -121,7 +129,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 #endif /* DEBUGABILITY */
 
 #ifdef EWP_ECNTRS_LOGGING
-	if (!proc_create_data("dhd_ecounters", S_IRUSR, NULL, &dhd_ring_proc_fops,
+	if (!proc_create_data("dhd_ecounters", S_IRUSR, NULL, &dhd_ring_proc_ops,
 		dhdp->ecntr_dbg_ring)) {
 		DHD_ERROR(("Failed to create /proc/dhd_ecounters procfs interface\n"));
 	} else {
@@ -130,7 +138,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 #endif /* EWP_ECNTRS_LOGGING */
 
 #ifdef EWP_RTT_LOGGING
-	if (!proc_create_data("dhd_rtt", S_IRUSR, NULL, &dhd_ring_proc_fops,
+	if (!proc_create_data("dhd_rtt", S_IRUSR, NULL, &dhd_ring_proc_ops,
 		dhdp->rtt_dbg_ring)) {
 		DHD_ERROR(("Failed to create /proc/dhd_rtt procfs interface\n"));
 	} else {

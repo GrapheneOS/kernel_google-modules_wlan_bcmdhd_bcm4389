@@ -630,9 +630,17 @@ extern uint64 regs_addr;
 /* dereference an address that may cause a bus exception */
 #define	BUSPROBE(val, addr)	({ (val) = R_REG(NULL, (addr)); 0; })
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+  /* 'ioremap_nocache' was deprecated in kernels >= 5.6, so instead we use 'ioremap' which
+     is no-cache by default since kernels 2.6.25. */
+#define IOREMAP_NO_CACHE(address, size) ioremap(address, size)
+#else /* KERNEL_VERSION < 2.6.25 */
+#define IOREMAP_NO_CACHE(address, size) ioremap_nocache(address, size)
+#endif
+
 /* map/unmap physical to virtual I/O */
 #if !defined(CONFIG_MMC_MSM7X00A)
-#define	REG_MAP(pa, size)	ioremap_nocache((unsigned long)(pa), (unsigned long)(size))
+#define	REG_MAP(pa, size)	IOREMAP_NO_CACHE((unsigned long)(pa), (unsigned long)(size))
 #else
 #define REG_MAP(pa, size)       (void *)(0)
 #endif /* !defined(CONFIG_MMC_MSM7X00A */

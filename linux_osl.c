@@ -1669,7 +1669,7 @@ osl_getcycles(void)
 void *
 osl_reg_map(uint32 pa, uint size)
 {
-	return (ioremap_nocache((unsigned long)pa, (unsigned long)size));
+	return (IOREMAP_NO_CACHE((unsigned long)pa, (unsigned long)size));
 }
 
 void
