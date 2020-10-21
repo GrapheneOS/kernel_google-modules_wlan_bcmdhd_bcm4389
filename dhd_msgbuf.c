@@ -9657,7 +9657,7 @@ dhd_fillup_ioct_reqst(dhd_pub_t *dhd, uint16 len, uint cmd, void* buf, int ifidx
 	uint16 alloced = 0;
 	msgbuf_ring_t *ring = &prot->h2dring_ctrl_subn;
 #ifdef DBG_DW_CHK_PCIE_READ_LATENCY
-	ulong addr = dhd->bus->ring_sh[ring->idx].ring_state_r;
+	uint16 data;
 	ktime_t begin_time, end_time;
 	s64 diff_ns;
 #endif /* DBG_DW_CHK_PCIE_READ_LATENCY */
@@ -9682,7 +9682,7 @@ dhd_fillup_ioct_reqst(dhd_pub_t *dhd, uint16 len, uint cmd, void* buf, int ifidx
 #ifdef DBG_DW_CHK_PCIE_READ_LATENCY
 	preempt_disable();
 	begin_time = ktime_get();
-	R_REG(dhd->osh, (volatile uint16 *)(dhd->bus->tcm + addr));
+	dhd_bus_cmn_readshared(dhd->bus, &data, RING_RD_UPD, ring->idx);
 	end_time = ktime_get();
 	preempt_enable();
 	diff_ns = ktime_to_ns(ktime_sub(end_time, begin_time));
