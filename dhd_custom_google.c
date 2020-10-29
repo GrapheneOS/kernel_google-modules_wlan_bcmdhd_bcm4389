@@ -183,6 +183,38 @@ dhd_wlan_init_mac_addr(void)
 }
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
+#ifdef SUPPORT_MULTIPLE_NVRAM
+
+#define CMDLINE_REVISION_KEY "androidboot.revision="
+
+char val_revision[MAX_HW_INFO_LEN] = {0};
+
+int
+dhd_wlan_init_hardware_info(void)
+{
+	struct device_node *node;
+	char *cp;
+	const char *command_line = NULL;
+	size_t len;
+
+	node = of_find_node_by_path("/chosen");
+	if (!node) {
+		DHD_ERROR(("Node not created under chosen\n"));
+		return -ENODEV;
+	} else {
+		of_property_read_string(node, "bootargs", &command_line);
+		len = strlen(command_line);
+
+		cp = strnstr(command_line, CMDLINE_REVISION_KEY, len);
+		if (cp) {
+			sscanf(cp, CMDLINE_REVISION_KEY"%s", val_revision);
+		}
+	}
+
+	return 0;
+}
+#endif /* SUPPORT_MULTIPLE_NVRAM */
+
 int
 dhd_wifi_init_gpio(void)
 {
@@ -405,6 +437,10 @@ dhd_wlan_init(void)
 #ifdef GET_CUSTOM_MAC_ENABLE
 	dhd_wlan_init_mac_addr();
 #endif /* GET_CUSTOM_MAC_ENABLE */
+
+#ifdef SUPPORT_MULTIPLE_NVRAM
+	dhd_wlan_init_hardware_info();
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 
 fail:
 	DHD_ERROR(("%s: FINISH.......\n", __FUNCTION__));

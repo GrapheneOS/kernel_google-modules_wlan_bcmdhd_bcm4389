@@ -3108,6 +3108,13 @@ extern int dngl_xtalfreq;
 extern char fw_path2[MOD_PARAM_PATHLEN];
 #endif
 
+#ifdef SUPPORT_MULTIPLE_NVRAM
+#define MAX_HW_INFO_LEN   10
+#define MAX_FILE_COUNT    3
+#define MAX_FILE_LEN      90
+extern char val_revision[MAX_HW_INFO_LEN];
+#endif /* SUPPORT_MULTIPLE_NVRAM */
+
 #define VENDOR_PATH ""
 
 /* Platform path Name -

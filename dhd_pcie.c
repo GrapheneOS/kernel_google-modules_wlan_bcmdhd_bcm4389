@@ -3652,13 +3652,28 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 	uint len;
 	char * memblock = NULL;
 	char *bufp;
+#ifdef SUPPORT_MULTIPLE_NVRAM
+	char pnv_path[MAX_FILE_COUNT][MAX_FILE_LEN] = {0};
+	int i;
+#else
 	char *pnv_path;
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 	bool nvram_file_exists;
 	bool nvram_uefi_exists = FALSE;
 	bool local_alloc = FALSE;
+
+#ifdef SUPPORT_MULTIPLE_NVRAM
+	snprintf(pnv_path[0], sizeof(pnv_path[0]),
+		"%s_%s", CONFIG_BCMDHD_NVRAM_PATH, val_revision);
+	strncpy(pnv_path[1], CONFIG_BCMDHD_NVRAM_PATH, MAX_FILE_LEN);
+	strncpy(pnv_path[2], bus->nv_path, MAX_FILE_LEN);
+
+	nvram_file_exists = ((pnv_path[0] != NULL) && (pnv_path[0][0] != '\0'));
+#else
 	pnv_path = bus->nv_path;
 
 	nvram_file_exists = ((pnv_path != NULL) && (pnv_path[0] != '\0'));
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 
 	/* First try UEFI */
 	len = MAX_NVRAMBUF_SIZE;
@@ -3668,8 +3683,20 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 	if ((len <= 0) || (memblock == NULL)) {
 
 		if (nvram_file_exists) {
+
+#ifdef SUPPORT_MULTIPLE_NVRAM
+			for (i = 0; i < MAX_FILE_COUNT; i++) {
+				len = MAX_NVRAMBUF_SIZE;
+				bcmerror = dhd_get_download_buffer(bus->dhd,
+					pnv_path[i], NVRAM, &memblock, (int *)&len);
+				if (bcmerror == BCME_OK) {
+					break;
+				}
+			}
+#else
 			len = MAX_NVRAMBUF_SIZE;
 			dhd_get_download_buffer(bus->dhd, pnv_path, NVRAM, &memblock, (int *)&len);
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 			if ((len <= 0 || len > MAX_NVRAMBUF_SIZE)) {
 				goto err;
 			}
