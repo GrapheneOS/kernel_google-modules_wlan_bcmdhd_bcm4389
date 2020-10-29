@@ -298,10 +298,11 @@ naming_info_t bcm4389_naming_table[] = {
 	{ {"1wk_es51"}, {"_1wk_es51_c1"}, {"_c1"} },
 	{ {"1wk_es10"}, {"_1wk_es10_c1"}, {"_c1"} },
 	{ {"1wk_es11"}, {"_1wk_es11_c1"}, {"_c1"} },
-	{ {"usi_es10"}, {"_ES10_c0"}, {""} },
-	{ {"usi_es11"}, {"_ES11_c0"}, {""} },
-	{ {"usi_es12"}, {"_ES12_c1"}, {"_c1"} },
-	{ {"usi_es13"}, {"_ES13_c1"}, {"_c1"} }
+	{ {"usi_es10"}, {"_ES10"}, {"_c0"} },
+	{ {"usi_es11"}, {"_ES11"}, {"_c0"} },
+	{ {"usi_es12"}, {"_ES12"}, {""} },
+	{ {"usi_es13"}, {"_ES13"}, {""} },
+	{ {"usi_es15"}, {"_ES15"}, {""} },
 };
 
 /* select the NVRAM/FW tag naming table */
@@ -1664,6 +1665,7 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x11, 0x99, }, { "USI_WM_usi_es11" } },
 	{ 3, { 0x12, 0x99, }, { "USI_WM_usi_es12" } },
 	{ 3, { 0x13, 0x99, }, { "USI_WM_usi_es13" } },
+	{ 3, { 0x15, 0x99, }, { "USI_WM_usi_es15" } },
 #endif /* SUPPORT_MIXED_MODULES */
 };
 #else

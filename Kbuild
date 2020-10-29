@@ -47,10 +47,10 @@ CONFIG_BCM43752=
 CONFIG_BCM4389=y
 CONFIG_DHD_OF_SUPPORT=y
 ifneq ($(CONFIG_SOC_GS101),)
- CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcm4389.bin\""
- CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd_4389.cal\""
- CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm_4389.blob\""
- CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcm4389.map\""
+ CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcmdhd.bin\""
+ CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
+ CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
+ CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcmdhd.map\""
 else
  CONFIG_BCMDHD_FW_PATH="\"/vendor/etc/wifi/fw_bcmdhd.bin\""
  CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
@@ -827,6 +827,7 @@ ifneq ($(filter y, $(CONFIG_BCM4389)),)
 	DHDCFLAGS += -DBCMPCI_NOOTP_DEV_ID=0x4389
 	DHDCFLAGS += -DBCM4389_CHIP_DEF -DSUPPORT_MULTIPLE_REVISION -DSUPPORT_MULTIPLE_REVISION_MAP
 	DHDCFLAGS += -DSUPPORT_MIXED_MODULES -DUSE_CID_CHECK -DSUPPORT_MULTIPLE_CHIPS
+	DHDCFLAGS += -DCONCATE_REV_C0_FOR_NOMATCH_VID
 endif
 else ifneq ($(CONFIG_ARCH_HISI),)
 	DHDCFLAGS += -DBOARD_HIKEY -DBOARD_HIKEY_HW2

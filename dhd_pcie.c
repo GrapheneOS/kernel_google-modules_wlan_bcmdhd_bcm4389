@@ -3176,8 +3176,21 @@ concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 			strncat(map_path, info->fw_ext, strlen(info->fw_ext));
 #endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
 	} else {
+#ifdef CONCATE_REV_C0_FOR_NOMATCH_VID
+		char *c0_tag = "_c0";
+
+		DHD_ERROR(("%s:failed to find extension, use _c0 as default\n", __FUNCTION__));
+		/* Failed to find info, use _c0 as default */
+		strncat(nv_path, c0_tag, strlen(c0_tag));
+		strncat(fw_path, c0_tag, strlen(c0_tag));
+#if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
+		if (!bcmstrnstr(map_path, PATH_MAX, c0_tag, strlen(c0_tag)))
+			strncat(map_path, c0_tag, strlen(c0_tag));
+#endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
+#else
 		DHD_ERROR(("%s:failed to find extension for nvram and firmware\n", __FUNCTION__));
 		ret = BCME_ERROR;
+#endif /* CONCATE_REV_C0_FOR_NOMATCH_VID */
 	}
 #endif /* USE_CID_CHECK */
 #ifdef USE_DIRECT_VID_TAG
