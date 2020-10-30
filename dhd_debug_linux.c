@@ -161,7 +161,6 @@ dbg_ring_poll_worker(struct work_struct *work)
 		ring->sched_pull = TRUE;
 	}
 	DHD_DBG_RING_UNLOCK(ring->lock, flags);
-
 exit:
 	if (sched) {
 		/* retrigger the work at same interval */

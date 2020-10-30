@@ -7924,11 +7924,13 @@ wl_cfgnan_process_range_report(struct bcm_cfg80211 *cfg,
 		rng_inst->geof_retry_count = 0;
 		/*
 		 * Suspend and trigger other targets,
+		 * if setup not in prog and,
 		 * if running sessions maxed out and more
 		 * pending targets waiting for trigger
 		 */
-		if (dhd_rtt_geofence_sessions_maxed_out(dhd) &&
-			(dhd_rtt_get_geofence_target_cnt(dhd) >=
+		if ((!dhd_rtt_is_geofence_setup_inprog(dhd)) &&
+			dhd_rtt_geofence_sessions_maxed_out(dhd) &&
+			(dhd_rtt_get_geofence_target_cnt(dhd) >
 				dhd_rtt_get_geofence_max_sessions(dhd))) {
 			/*
 			 * Update the target idx first, before suspending current target

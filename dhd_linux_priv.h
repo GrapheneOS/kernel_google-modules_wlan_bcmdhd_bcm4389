@@ -410,6 +410,21 @@ typedef struct dhd_info {
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 } dhd_info_t;
 
+/** priv_link is the link between netdev and the dhdif and dhd_info structs. */
+typedef struct dhd_dev_priv {
+	dhd_info_t * dhd; /* cached pointer to dhd_info in netdevice priv */
+	dhd_if_t   * ifp; /* cached pointer to dhd_if in netdevice priv */
+	int          ifidx; /* interface index */
+	void       * lkup;
+} dhd_dev_priv_t;
+
+#define DHD_DEV_PRIV_SIZE       (sizeof(dhd_dev_priv_t))
+#define DHD_DEV_PRIV(dev)       ((dhd_dev_priv_t *)DEV_PRIV(dev))
+#define DHD_DEV_INFO(dev)       (((dhd_dev_priv_t *)DEV_PRIV(dev))->dhd)
+#define DHD_DEV_IFP(dev)        (((dhd_dev_priv_t *)DEV_PRIV(dev))->ifp)
+#define DHD_DEV_IFIDX(dev)      (((dhd_dev_priv_t *)DEV_PRIV(dev))->ifidx)
+#define DHD_DEV_LKUP(dev)		(((dhd_dev_priv_t *)DEV_PRIV(dev))->lkup)
+
 #ifdef WL_MONITOR
 #define MONPKT_EXTRA_LEN	48u
 #endif /* WL_MONITOR */

@@ -768,15 +768,15 @@ extern void clr_bitrange_u32(void *array, uint start, uint end, uint maxbit);
 
 extern int bcm_find_fsb(uint32 num);
 
-#define	isbitset(a, i)	(((a) & (1 << (i))) != 0)
+#define	isbitset(a, i)	(((a) & (1u << (i))) != 0)
 
 #if defined DONGLEBUILD
 #define	NBITS(type)	(sizeof(type) * 8)
 #else
 #define	NBITS(type)	((uint32)(sizeof(type) * 8))
 #endif  /* DONGLEBUILD */
-#define NBITVAL(nbits)	(1 << (nbits))
-#define MAXBITVAL(nbits)	((1 << (nbits)) - 1)
+#define NBITVAL(nbits)	(1u << (nbits))
+#define MAXBITVAL(nbits)	((1u << (nbits)) - 1u)
 #define	NBITMASK(nbits)	MAXBITVAL(nbits)
 #define MAXNBVAL(nbyte)	MAXBITVAL((nbyte) * 8)
 
