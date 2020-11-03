@@ -3712,11 +3712,14 @@ wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 
 	mutex_lock(&cfg->scan_sync);
 	if (cfg->sched_scan_req) {
-		WL_PNO((">>> Sched scan running. Aborting it..\n"));
-		if (wl_get_drv_status_all(cfg, SCANNING)) {
+		if (cfg->sched_scan_running && wl_get_drv_status(cfg, SCANNING, dev)) {
+			/* If targetted escan for PNO is running, abort it */
+			WL_INFORM_MEM(("abort targetted escan\n"));
 			wl_cfgscan_scan_abort(cfg);
+			wl_clr_drv_status(cfg, SCANNING, dev);
 		} else {
-			WL_ERR(("No scan in progress, avoid scan abort\n"));
+			WL_INFORM_MEM(("pno escan state:%d\n",
+				cfg->sched_scan_running));
 		}
 	}
 	cfg->sched_scan_req = NULL;
