@@ -84,7 +84,8 @@ struct wl_ibss;
 #endif /* WL_SAE */
 #endif /* !WL_CLIENT_SAE */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SCAN_TYPE))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)) && !defined(WL_DISABLE_SCAN_TYPE) \
+	&& !defined(WL_SCAN_TYPE)
 #define WL_SCAN_TYPE
 #endif /* WL_SCAN_TYPE */
 
@@ -712,7 +713,7 @@ do {									\
 
 #ifndef WLAN_AKM_SUITE_FT_8021X_SHA384
 #define WLAN_AKM_SUITE_FT_8021X_SHA384		0x000FAC0D
-#endif
+#endif /* WLAN_AKM_SUITE_FT_8021X_SHA384 */
 
 #define WL_AKM_SUITE_SHA256_1X  0x000FAC05
 #define WL_AKM_SUITE_SHA256_PSK 0x000FAC06
@@ -1147,6 +1148,9 @@ struct net_info {
 	wl_cfgbss_t bss;
 	u8 ifidx;
 	struct list_head list; /* list of all net_info structure */
+
+	bool ps_managed;
+	uint32 ps_managed_start_ts;
 };
 
 #ifdef WL_BCNRECV
@@ -1247,7 +1251,8 @@ struct wl_assoc_ielen {
 #define MIN_JOINEXT_V1_BR2_FW_MINOR 1u
 
 #define MIN_JOINEXT_V1_BR1_FW_MAJOR 14u
-#define MIN_JOINEXT_V1_BR1_FW_MINOR 2u
+#define MIN_JOINEXT_V1_BR1_FW_MINOR_2 2u
+#define MIN_JOINEXT_V1_BR1_FW_MINOR_4 4u
 
 #define PMKDB_WLC_VER 14
 #define MIN_PMKID_LIST_V3_FW_MAJOR 13
@@ -1621,6 +1626,15 @@ typedef enum {
 	WIFI_POWER_SCENARIO_ON_BODY_BT = 5
 } wifi_power_scenario;
 
+#if defined(WL_SAR_TX_POWER) && defined(WL_SAR_TX_POWER_CONFIG)
+#define MAX_SAR_CONFIG_INFO 7
+typedef struct wl_sar_config_info {
+	int8 scenario;
+	int8 sar_tx_power_val;
+	int8 airplane_mode;
+} wl_sar_config_info_t;
+#endif /* WL_SAR_TX_POWER && WL_SAR_TX_POWER_CONFIG */
+
 /* Log timestamp */
 #define LOG_TS(cfg, ts)	cfg->tsinfo.ts = OSL_LOCALTIME_NS();
 #define CLR_TS(cfg, ts)	cfg->tsinfo.ts = 0;
@@ -1902,6 +1916,9 @@ struct bcm_cfg80211 {
 	int ncho_band;
 #ifdef WL_SAR_TX_POWER
 	wifi_power_scenario wifi_tx_power_mode;
+#if defined(WL_SAR_TX_POWER_CONFIG)
+	wl_sar_config_info_t sar_config_info[MAX_SAR_CONFIG_INFO];
+#endif /* WL_SAR_TX_POWER_CONFIG */
 #endif /* WL_SAR_TX_POWER */
 	struct mutex connect_sync;  /* For assoc/resssoc state sync */
 	wl_ctx_tsinfo_t tsinfo;
@@ -1919,6 +1936,12 @@ struct bcm_cfg80211 {
 	struct ether_addr af_randmac;
 	bool randomized_gas_tx;
 	u8 country[WLC_CNTRY_BUF_SZ];
+	u8 latency_mode;
+#ifdef WL_MBO_HOST
+	void *btmreq;
+	uint16 btmreq_len;
+	uint8 btmreq_token;
+#endif /* WL_MBO_HOST */
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -2176,6 +2199,8 @@ wl_alloc_netinfo(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		_net_info->roam_off = WL_INVALID;
 		_net_info->bssidx = bssidx;
 		_net_info->ifidx = ifidx;
+		_net_info->ps_managed = FALSE;
+		_net_info->ps_managed_start_ts = 0;
 		WL_CFG_NET_LIST_SYNC_LOCK(&cfg->net_list_sync, flags);
 		cfg->iface_cnt++;
 		list_add(&_net_info->list, &cfg->net_list);
@@ -2546,12 +2571,10 @@ wl_iftype_to_str(int wl_iftype)
 #define ndev_to_wdev(ndev) (ndev->ieee80211_ptr)
 #define wdev_to_ndev(wdev) (wdev->netdev)
 
-#ifdef WL_BLOCK_P2P_SCAN_ON_STA
 #define IS_P2P_IFACE(wdev) (wdev && \
-		((wdev->iftype == NL80211_IFTYPE_P2P_DEVICE) || \
-		(wdev->iftype == NL80211_IFTYPE_P2P_GO) || \
-		(wdev->iftype == NL80211_IFTYPE_P2P_CLIENT)))
-#endif /* WL_BLOCK_P2P_SCAN_ON_STA */
+	((wdev->iftype == NL80211_IFTYPE_P2P_DEVICE) || \
+	(wdev->iftype == NL80211_IFTYPE_P2P_GO) || \
+	(wdev->iftype == NL80211_IFTYPE_P2P_CLIENT)))
 
 #define IS_PRIMARY_NDEV(cfg, ndev)	(ndev == bcmcfg_to_prmry_ndev(cfg))
 #define IS_STA_IFACE(wdev) (wdev && \
@@ -3007,10 +3030,8 @@ extern void update_roam_cache(struct bcm_cfg80211 *cfg, int ioctl_ver);
 extern int wl_cfgnan_get_stats(struct bcm_cfg80211 *cfg);
 #endif /* WL_NAN */
 
-#ifdef WL_SAE
 extern s32 wl_cfg80211_set_wsec_info(struct net_device *dev, uint32 *data,
 	uint16 data_len, int tag);
-#endif /* WL_SAE */
 #define WL_CHANNEL_ARRAY_INIT(band_chan_arr)	\
 do {	\
 	u32 arr_size, k;	\

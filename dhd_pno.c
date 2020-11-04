@@ -72,11 +72,11 @@
 #define dtohchanspec(i) (i)
 #endif /* IL_BIGENDINA */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,7,0))
-#define COMPLETION_WAIT_QUEUE_ACTIVE swait_active
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0))
+#define COMPLETION_WAIT_QUEUE_ACTIVE(wait_queue) swait_active(wait_queue)
 #else
-#define COMPLETION_WAIT_QUEUE_ACTIVE waitqueue_active
-#endif
+#define COMPLETION_WAIT_QUEUE_ACTIVE(wait_queue) waitqueue_active(wait_queue)
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0) */
 
 #define NULL_CHECK(p, s, err)  \
 			do { \
@@ -107,7 +107,7 @@
 #define TIME_DIFF_MS(timestamp1, timestamp2) (abs((uint32)(timestamp1)  \
 						- (uint32)(timestamp2)))
 #define TIMESPEC64_TO_US(ts)  (((ts).tv_sec * USEC_PER_SEC) + \
-							(ts).tv_nsec / NSEC_PER_USEC)
+						(ts).tv_nsec / NSEC_PER_USEC)
 
 #define ENTRY_OVERHEAD strlen("bssid=\nssid=\nfreq=\nlevel=\nage=\ndist=\ndistSd=\n====")
 #define TIME_MIN_DIFF 5
@@ -2610,7 +2610,7 @@ _dhd_pno_get_gscan_batch_from_fw(dhd_pub_t *dhd)
 				__FUNCTION__, err));
 			goto exit_mutex_unlock;
 		}
-		GET_MONOTONIC_BOOT_TIME(&tm_spec);
+		tm_spec = ktime_to_timespec64(ktime_get_boottime());
 
 		if (plbestnet_v1->version == PFN_LBEST_SCAN_RESULT_VERSION_V1) {
 			fwstatus = plbestnet_v1->status;
@@ -4015,7 +4015,7 @@ dhd_process_full_gscan_result(dhd_pub_t *dhd, const void *data, uint32 len, int 
 	result->fixed.rssi = (int32) bi->RSSI;
 	result->fixed.rtt = 0;
 	result->fixed.rtt_sd = 0;
-	GET_MONOTONIC_BOOT_TIME(&ts);
+	ts = ktime_to_timespec64(ktime_get_boottime());
 	result->fixed.ts = (uint64) TIMESPEC64_TO_US(ts);
 	result->fixed.beacon_period = dtoh16(bi->beacon_period);
 	result->fixed.capability = dtoh16(bi->capability);
@@ -4222,7 +4222,7 @@ dhd_pno_update_hotlist_v3_results(dhd_pub_t *dhd, wl_pfn_scanresults_v3_t *pfn_r
 		return NULL;
 	}
 
-	GET_MONOTONIC_BOOT_TIME(&tm_spec);
+	tm_spec = ktime_to_timespec64(ktime_get_boottime());
 	malloc_size = sizeof(gscan_results_cache_t) +
 		((pfn_result->count - 1) * sizeof(wifi_gscan_result_t));
 	gscan_hotlist_cache =
@@ -4318,7 +4318,7 @@ dhd_handle_hotlist_scan_evt(dhd_pub_t *dhd, const void *event_data,
 			return ptr;
 		}
 
-		GET_MONOTONIC_BOOT_TIME(&tm_spec);
+		tm_spec = ktime_to_timespec64(ktime_get_boottime());
 		malloc_size = sizeof(gscan_results_cache_t) +
 			((fwcount - 1) * sizeof(wifi_gscan_result_t));
 		gscan_hotlist_cache = (gscan_results_cache_t *)MALLOC(dhd->osh, malloc_size);
@@ -4382,7 +4382,7 @@ dhd_handle_hotlist_scan_evt(dhd_pub_t *dhd, const void *event_data,
 			return ptr;
 		}
 
-		GET_MONOTONIC_BOOT_TIME(&tm_spec);
+		tm_spec = ktime_to_timespec64(ktime_get_boottime());
 		malloc_size = sizeof(gscan_results_cache_t) +
 			((fwcount - 1) * sizeof(wifi_gscan_result_t));
 		gscan_hotlist_cache =

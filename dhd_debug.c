@@ -120,14 +120,10 @@ struct map_table event_tag_map[] = {
 /* define log level per ring type */
 struct log_level_table fw_verbose_level_map[] = {
 	{1, EVENT_LOG_TAG_PCI_ERROR, "PCI_ERROR"},
-#ifndef DISABLE_PCI_LOGGING
 	{1, EVENT_LOG_TAG_PCI_WARN, "PCI_WARN"},
 	{2, EVENT_LOG_TAG_PCI_INFO, "PCI_INFO"},
 	{3, EVENT_LOG_TAG_PCI_DBG, "PCI_DEBUG"},
-#endif
-#ifndef DISABLE_BEACON_LOGGING
 	{3, EVENT_LOG_TAG_BEACON_LOG, "BEACON_LOG"},
-#endif
 	{2, EVENT_LOG_TAG_WL_ASSOC_LOG, "ASSOC_LOG"},
 	{2, EVENT_LOG_TAG_WL_ROAM_LOG, "ROAM_LOG"},
 	{1, EVENT_LOG_TAG_TRACE_WL_INFO, "WL INFO"},
@@ -143,27 +139,6 @@ struct log_level_table fw_verbose_level_map[] = {
 	{1, EVENT_LOG_TAG_SCAN_ERROR, "SCAN_ERROR"},
 	{2, EVENT_LOG_TAG_SCAN_TRACE_LOW, "SCAN_TRACE_LOW"},
 	{2, EVENT_LOG_TAG_SCAN_TRACE_HIGH, "SCAN_TRACE_HIGH"},
-#ifdef DHD_WL_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_WL_ERROR, "WL_ERROR"},
-#endif
-#ifdef DHD_IE_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_IE_ERROR, "IE_ERROR"},
-#endif
-#ifdef DHD_ASSOC_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_ASSOC_ERROR, "ASSOC_ERROR"},
-#endif
-#ifdef DHD_PMU_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_PMU_ERROR, "PMU_ERROR"},
-#endif
-#ifdef DHD_8021X_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_4WAYHANDSHAKE, "8021X_ERROR"},
-#endif
-#ifdef DHD_AMPDU_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_AMSDU_ERROR, "AMPDU_ERROR"},
-#endif
-#ifdef DHD_SAE_ERROR_LOGGING
-	{3, EVENT_LOG_TAG_SAE_ERROR, "SAE_ERROR"},
-#endif
 };
 
 /* reference tab table */
@@ -1463,7 +1438,7 @@ __dhd_dbg_driver_ts_usec(void)
 {
 	struct timespec64 ts;
 
-	GET_MONOTONIC_BOOT_TIME(&ts);
+	ts = ktime_to_timespec64(ktime_get_boottime());
 	return ((uint32)(__TIMESPEC64_TO_US(ts)));
 }
 
@@ -2121,8 +2096,8 @@ dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 	DHD_PKT_MON_LOCK(dhdp->dbg->pkt_mon_lock, flags);
 	tx_pkt_state = dhdp->dbg->pkt_mon.tx_pkt_state;
 	tx_status_state = dhdp->dbg->pkt_mon.tx_status_state;
-	if (PKT_MON_NOT_OPERATIONAL(tx_pkt_state) ||
-			PKT_MON_NOT_OPERATIONAL(tx_status_state)) {
+	if (!PKT_MON_ATTACHED(tx_pkt_state) ||
+			!PKT_MON_ATTACHED(tx_status_state)) {
 		DHD_PKT_MON(("%s(): packet monitor is not yet enabled, "
 			"tx_pkt_state=%d, tx_status_state=%d\n", __FUNCTION__,
 			tx_pkt_state, tx_status_state));
@@ -2212,7 +2187,7 @@ dhd_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 
 	DHD_PKT_MON_LOCK(dhdp->dbg->pkt_mon_lock, flags);
 	rx_pkt_state = dhdp->dbg->pkt_mon.rx_pkt_state;
-	if (PKT_MON_NOT_OPERATIONAL(rx_pkt_state)) {
+	if (!PKT_MON_ATTACHED(rx_pkt_state)) {
 		DHD_PKT_MON(("%s(): packet fetch is not allowed , "
 			"rx_pkt_state=%d\n", __FUNCTION__, rx_pkt_state));
 		DHD_PKT_MON_UNLOCK(dhdp->dbg->pkt_mon_lock, flags);
@@ -2916,8 +2891,8 @@ dhd_dbg_get_system_timestamp(void)
 	struct rtc_time tm;
 
 	memset_s(timebuf, DEBUG_DUMP_TIME_BUF_LEN, 0, DEBUG_DUMP_TIME_BUF_LEN);
-	GET_TIME_OF_DAY(&ts);
-	local_time = (u64)(ts.tv_sec - (sys_tz.tz_minuteswest * 60));
+	ktime_get_real_ts64(&ts);
+	local_time = (u64)(ts.tv_sec - (sys_tz.tz_minuteswest * 60u));
 	rtc_time_to_tm(local_time, &tm);
 	scnprintf(timebuf, DEBUG_DUMP_TIME_BUF_LEN,
 			"%02d:%02d:%02d.%06lu",

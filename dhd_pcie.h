@@ -698,6 +698,7 @@ extern int dhdpcie_disable_irq_nosync(dhd_bus_t *bus);
 extern int dhdpcie_enable_irq(dhd_bus_t *bus);
 
 extern void dhd_bus_dump_dar_registers(struct dhd_bus *bus);
+extern void dhd_bus_dump_imp_cfg_registers(struct dhd_bus *bus);
 
 #if defined(linux) || defined(LINUX)
 extern uint32 dhdpcie_rc_config_read(dhd_bus_t *bus, uint offset);

@@ -56,6 +56,12 @@
 #include <etd.h>
 #endif /* PCIE_FULL_DONGLE */
 
+#ifdef CONFIG_IRQ_HISTORY
+#include <linux/power/irq_history.h>
+#endif /* CONFIG_IRQ_HISTORY */
+
+#include <linux/nl80211.h>
+
 #ifdef WL_MONITOR
 #ifdef HOST_RADIOTAP_CONV
 #include <bcmwifi_monitor.h>
@@ -92,6 +98,87 @@
 #endif /* SUPPORT_AP_POWERSAVE */
 
 #define DHD_REGISTRATION_TIMEOUT  12000  /* msec : allowed time to finished dhd registration */
+
+#if defined(DHD_TRACE_WAKE_LOCK)
+typedef enum dhd_wklock_type {
+	DHD_WAKE_LOCK,
+	DHD_WAKE_UNLOCK,
+	DHD_WAIVE_LOCK,
+	DHD_RESTORE_LOCK
+} dhd_wklock_t;
+
+struct wk_trace_record {
+	unsigned long addr;	            /* Address of the instruction */
+	dhd_wklock_t lock_type;         /* lock_type */
+	unsigned long long counter;		/* counter information */
+	struct hlist_node wklock_node;  /* hash node */
+};
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
+#define HASH_ADD(hashtable, node, key) \
+	do { \
+		hash_add(hashtable, node, key); \
+	} while (0);
+#else
+#define HASH_ADD(hashtable, node, key) \
+	do { \
+		int index = hash_long(key, ilog2(ARRAY_SIZE(hashtable))); \
+		hlist_add_head(node, &hashtable[index]); \
+	} while (0);
+#endif /* KERNEL_VER < KERNEL_VERSION(3, 7, 0) */
+
+#define STORE_WKLOCK_RECORD(wklock_type) \
+	do { \
+		struct wk_trace_record *wklock_info = NULL; \
+		unsigned long func_addr = (unsigned long)__builtin_return_address(0); \
+		wklock_info = find_wklock_entry(func_addr); \
+		if (wklock_info) { \
+			if (wklock_type == DHD_WAIVE_LOCK || wklock_type == DHD_RESTORE_LOCK) { \
+				wklock_info->counter = dhd->wakelock_counter; \
+			} else { \
+				wklock_info->counter++; \
+			} \
+		} else { \
+			wklock_info = kzalloc(sizeof(*wklock_info), GFP_ATOMIC); \
+			if (!wklock_info) {\
+				printk("Can't allocate wk_trace_record \n"); \
+			} else { \
+				wklock_info->addr = func_addr; \
+				wklock_info->lock_type = wklock_type; \
+				if (wklock_type == DHD_WAIVE_LOCK || \
+						wklock_type == DHD_RESTORE_LOCK) { \
+					wklock_info->counter = dhd->wakelock_counter; \
+				} else { \
+					wklock_info->counter++; \
+				} \
+				HASH_ADD(wklock_history, &wklock_info->wklock_node, func_addr); \
+			} \
+		} \
+	} while (0);
+
+#else
+#define STORE_WKLOCK_RECORD(wklock_type)
+#endif /* DHD_TRACE_WAKE_LOCK */
+
+#ifdef ENABLE_ADAPTIVE_SCHED
+#define DEFAULT_CPUFREQ_THRESH		1000000	/* threshold frequency : 1000000 = 1GHz */
+#ifndef CUSTOM_CPUFREQ_THRESH
+#define CUSTOM_CPUFREQ_THRESH	DEFAULT_CPUFREQ_THRESH
+#endif /* CUSTOM_CPUFREQ_THRESH */
+#endif /* ENABLE_ADAPTIVE_SCHED */
+
+/* enable HOSTIP cache update from the host side when an eth0:N is up */
+#define AOE_IP_ALIAS_SUPPORT 1
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+#define DHD_TCP_LIMIT_OUTPUT_BYTES (4 * 1024 * 1024)
+#ifndef TCP_DEFAULT_LIMIT_OUTPUT
+#define TCP_DEFAULT_LIMIT_OUTPUT (256 * 1024)
+#endif /* TSQ_DEFAULT_LIMIT_OUTPUT */
+#endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
+
+#define DHD_MEMDUMP_TYPE_STR_LEN 32
+#define DHD_MEMDUMP_PATH_STR_LEN 128
 
 typedef struct wifi_adapter_info {
 	const char	*name;

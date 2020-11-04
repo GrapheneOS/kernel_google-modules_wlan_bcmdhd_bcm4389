@@ -669,6 +669,7 @@ BCMPOSTTRAPFASTPATH(pktpool_deq)(pktpool_t *pktp)
 
 	pktp->avail--;
 
+	PKTSETQCALLER(p, pktp, CALL_SITE);
 	return p;
 }
 
@@ -677,6 +678,7 @@ BCMPOSTTRAPFASTPATH(pktpool_enq)(pktpool_t *pktp, void *p)
 {
 	ASSERT_FP(p != NULL);
 
+	PKTSETQCALLER(p, pktp, CALL_SITE);
 	PKTSETFREELIST(p, pktp->freelist); /* insert at head of pktpool free list */
 	pktp->freelist = p; /* free list points to newly inserted packet */
 

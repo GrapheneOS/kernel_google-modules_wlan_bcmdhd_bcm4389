@@ -1348,7 +1348,7 @@ osl_sysuptime_us(void)
 	struct timespec64 ts;
 	uint64 usec;
 
-	GET_TIME_OF_DAY(&ts);
+	ktime_get_real_ts64(&ts);
 	/* tv_nsec content is fraction of a second */
 	usec = (uint64)ts.tv_sec * USEC_PER_SEC + (ts.tv_nsec / NSEC_PER_USEC);
 #ifdef BCMSLTGT
@@ -1399,10 +1399,9 @@ osl_systztime_us(void)
 	struct timespec64 ts;
 	uint64 tzusec;
 
-	GET_TIME_OF_DAY(&ts);
+	ktime_get_real_ts64(&ts);
 	/* apply timezone */
-	tzusec = (uint64)((ts.tv_sec - (sys_tz.tz_minuteswest * 60)) *
-		USEC_PER_SEC);
+	tzusec = (uint64)((ts.tv_sec - (sys_tz.tz_minuteswest * 60u)) * USEC_PER_SEC);
 	tzusec += ts.tv_nsec / NSEC_PER_USEC;
 
 	return tzusec;
@@ -1669,7 +1668,7 @@ osl_getcycles(void)
 void *
 osl_reg_map(uint32 pa, uint size)
 {
-	return (IOREMAP_NO_CACHE((unsigned long)pa, (unsigned long)size));
+	return (ioremap_nocache((unsigned long)pa, (unsigned long)size));
 }
 
 void

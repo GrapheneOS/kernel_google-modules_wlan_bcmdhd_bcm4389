@@ -3176,8 +3176,21 @@ concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 			strncat(map_path, info->fw_ext, strlen(info->fw_ext));
 #endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
 	} else {
+#ifdef CONCATE_REV_C0_FOR_NOMATCH_VID
+		char *c0_tag = "_c0";
+
+		DHD_ERROR(("%s:failed to find extension, use _c0 as default\n", __FUNCTION__));
+		/* Failed to find info, use _c0 as default */
+		strncat(nv_path, c0_tag, strlen(c0_tag));
+		strncat(fw_path, c0_tag, strlen(c0_tag));
+#if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
+		if (!bcmstrnstr(map_path, PATH_MAX, c0_tag, strlen(c0_tag)))
+			strncat(map_path, c0_tag, strlen(c0_tag));
+#endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
+#else
 		DHD_ERROR(("%s:failed to find extension for nvram and firmware\n", __FUNCTION__));
 		ret = BCME_ERROR;
+#endif /* CONCATE_REV_C0_FOR_NOMATCH_VID */
 	}
 #endif /* USE_CID_CHECK */
 #ifdef USE_DIRECT_VID_TAG
@@ -3433,7 +3446,7 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 	store_reset = (si_setcore(bus->sih, ARMCR4_CORE_ID, 0) ||
 			si_setcore(bus->sih, ARMCA7_CORE_ID, 0));
 
-	bcmerror = dhd_os_get_img_fwreq(bus->dhd, &fw, bus->fw_path);
+	bcmerror = dhd_os_get_img_fwreq(&fw, bus->fw_path);
 	if (bcmerror < 0) {
 		DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
 			bcmerror));
@@ -3501,7 +3514,7 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 
 #if defined(CACHE_FW_IMAGES)
 	int buf_offset, total_len, residual_len;
-	char * dnld_buf;
+	char * dnld_buf = NULL;
 #endif /* CACHE_FW_IMAGE */
 
 #if defined(linux) || defined(LINUX)
@@ -3619,6 +3632,11 @@ err:
 	if (memblock) {
 		MFREE(bus->dhd->osh, memblock, MEMBLOCK + DHD_SDALIGN);
 	}
+#if defined(CACHE_FW_IMAGES)
+	if (dnld_buf) {
+		dhd_free_download_buffer(bus->dhd, dnld_buf, total_len);
+	}
+#endif /* CACHE_FW_IMAGES */
 
 	if (imgbuf) {
 		dhd_os_close_image1(bus->dhd, imgbuf);
@@ -3636,16 +3654,31 @@ static int
 dhdpcie_download_nvram(struct dhd_bus *bus)
 {
 	int bcmerror = BCME_ERROR;
-	uint len;
+	uint len, memblock_len = 0;
 	char * memblock = NULL;
 	char *bufp;
+#ifdef SUPPORT_MULTIPLE_NVRAM
+	char pnv_path[MAX_FILE_COUNT][MAX_FILE_LEN] = {0};
+	int i;
+#else
 	char *pnv_path;
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 	bool nvram_file_exists;
 	bool nvram_uefi_exists = FALSE;
 	bool local_alloc = FALSE;
+
+#ifdef SUPPORT_MULTIPLE_NVRAM
+	snprintf(pnv_path[0], sizeof(pnv_path[0]),
+		"%s_%s", CONFIG_BCMDHD_NVRAM_PATH, val_revision);
+	strncpy(pnv_path[1], CONFIG_BCMDHD_NVRAM_PATH, MAX_FILE_LEN);
+	strncpy(pnv_path[2], bus->nv_path, MAX_FILE_LEN);
+
+	nvram_file_exists = ((pnv_path[0] != NULL) && (pnv_path[0][0] != '\0'));
+#else
 	pnv_path = bus->nv_path;
 
 	nvram_file_exists = ((pnv_path != NULL) && (pnv_path[0] != '\0'));
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 
 	/* First try UEFI */
 	len = MAX_NVRAMBUF_SIZE;
@@ -3655,8 +3688,20 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 	if ((len <= 0) || (memblock == NULL)) {
 
 		if (nvram_file_exists) {
+
+#ifdef SUPPORT_MULTIPLE_NVRAM
+			for (i = 0; i < MAX_FILE_COUNT; i++) {
+				len = MAX_NVRAMBUF_SIZE;
+				bcmerror = dhd_get_download_buffer(bus->dhd,
+					pnv_path[i], NVRAM, &memblock, (int *)&len);
+				if (bcmerror == BCME_OK) {
+					break;
+				}
+			}
+#else
 			len = MAX_NVRAMBUF_SIZE;
 			dhd_get_download_buffer(bus->dhd, pnv_path, NVRAM, &memblock, (int *)&len);
+#endif /* SUPPORT_MULTIPLE_NVRAM */
 			if ((len <= 0 || len > MAX_NVRAMBUF_SIZE)) {
 				goto err;
 			}
@@ -3683,10 +3728,15 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 	} else {
 		nvram_uefi_exists = TRUE;
 	}
+#ifdef DHD_LINUX_STD_FW_API
+	memblock_len = len;
+#else
+	memblock_len = MAX_NVRAMBUF_SIZE;
+#endif /* DHD_LINUX_STD_FW_API */
 
 	DHD_ERROR_MEM(("%s: dhd_get_download_buffer len %d\n", __FUNCTION__, len));
 
-	if (len > 0 && len <= MAX_NVRAMBUF_SIZE && memblock != NULL) {
+	if (len > 0 && len < MAX_NVRAMBUF_SIZE && memblock != NULL) {
 		bufp = (char *) memblock;
 
 #ifdef DHD_EFI
@@ -3700,7 +3750,7 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 		}
 
 		if (!bus->processed_nvram_params_len) {
-			bufp[len] = 0;
+			bufp[len-1] = 0;
 			if (nvram_uefi_exists || nvram_file_exists) {
 				len = process_nvram_vars(bufp, len);
 				bus->processed_nvram_params_len = len;
@@ -3708,7 +3758,7 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 		} else
 #else
 		{
-			bufp[len] = 0;
+			bufp[len-1] = 0;
 			if (nvram_uefi_exists || nvram_file_exists) {
 				len = process_nvram_vars(bufp, len);
 			}
@@ -3743,7 +3793,7 @@ err:
 		if (local_alloc) {
 			MFREE(bus->dhd->osh, memblock, MAX_NVRAMBUF_SIZE);
 		} else {
-			dhd_free_download_buffer(bus->dhd, memblock, MAX_NVRAMBUF_SIZE);
+			dhd_free_download_buffer(bus->dhd, memblock, memblock_len);
 		}
 	}
 
@@ -5872,6 +5922,14 @@ dhd_bus_cmn_writeshared(dhd_bus_t *bus, void *data, uint32 len, uint8 type, uint
 			DHD_INFO(("Wrote host_scb_addr:0x%x\n",
 				(uint32) HTOL32(*(uint32 *)data)));
 			break;
+
+#ifdef DHD_PCIE_PTM
+		case HOST_CAP2:
+			addr = DHD_PCIE_SHARED_MEMBER_ADDR(bus, host_cap2);
+			dhdpcie_bus_wtcm32(bus, addr, (uint32) HTOL32(*(uint32 *)data));
+			DHD_INFO(("Wrote host_cap2 0x%x\n", (uint32) HTOL32(*(uint32 *)data)));
+			break;
+#endif /* DHD_PCIE_PTM */
 
 		default:
 			break;
@@ -8256,7 +8314,9 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		/* As D3_INFORM will be sent after De-assert,
 		 * skip sending DS-ACK for DS-REQ.
 		 */
-		bus->skip_ds_ack = TRUE;
+	DHD_BUS_INB_DW_LOCK(bus->inb_lock, flags);
+	bus->skip_ds_ack = TRUE;
+	DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 #endif /* PCIE_INB_DW */
 
 #if defined(PCIE_OOB) || defined(PCIE_INB_DW)
@@ -8386,9 +8446,9 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 						DW_DEVICE_HOST_WAKE_WAIT);
 					dhd_bus_ds_trace(bus, 0, TRUE,
 						dhdpcie_bus_get_pcie_inband_dw_state(bus));
+					bus->skip_ds_ack = FALSE;
 					DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 				}
-				bus->skip_ds_ack = FALSE;
 #endif /* PCIE_INB_DW */
 				/* For Linux, Macos etc (otherthan NDIS) enable back the dongle
 				 * interrupts using intmask and host interrupts
@@ -8507,9 +8567,6 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			/* check if the D3 ACK timeout due to scheduling issue */
 			bus->dhd->is_sched_error = !dhd_query_bus_erros(bus->dhd) &&
 				dhd_bus_query_dpc_sched_errors(bus->dhd);
-			bus->dhd->d3ack_timeout_occured = TRUE;
-			/* If the D3 Ack has timeout */
-			bus->dhd->d3ackcnt_timeout++;
 			DHD_ERROR(("%s: resumed on timeout for D3 ACK%s d3_inform_cnt %d\n",
 				__FUNCTION__, bus->dhd->is_sched_error ?
 				" due to scheduling problem" : "", bus->dhd->d3ackcnt_timeout));
@@ -8537,6 +8594,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			/* resume all interface network queue. */
 			dhd_bus_start_queue(bus);
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
+			/* Dump important config space registers */
+			dhd_bus_dump_imp_cfg_registers(bus);
 			/* XXX : avoid multiple socram dump from dongle trap and
 			 * invalid PCIe bus assceess due to PCIe link down
 			 */
@@ -8544,6 +8603,13 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 				DHD_ERROR(("Check dongle trap in the case of d3 ack timeout\n"));
 				dhdpcie_checkdied(bus, NULL, 0);
 			}
+			/* Set d3_ack_timeout_occurred after checkdied,
+			 * as checkdied returns for any bus error
+			 */
+			bus->dhd->d3ack_timeout_occured = TRUE;
+			/* If the D3 Ack has timeout */
+			bus->dhd->d3ackcnt_timeout++;
+
 			if (bus->dhd->dongle_trap_occured) {
 				dhd_os_check_hang(bus->dhd, 0, -EREMOTEIO);
 			} else if (!bus->is_linkdown &&
@@ -8620,9 +8686,9 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 				dhd_bus_ds_trace(bus, 0, TRUE);
 #endif /* PCIE_INB_DW */
 			}
+			bus->skip_ds_ack = FALSE;
 			DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 		}
-		bus->skip_ds_ack = FALSE;
 #endif /* PCIE_INB_DW */
 		rc = dhdpcie_pci_suspend_resume(bus, state);
 #if defined(LINUX) || defined(linux)
@@ -10156,9 +10222,10 @@ void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, " unicast %u muticast %u broadcast %u arp %u\n",
 		dhdp->bus->wake_counts.rx_ucast, dhdp->bus->wake_counts.rx_mcast,
 		dhdp->bus->wake_counts.rx_bcast, dhdp->bus->wake_counts.rx_arp);
-	bcm_bprintf(strbuf, " multi4 %u multi6 %u icmp6 %u multiother %u\n",
+	bcm_bprintf(strbuf, " multi4 %u multi6 %u icmp %u icmp6 %u multiother %u\n",
 		dhdp->bus->wake_counts.rx_multi_ipv4, dhdp->bus->wake_counts.rx_multi_ipv6,
-		dhdp->bus->wake_counts.rx_icmpv6, dhdp->bus->wake_counts.rx_multi_other);
+		dhdp->bus->wake_counts.rx_icmp, dhdp->bus->wake_counts.rx_icmpv6,
+		dhdp->bus->wake_counts.rx_multi_other);
 	bcm_bprintf(strbuf, " icmp6_ra %u, icmp6_na %u, icmp6_ns %u\n",
 		dhdp->bus->wake_counts.rx_icmpv6_ra, dhdp->bus->wake_counts.rx_icmpv6_na,
 		dhdp->bus->wake_counts.rx_icmpv6_ns);
@@ -10186,8 +10253,9 @@ void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		dhdp->bus->h2d_mb_data_ptr_addr, dhdp->bus->d2h_mb_data_ptr_addr);
 	bcm_bprintf(strbuf, "dhd cumm_ctr %d\n", DHD_CUMM_CTR_READ(&dhdp->cumm_ctr));
 #ifdef DHD_LIMIT_MULTI_CLIENT_FLOWRINGS
-	bcm_bprintf(strbuf, "multi_client_flow_rings:%d max_multi_client_flow_rings:%d\n",
-		dhdp->multi_client_flow_rings, dhdp->max_multi_client_flow_rings);
+	bcm_bprintf(strbuf, "multi_client_flow_rings:%u max_multi_client_flow_rings:%d\n",
+		OSL_ATOMIC_READ(dhdp->osh, &dhdp->multi_client_flow_rings),
+		dhdp->max_multi_client_flow_rings);
 #endif /* DHD_LIMIT_MULTI_CLIENT_FLOWRINGS */
 #if defined(DHD_HTPUT_TUNABLES)
 	bcm_bprintf(strbuf, "htput_flow_ring_start:%d total_htput:%d client_htput=%d\n",
@@ -11296,8 +11364,8 @@ dhd_bus_handle_mb_data(dhd_bus_t *bus, uint32 d2h_mb_data)
 			/* As per inband state machine, host should not send DS-ACK
 			 * during suspend or suspend in progress, instead D3 inform will be sent.
 			 */
+			DHD_BUS_INB_DW_LOCK(bus->inb_lock, flags);
 			if (!bus->skip_ds_ack) {
-				DHD_BUS_INB_DW_LOCK(bus->inb_lock, flags);
 				if (dhdpcie_bus_get_pcie_inband_dw_state(bus)
 					== DW_DEVICE_DS_ACTIVE) {
 					dhdpcie_bus_set_pcie_inband_dw_state(bus,
@@ -11331,6 +11399,7 @@ dhd_bus_handle_mb_data(dhd_bus_t *bus, uint32 d2h_mb_data)
 				DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 				dhd_os_ds_enter_wake(bus->dhd);
 			} else {
+				DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 				DHD_INFO(("%s: Skip DS-ACK due to "
 					"suspend in progress\n", __FUNCTION__));
 			}
@@ -13141,6 +13210,12 @@ int
 dhd_bus_get_cto(dhd_pub_t *dhdp)
 {
 	return dhdp->bus->cto_triggered;
+}
+
+bool
+dhd_bus_get_read_shm(dhd_pub_t *dhdp)
+{
+	return FALSE;
 }
 
 #ifdef IDLE_TX_FLOW_MGMT
@@ -15050,7 +15125,7 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 static int
 dhdpcie_fis_trigger(dhd_pub_t *dhd)
 {
-	uint32 fis_ctrl_status;
+	uint32 fis_ctrl_status, fis_min_res_mask;
 	uint32 cfg_status_cmd;
 	uint32 cfg_pmcsr;
 
@@ -15074,12 +15149,16 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 	/* Set fis_triggered flag to ignore link down callback from RC */
 	dhd->fis_triggered = TRUE;
 
+	/* set fis_min_res_mask to 0x1 */
+	PMU_REG(dhd->bus->sih, fis_min_res_mask, ~0, 0x1);
+
 	/* Set FIS PwrswForceOnAll */
 	PMU_REG(dhd->bus->sih, fis_ctrl_status, PMU_FIS_FORCEON_ALL_MASK, PMU_FIS_FORCEON_ALL_MASK);
 
 	fis_ctrl_status = PMU_REG(dhd->bus->sih, fis_ctrl_status, 0, 0);
-
-	DHD_ERROR(("%s: fis_ctrl_status=0x%x\n", __FUNCTION__, fis_ctrl_status));
+	fis_min_res_mask = PMU_REG(dhd->bus->sih, fis_min_res_mask, 0, 0);
+	DHD_ERROR(("%s: fis_ctrl_status=0x%x fis_min_res_mask=0x%x\n",
+		__FUNCTION__, fis_ctrl_status, fis_min_res_mask));
 
 	cfg_status_cmd = dhd_pcie_config_read(dhd->bus, PCIECFGREG_STATUS_CMD, sizeof(uint32));
 	cfg_pmcsr = dhd_pcie_config_read(dhd->bus, PCIE_CFG_PMCSR, sizeof(uint32));

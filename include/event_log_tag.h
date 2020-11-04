@@ -489,8 +489,12 @@
 #define EVENT_LOG_TAG_LLW_ERR			393
 #define EVENT_LOG_TAG_LLW_INFO			394
 
+#define	EVENT_LOG_TAG_SPMI_INFO			395
+#define	EVENT_LOG_TAG_SPMI_ERROR		396
+#define	EVENT_LOG_TAG_SPMI_TRACE		397
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			394
+#define EVENT_LOG_TAG_MAX			397
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

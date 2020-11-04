@@ -1421,8 +1421,6 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 	}
 
 	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_CMD_EVENT_COUNT_USED, rc_event_used_cnt);
-#else
-	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_CMD_EVENT_COUNT_USED, WLC_E_LAST);
 #endif /* CUSTOM_WAKE_REASON_STATS */
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to put Max count of event used, ret=%d\n", ret));
@@ -1480,7 +1478,7 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 		WL_ERR(("Failed to put Total wake due to RX broadcast, ret=%d\n", ret));
 		goto exit;
 	}
-	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_RX_ICMP_PKT, pwake_count_info->rx_arp);
+	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_RX_ICMP_PKT, pwake_count_info->rx_icmp);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to put Total wake due to ICMP pkt, ret=%d\n", ret));
 		goto exit;
@@ -8343,16 +8341,25 @@ static int wl_cfgvendor_nla_put_pktlogdump_data(struct sk_buff *skb,
 #ifdef DHD_SDTC_ETB_DUMP
 static int wl_cfgvendor_nla_put_sdtc_etb_dump_data(struct sk_buff *skb, struct net_device *ndev)
 {
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(ndev);
 	char memdump_path[MEMDUMP_PATH_LEN];
 	int ret = BCME_OK;
 
+	if (!dhdp->sdtc_etb_inited) {
+		WL_ERR(("sdtc not inited, hence donot collect SDTC dump through HAL\n"));
+		goto exit;
+	}
+	if (dhdp->sdtc_etb_dump_len <= sizeof(etb_info_t)) {
+		WL_ERR(("ETB is of zero size. Hence donot collect SDTC ETB\n"));
+		goto exit;
+	}
 	dhd_get_memdump_filename(ndev, memdump_path, MEMDUMP_PATH_LEN, "sdtc_etb_dump");
 	ret = nla_put_string(skb, DUMP_FILENAME_ATTR_SDTC_ETB_DUMP, memdump_path);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to nla put stdc etb dump path, ret=%d\n", ret));
 		goto exit;
 	}
-	/* should we give exact length sdtc dump FW has reported dump ? */
+
 	ret = nla_put_u32(skb, DUMP_LEN_ATTR_SDTC_ETB_DUMP, DHD_SDTC_ETB_MEMPOOL_SIZE);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to nla put stdc etb length, ret=%d\n", ret));
@@ -9318,6 +9325,10 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 	const struct nlattr *iter;
 	sar_advance_modes sar_tx_power_val = SAR_DISABLE;
 	int airplane_mode = 0;
+#if defined(WL_SAR_TX_POWER_CONFIG)
+	int i = 0;
+	bool found = FALSE;
+#endif /* WL_SAR_TX_POWER_CONFIG */
 
 	nla_for_each_attr(iter, data, len, rem) {
 		type = nla_type(iter);
@@ -9337,47 +9348,64 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 		goto exit;
 	}
 
-	/* Map Android TX power modes to Brcm power mode */
-	switch (wifi_tx_power_mode) {
-		case WIFI_POWER_SCENARIO_VOICE_CALL:
-		case WIFI_POWER_SCENARIO_DEFAULT:
-			/* SAR disabled */
-			sar_tx_power_val = SAR_DISABLE;
-			airplane_mode = 0;
+#if defined(WL_SAR_TX_POWER_CONFIG)
+	for (i = 0; i < MAX_SAR_CONFIG_INFO; i++) {
+		if (cfg->sar_config_info[i].scenario == WIFI_POWER_SCENARIO_INVALID) {
 			break;
-		case WIFI_POWER_SCENARIO_ON_HEAD_CELL_OFF:
-			/* HEAD mode, Airplane */
-			sar_tx_power_val = SAR_HEAD;
-			airplane_mode = 1;
+		}
+		if (cfg->sar_config_info[i].scenario == wifi_tx_power_mode) {
+			found = TRUE;
+			sar_tx_power_val = cfg->sar_config_info[i].sar_tx_power_val;
+			airplane_mode = cfg->sar_config_info[i].airplane_mode;
+			WL_DBG(("found scenario with new config\n"));
 			break;
-		case WIFI_POWER_SCENARIO_ON_BODY_CELL_OFF:
-			/* GRIP mode, Airplane */
-			sar_tx_power_val = SAR_GRIP;
-			airplane_mode = 1;
-			break;
-		case WIFI_POWER_SCENARIO_ON_BODY_BT:
-			/* BT mode, Airplane */
-			sar_tx_power_val = SAR_BT;
-			airplane_mode = 1;
-			break;
-		case WIFI_POWER_SCENARIO_ON_HEAD_CELL_ON:
-			/* HEAD mode, Normal */
-			sar_tx_power_val = SAR_HEAD;
-			airplane_mode = 0;
-			break;
-		case WIFI_POWER_SCENARIO_ON_BODY_CELL_ON:
-			/* GRIP mode, Normal */
-			sar_tx_power_val = SAR_GRIP;
-			airplane_mode = 0;
-			break;
-		default:
-			WL_ERR(("invalid wifi tx power scenario = %d\n",
-				sar_tx_power_val));
-			err = -EINVAL;
-			goto exit;
+		}
 	}
 
-	WL_DBG(("%s, sar_mode %d airplane_mode %d\n", __FUNCTION__,
+	if (!found)
+#endif /* WL_SAR_TX_POWER_CONFIG */
+	{
+		/* Map Android TX power modes to Brcm power mode */
+		switch (wifi_tx_power_mode) {
+			case WIFI_POWER_SCENARIO_VOICE_CALL:
+			case WIFI_POWER_SCENARIO_DEFAULT:
+				/* SAR disabled */
+				sar_tx_power_val = SAR_DISABLE;
+				airplane_mode = 0;
+				break;
+			case WIFI_POWER_SCENARIO_ON_HEAD_CELL_OFF:
+				/* HEAD mode, Airplane */
+				sar_tx_power_val = SAR_HEAD;
+				airplane_mode = 1;
+				break;
+			case WIFI_POWER_SCENARIO_ON_BODY_CELL_OFF:
+				/* GRIP mode, Airplane */
+				sar_tx_power_val = SAR_GRIP;
+				airplane_mode = 1;
+				break;
+			case WIFI_POWER_SCENARIO_ON_BODY_BT:
+				/* BT mode, Airplane */
+				sar_tx_power_val = SAR_BT;
+				airplane_mode = 1;
+				break;
+			case WIFI_POWER_SCENARIO_ON_HEAD_CELL_ON:
+				/* HEAD mode, Normal */
+				sar_tx_power_val = SAR_HEAD;
+				airplane_mode = 0;
+				break;
+			case WIFI_POWER_SCENARIO_ON_BODY_CELL_ON:
+				/* GRIP mode, Normal */
+				sar_tx_power_val = SAR_GRIP;
+				airplane_mode = 0;
+				break;
+			default:
+				WL_ERR(("invalid wifi tx power scenario = %d\n",
+					sar_tx_power_val));
+				err = -EINVAL;
+				goto exit;
+		}
+	}
+	WL_DBG(("sar_mode %d airplane_mode %d\n",
 		sar_tx_power_val, airplane_mode));
 	err = wldev_iovar_setint(wdev_to_ndev(wdev), "fccpwrlimit2g", airplane_mode);
 	if (unlikely(err)) {

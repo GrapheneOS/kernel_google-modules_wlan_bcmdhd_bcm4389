@@ -135,6 +135,26 @@ typedef BWL_PRE_PACKED_STRUCT union rnr_tbtt_info_field {
 		uint8		bss_params;
 		uint8		psd_20mhz;
 	} BWL_POST_PACKED_STRUCT len13_t;
+
+	/* Draft P802.11be Table 9-281 */
+	BWL_PRE_PACKED_STRUCT struct len15 {
+		uint8		tbtt_offset;
+		tbtt_bssid_t	bssid;
+		uint32		short_ssid;
+		uint8		bss_params;
+		uint8		mld_params[3];
+	} BWL_POST_PACKED_STRUCT len15_t;
+
+	/* Draft P802.11be Table 9-281 */
+	BWL_PRE_PACKED_STRUCT struct len16 {
+		uint8		tbtt_offset;
+		tbtt_bssid_t	bssid;
+		uint32		short_ssid;
+		uint8		bss_params;
+		uint8		psd_20mhz;
+		uint8		mld_params[3];
+	} BWL_POST_PACKED_STRUCT len16_t;
+
 } BWL_POST_PACKED_STRUCT rnr_tbtt_info_field_t;
 
 /* 11ai D11.0 9.4.2.171.1 TBTT Information field */
@@ -238,6 +258,18 @@ typedef BWL_PRE_PACKED_STRUCT struct fils_rnr_element {
  *  SHORTSSID (4)+BSS(1) + 20Mhz PSD(1) = 13 BYTES
  */
 #define NBR_AP_TBTT_BSSID_SHORT_SSID_BSS_PSD_LEN	13U
+
+/*  NBR_AP TBTT OFFSETfield(1) + BSSID(6)+SHORTSSID (4)+
+ *  BSS(1) + MLD (3) = 15 BYTES
+ */
+/* Draft P802.11be Table 9-281 */
+#define NBR_AP_TBTT_BSSID_SHORT_SSID_BSS_MLD_LEN	15U
+
+/*  NBR_AP TBTT OFFSETfield(1) + BSSID(6) +
+ *  SHORTSSID (4)+BSS(1) + 20Mhz PSD(1) + MLD (3) = 16 BYTES
+ */
+/* Draft P802.11be Table 9-281 */
+#define NBR_AP_TBTT_BSSID_SHORT_SSID_BSS_PSD_MLD_LEN	16U
 
 /* FILS Nonce element */
 #define FILS_NONCE_LENGTH 16u

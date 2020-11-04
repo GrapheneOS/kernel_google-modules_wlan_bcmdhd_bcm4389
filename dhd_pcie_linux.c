@@ -90,9 +90,13 @@
 #include "ftdi_sio_external.h"
 #endif /* PCIE_OOB */
 
-#define PCI_CFG_RETRY 		10	/* PR15065: retry count for pci cfg accesses */
+#if defined(WL_CFG80211)
+#include <wl_cfg80211.h>
+#endif	/* WL_CFG80211 */
+
+#define PCI_CFG_RETRY		10		/* PR15065: retry count for pci cfg accesses */
 #define OS_HANDLE_MAGIC		0x1234abcd	/* Magic # to recognize osh */
-#define BCM_MEM_FILENAME_LEN 	24		/* Mem. filename length */
+#define BCM_MEM_FILENAME_LEN	24		/* Mem. filename length */
 
 #ifdef PCIE_OOB
 #define HOST_WAKE 4   /* GPIO_0 (HOST_WAKE) - Output from WLAN */
@@ -2879,10 +2883,49 @@ dhd_os_ib_set_device_wake(struct dhd_bus *bus, bool val)
 #endif /* PCIE_OOB */
 
 #ifdef DHD_PCIE_RUNTIMEPM
+#ifdef WL_CFG80211
+static uint32 dhd_ps_mode_managed_dur(dhd_pub_t *dhdp)
+{
+	uint32 dur = 0;
+
+	struct net_device *primary_ndev;
+	struct bcm_cfg80211 *cfg;
+	struct net_info *_net_info;
+
+	primary_ndev = dhd_linux_get_primary_netdev(dhdp);
+	if (!primary_ndev) {
+		DHD_ERROR(("%s - primary_ndev is NULL\n", __FUNCTION__));
+		return dur;
+	}
+
+	cfg = wl_get_cfg(primary_ndev);
+	if (!cfg) {
+		DHD_ERROR(("%s - cfg is NULL\n", __FUNCTION__));
+		return dur;
+	}
+
+	_net_info = wl_get_netinfo_by_netdev(cfg, primary_ndev);
+	if (!_net_info) {
+		DHD_ERROR(("%s - net_info is NULL\n", __FUNCTION__));
+		return dur;
+	}
+
+	if (_net_info->ps_managed) {
+		dur = (OSL_SYSUPTIME() - _net_info->ps_managed_start_ts) / MSEC_PER_SEC;
+	}
+
+	return dur;
+}
+#endif /* WL_CFG80211 */
+
 bool dhd_runtimepm_state(dhd_pub_t *dhd)
 {
 	dhd_bus_t *bus;
 	unsigned long flags;
+#ifdef WL_CFG80211
+	uint32 ps_mode_off_dur;
+#endif /* WL_CFG80211 */
+
 	bus = dhd->bus;
 
 	DHD_GENERAL_LOCK(dhd, flags);
@@ -2902,8 +2945,15 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 		bus->idlecount = 0;
 		if (DHD_BUS_BUSY_CHECK_IDLE(dhd) && !DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhd) &&
 			!DHD_CHECK_CFG_IN_PROGRESS(dhd) && !dhd_os_check_wakelock_all(bus->dhd)) {
+#ifdef WL_CFG80211
+			ps_mode_off_dur = dhd_ps_mode_managed_dur(dhd);
+			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
+				"PS mode off dur: %d sec \n", __FUNCTION__,
+				bus->idletime, dhd_runtimepm_ms, ps_mode_off_dur));
+#else
 			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
-					__FUNCTION__, bus->idletime, dhd_runtimepm_ms));
+				__FUNCTION__, bus->idletime, dhd_runtimepm_ms));
+#endif /* WL_CFG80211 */
 			bus->bus_wake = 0;
 			DHD_BUS_BUSY_SET_RPM_SUSPEND_IN_PROGRESS(dhd);
 			bus->runtime_resume_done = FALSE;

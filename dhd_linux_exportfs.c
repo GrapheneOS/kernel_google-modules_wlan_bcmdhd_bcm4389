@@ -44,9 +44,9 @@ ssize_t dhd_ring_proc_read(struct file *file, char *buffer, size_t tt, loff_t *l
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0))
 static const struct file_operations dhd_ring_proc_ops = {
-        .open = dhd_ring_proc_open,
-        .read = dhd_ring_proc_read,
-        .release = single_release,
+	.open = dhd_ring_proc_open,
+	.read = dhd_ring_proc_read,
+	.release = single_release,
 };
 #else
 static const struct proc_ops dhd_ring_proc_ops = {
@@ -54,7 +54,7 @@ static const struct proc_ops dhd_ring_proc_ops = {
 	.proc_read = dhd_ring_proc_read,
 	.proc_release = single_release,
 };
-#endif
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0) */
 
 static int
 dhd_ring_proc_open(struct inode *inode, struct file *file)
@@ -540,7 +540,7 @@ show_pwrstats_path(struct dhd_info *dev, char *buf)
 		iovar_buf, PWRSTATS_IOV_BUF_LEN, NULL);
 	if (err != BCME_OK) {
 		DHD_ERROR(("error (%d) - size = %zu\n", err, sizeof(wl_pwrstats_t)));
-		goto done;
+		goto print_old;
 	}
 
 	/* Check version */
@@ -637,6 +637,12 @@ show_pwrstats_path(struct dhd_info *dev, char *buf)
 		*(uint8**)&p_data += taglen;
 	} while (len >= BCM_XTLV_HDR_SIZE);
 
+print_old:
+	/* [awake|pm]_last_entry_us are provided based on host timestamp.
+	 * These are calculated by dongle timestamp + (delta time of host & dongle)
+	 * If the newly calculated delta time is more than 1 second gap from
+	 * the existing delta time, it is updated to compensate more accurately.
+	 */
 	OSL_GET_LOCALTIME(&ts_sec, &ts_usec);
 	time_delta = ts_sec * USEC_PER_SEC + ts_usec - pwrstats_sysfs.current_ts;
 	if ((time_delta > last_delta) &&

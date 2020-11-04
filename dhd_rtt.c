@@ -3394,7 +3394,7 @@ dhd_rtt_convert_results_to_host_v1(rtt_result_t *rtt_result, const uint8 *p_data
 	/* time stamp */
 	/* get the time elapsed from boot time */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-	GET_MONOTONIC_BOOT_TIME(&ts);
+	ts = ktime_to_timespec64(ktime_get_boottime());
 	rtt_report->ts = (uint64)TIMESPEC64_TO_US(ts);
 #endif /* LINUX_VER >= 2.6.39 */
 
@@ -3491,7 +3491,7 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	struct timespec64 ts;
 #endif /* LINUX_VER >= 2.6.39 */
 	uint32 ratespec;
-	uint32 avg_dist;
+	int32 avg_dist;
 	const wl_proxd_rtt_result_v2_t *p_data_info = NULL;
 	const wl_proxd_rtt_sample_v2_t *p_sample_avg = NULL;
 	const wl_proxd_rtt_sample_v2_t *p_sample = NULL;
@@ -3648,7 +3648,7 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	/* time stamp */
 	/* get the time elapsed from boot time */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
-	GET_MONOTONIC_BOOT_TIME(&ts);
+	ts = ktime_to_timespec64(ktime_get_boottime());
 	rtt_report->ts = (uint64)TIMESPEC64_TO_US(ts);
 #endif /* LINUX_VER >= 2.6.39 */
 
@@ -4638,7 +4638,7 @@ dhd_rtt_enable_responder(dhd_pub_t *dhd, wifi_channel_info *channel_info)
 			DHD_RTT_ERR(("Failed to set the chanspec \n"));
 		}
 	}
-	rtt_status->pm = PM_OFF;
+
 	err = wldev_ioctl_get(dev, WLC_GET_PM, &rtt_status->pm, sizeof(rtt_status->pm));
 	DHD_RTT(("Current PM value read %d\n", rtt_status->pm));
 	if (err) {
@@ -4677,7 +4677,7 @@ exit:
 		dhd_rtt_ftm_enable(dhd, FALSE);
 		DHD_RTT(("restoring the PM value \n"));
 		if (rtt_status->pm_restore) {
-			pm = PM_FAST;
+			pm = rtt_status->pm;
 			err = wldev_ioctl_set(dev, WLC_SET_PM, &pm, sizeof(pm));
 			if (err) {
 				DHD_RTT_ERR(("Failed to restore PM \n"));
@@ -4707,7 +4707,7 @@ dhd_rtt_cancel_responder(dhd_pub_t *dhd)
 	}
 	rtt_status->status = RTT_STOPPED;
 	if (rtt_status->pm_restore) {
-		pm = PM_FAST;
+		pm = rtt_status->pm;
 		DHD_RTT(("pm_restore =%d \n", rtt_status->pm_restore));
 		err = wldev_ioctl_set(dev, WLC_SET_PM, &pm, sizeof(pm));
 		if (err) {
@@ -4784,6 +4784,7 @@ dhd_rtt_attach(dhd_pub_t *dhd)
 		goto exit;
 	}
 	rtt_status->dhd = dhd;
+	rtt_status->pm = PM_FAST;
 	mutex_init(&rtt_status->rtt_mutex);
 	mutex_init(&rtt_status->geofence_mutex);
 	INIT_LIST_HEAD(&rtt_status->noti_fn_list);

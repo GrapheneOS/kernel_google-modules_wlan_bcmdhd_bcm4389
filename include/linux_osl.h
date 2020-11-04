@@ -631,8 +631,9 @@ extern uint64 regs_addr;
 #define	BUSPROBE(val, addr)	({ (val) = R_REG(NULL, (addr)); 0; })
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
-  /* 'ioremap_nocache' was deprecated in kernels >= 5.6, so instead we use 'ioremap' which
-     is no-cache by default since kernels 2.6.25. */
+/* 'ioremap_nocache' was deprecated in kernels >= 5.6, so instead we use 'ioremap' which
+ * is no-cache by default since kernels 2.6.25.
+ */
 #define IOREMAP_NO_CACHE(address, size) ioremap(address, size)
 #else /* KERNEL_VERSION < 2.6.25 */
 #define IOREMAP_NO_CACHE(address, size) ioremap_nocache(address, size)

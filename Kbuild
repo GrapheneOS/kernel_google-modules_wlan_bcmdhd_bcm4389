@@ -47,10 +47,10 @@ CONFIG_BCM43752=
 CONFIG_BCM4389=y
 CONFIG_DHD_OF_SUPPORT=y
 ifneq ($(CONFIG_SOC_GS101),)
- CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcm4389.bin\""
- CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd_4389.cal\""
- CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm_4389.blob\""
- CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcm4389.map\""
+ CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcmdhd.bin\""
+ CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
+ CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
+ CONFIG_BCMDHD_MAP_PATH="\"/vendor/etc/wifi/fw_bcmdhd.map\""
 else
  CONFIG_BCMDHD_FW_PATH="\"/vendor/etc/wifi/fw_bcmdhd.bin\""
  CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
@@ -178,9 +178,14 @@ DHDCFLAGS += -DRTT_GEOFENCE_INTERVAL
 DHDCFLAGS += -DRTT_GEOFENCE_CONT
 
 #Debug flag
+ifneq ($(CONFIG_FIB_RULES),)
 DHDCFLAGS += -DDEBUGABILITY
 DHDCFLAGS += -DDEBUGABILITY_DISABLE_MEMDUMP
 DHDCFLAGS += -DDHD_DEBUGABILITY_LOG_DUMP_RING
+else
+DHDCFLAGS += -DDHD_FW_COREDUMP
+endif
+
 DHDCFLAGS += -DCUSTOMER_DBG_SYSTEM_TIME -DCUSTOMER_DBG_PREFIX_ENABLE
 
 # SCAN TYPES, if kernel < 4.17 ..back port support required
@@ -243,6 +248,8 @@ DHDCFLAGS += -DDHD_MEM_STATS
 
 # Enable PKTID AUDIT
 	DHDCFLAGS += -DDHD_PKTID_AUDIT_ENABLED
+# Flow ring status trace in ISR and DPC
+	DHDCFLAGS += -DDHD_FLOW_RING_STATUS_TRACE
 endif
 
 ifneq ($(CONFIG_BCMDHD_HTPUT),)
@@ -283,6 +290,7 @@ DHDCFLAGS += -DUSE_WL_TXBF
 DHDCFLAGS += -DSOFTAP_UAPSD_OFF
 DHDCFLAGS += -DVSDB
 DHDCFLAGS += -DWL_CFG80211_STA_EVENT
+DHDCFLAGS += -DWL_CFG80211_MONITOR
 ifneq ($(CONFIG_CFG80211_FILS_BKPORT),)
 DHDCFLAGS += -DWL_FILS
 endif
@@ -369,9 +377,6 @@ DHDCFLAGS += -DDHD_PKT_LOGGING
 DHDCFLAGS += -DDHD_PKTDUMP_ROAM
 DHDCFLAGS += -DDHD_RANDMAC_LOGGING
 DHDCFLAGS += -DDHD_STATUS_LOGGING
-DHDCFLAGS += -DDISABLE_PCI_LOGGING -DDISABLE_BEACON_LOGGING
-DHDCFLAGS += -DDHD_WL_ERROR_LOGGING -DDHD_IE_ERROR_LOGGING -DDHD_ASSOC_ERROR_LOGGING -DDHD_PMU_ERROR_LOGGING
-DHDCFLAGS += -DDHD_8021X_ERROR_LOGGING -DDHD_AMPDU_ERROR_LOGGING -DDHD_SAE_ERROR_LOGGING
 DHDCFLAGS += -DDHD_WAKEPKT_DUMP
 DHDCFLAGS += -DRSSI_MONITOR_SUPPORT
 DHDCFLAGS += -DSET_SSID_FAIL_CUSTOM_RC=100
@@ -466,6 +471,7 @@ DHDCFLAGS += -DDHD_USE_STATIC_MEMDUMP
 #OCE/MBO
 DHDCFLAGS += -DWL_MBO
 DHDCFLAGS += -DWL_OCE
+DHDCFLAGS += -DWL_MBO_HOST
 
 #FAKEAP
 DHDCFLAGS += -DWL_BCNRECV
@@ -563,6 +569,7 @@ DHDCFLAGS += -DWL_THERMAL_MITIGATION
 
 # SAR Tx power scenario
 DHDCFLAGS += -DWL_SAR_TX_POWER
+DHDCFLAGS += -DWL_SAR_TX_POWER_CONFIG
 
 # Using extenal supplicant for WPA3
 DHDCFLAGS += -DWL_CLIENT_SAE
@@ -634,6 +641,8 @@ DHDCFLAGS += -DDHDTCPSYNC_FLOOD_BLK -DTCP_SYNC_FLOOD_LIMIT=50
 # Path name to store the FW Debug symbol files
 DHDCFLAGS += -DPLATFORM_PATH="\"/vendor/etc/wifi/\""
 
+DHDCFLAGS += -DSIMPLE_MAC_PRINT
+
 ##########################
 # driver type
 # m: module type driver
@@ -661,7 +670,7 @@ ifneq ($(filter y, $(CONFIG_BCM4389) $(CONFIG_BCM43752) $(CONFIG_BCM4375) $(CONF
   DHDCFLAGS += -DCUSTOM_COUNTRY_CODE
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 # debug info
-  DHDCFLAGS += -DDHD_WAKE_STATUS -DDHD_WAKE_RX_STATUS -DDHD_WAKE_EVENT_STATUS
+  DHDCFLAGS += -DDHD_WAKE_STATUS -DDHD_WAKE_RX_STATUS -DDHD_WAKE_EVENT_STATUS -DDHD_WAKE_STATUS_PRINT
 endif
 ifneq ($(CONFIG_BCMDHD_SDIO),)
   DHDCFLAGS += -DBDC -DDHD_BCMEVENTS -DMMC_SDIO_ABORT
@@ -817,7 +826,8 @@ ifneq ($(CONFIG_SOC_GS101),)
 	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"exynos \""
 	DHDCFLAGS += -DCONFIG_ARCH_EXYNOS
 	DHDCFLAGS += -DDHD_MODULE_INIT_FORCE_SUCCESS
-        DHDCFLAGS += -DBCMPCIE_DISABLE_ASYNC_SUSPEND
+	DHDCFLAGS += -DBCMPCIE_DISABLE_ASYNC_SUSPEND
+	DHDCFLAGS += -DSUPPORT_MULTIPLE_NVRAM
 # Dongle init fail
 	DHDCFLAGS += -DPOWERUP_MAX_RETRY=0
 # Add chip specific suffix to the output on customer release
@@ -827,6 +837,7 @@ ifneq ($(filter y, $(CONFIG_BCM4389)),)
 	DHDCFLAGS += -DBCMPCI_NOOTP_DEV_ID=0x4389
 	DHDCFLAGS += -DBCM4389_CHIP_DEF -DSUPPORT_MULTIPLE_REVISION -DSUPPORT_MULTIPLE_REVISION_MAP
 	DHDCFLAGS += -DSUPPORT_MIXED_MODULES -DUSE_CID_CHECK -DSUPPORT_MULTIPLE_CHIPS
+	DHDCFLAGS += -DCONCATE_REV_C0_FOR_NOMATCH_VID
 endif
 else ifneq ($(CONFIG_ARCH_HISI),)
 	DHDCFLAGS += -DBOARD_HIKEY -DBOARD_HIKEY_HW2
@@ -835,12 +846,15 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_FW_NAME="\"fw_bcmdhd.bin\""
 	DHDCFLAGS += -DDHD_NVRAM_NAME="\"bcmdhd.cal\""
 	DHDCFLAGS += -DDHD_CLM_NAME="\"bcmdhd_clm.blob\""
+# LB RXP Flow control to avoid OOM
+	DHDCFLAGS += -DDHD_ENAB_LB_RXP_FLOW_CONTROL
 endif
 # Allow wl event forwarding as network packet
 	DHDCFLAGS += -DWL_EVENT_ENAB
 	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"hikey \""
 # Dongle init fail
 	DHDCFLAGS += -DPOWERUP_MAX_RETRY=3
+	DHDCFLAGS := $(filter-out -DSIMPLE_MAC_PRINT ,$(DHDCFLAGS))
 endif
 
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG
@@ -856,7 +870,7 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
     dhd_pno.o dhd_rtt.o dhd_linux_pktdump.o wl_cfg_btcoex.o hnd_pktq.o \
     hnd_pktpool.o wl_cfgvendor.o bcmxtlv.o bcm_app_utils.o dhd_debug.o frag.o \
     dhd_debug_linux.o wl_cfgnan.o dhd_mschdbg.o bcmbloom.o dhd_dbg_ring.o bcmstdlib_s.o \
-    dhd_linux_exportfs.o
+    dhd_linux_exportfs.o dhd_linux_tx.o
 
 # This file will be here only for internal builds and sets flags which may
 # affect subsequent behavior. See extended comment within it for details.

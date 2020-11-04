@@ -2190,11 +2190,11 @@
 #define TOE_ERRTEST_RX_CSUM2	0x00000004
 
 /* ARP Offload feature flags for arp_ol iovar */
-#define ARP_OL_AGENT			0x00000001
-#define ARP_OL_SNOOP			0x00000002
-#define ARP_OL_HOST_AUTO_REPLY		0x00000004
-#define ARP_OL_PEER_AUTO_REPLY		0x00000008
-#define ARP_OL_UPDATE_HOST_CACHE	0x00000010
+#define ARP_OL_AGENT			0x00000001	/* enable processing of rx ARP packets */
+#define ARP_OL_SNOOP			0x00000002	/* populate using ARP pkts from host */
+#define ARP_OL_HOST_AUTO_REPLY		0x00000004	/* reply to ARP request from host */
+#define ARP_OL_PEER_AUTO_REPLY		0x00000008	/* reply to ARP request from peer */
+#define ARP_OL_UPDATE_HOST_CACHE	0x00000010	/* forward new ARP request to host */
 
 /* ARP Offload error injection */
 #define ARP_ERRTEST_REPLY_PEER	0x1

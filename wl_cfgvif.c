@@ -1204,23 +1204,23 @@ wl_cfg80211_change_virtual_iface(struct wiphy *wiphy, struct net_device *ndev,
 	}
 
 	mutex_lock(&cfg->if_sync);
+
+#ifdef WL_STATIC_IF
+	if (IS_CFG80211_STATIC_IF(cfg, ndev)) {
+		/* Incase of static interfaces, the netinfo will be
+		 * allocated only when FW interface is initialized. So
+		 * store the value and use it during initialization.
+		 */
+		WL_INFORM_MEM(("skip change vif for static if\n"));
+		ndev->ieee80211_ptr->iftype = type;
+		err = BCME_OK;
+		goto fail;
+	}
+#endif /* WL_STATIC_IF */
 	netinfo = wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
 	if (unlikely(!netinfo)) {
-#ifdef WL_STATIC_IF
-		if (IS_CFG80211_STATIC_IF(cfg, ndev)) {
-			/* Incase of static interfaces, the netinfo will be
-			 * allocated only when FW interface is initialized. So
-			 * store the value and use it during initialization.
-			 */
-			WL_INFORM_MEM(("skip change vif for static if\n"));
-			ndev->ieee80211_ptr->iftype = type;
-			err = BCME_OK;
-		} else
-#endif /* WL_STATIC_IF */
-		{
-			WL_ERR(("netinfo not found \n"));
-			err = -ENODEV;
-		}
+		WL_ERR(("netinfo not found \n"));
+		err = -ENODEV;
 		goto fail;
 	}
 
@@ -1283,6 +1283,11 @@ wl_cfg80211_change_virtual_iface(struct wiphy *wiphy, struct net_device *ndev,
 		err = wl_cfg80211_change_p2prole(wiphy, ndev, type);
 		break;
 	case NL80211_IFTYPE_MONITOR:
+#ifdef WL_CFG80211_MONITOR
+		if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION) {
+			break;
+		}
+#endif /* WL_CFG80211_MONITOR */
 	case NL80211_IFTYPE_WDS:
 	case NL80211_IFTYPE_MESH_POINT:
 		/* Intentional fall through */
@@ -1411,6 +1416,15 @@ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd
 				dev_close(iter->ndev);
 				WL_DBG(("Cleaning up iface:%s \n", iter->ndev->name));
 				wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
+#if defined(WLAN_ACCEL_BOOT)
+				/* Trigger force reg_on to ensure clean up of virtual interface
+				* states in FW for any residual interface states, casued due to
+				* framework crashes
+				*/
+				WL_ERR(("Setting forced reg_on to enusre clearing"
+				" interface states in FW\n"));
+				dhd_dev_set_accel_force_reg_on(iter->ndev);
+#endif /* WLAN_ACCEL_BOOT */
 			}
 		}
 	}
@@ -3610,6 +3624,15 @@ wl_cfg80211_stop_ap(
 
 	WL_DBG(("Enter \n"));
 
+	 /* wl_cfg80211_start_ap() schedules cfg->ap_work
+	  * and then cancels it if a link up event is recevied.
+	  * Somtimes an android framework calls wl_cfg80211_stop()
+	  * immediately after wl_cfg80211_start_ap().
+	  * In this case we should cancel the work.
+	  */
+
+	cancel_delayed_work_sync(&cfg->ap_work);
+
 	if (wl_cfg80211_get_bus_state(cfg)) {
 		/* since bus is down, iovar will fail. recovery path will bringup the bus. */
 		WL_ERR(("bus is not ready\n"));
@@ -4751,6 +4774,104 @@ wl_cfg80211_set_mac_acl(struct wiphy *wiphy, struct net_device *cfgdev,
 	return ret;
 }
 #endif /* WL_CFG80211_ACL */
+
+#ifdef WL_CFG80211_MONITOR
+int
+wl_cfg80211_set_monitor_channel(struct wiphy *wiphy, struct cfg80211_chan_def *chandef)
+{
+	int err = BCME_OK;
+	struct bcm_cfg80211 *cfg;
+	struct net_device *ndev;
+	dhd_pub_t *dhdp;
+	u32 bw = WL_CHANSPEC_BW_20;
+	chanspec_t chspec = 0;
+
+	WL_TRACE(("%s: Enter\n", __FUNCTION__));
+
+	if (!wiphy) {
+		WL_ERR(("%s: wiphy is null\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	cfg = wiphy_priv(wiphy);
+	if (!cfg) {
+		WL_ERR(("%s: cfg is null\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	dhdp = (dhd_pub_t *)(cfg->pub);
+	if (!dhdp->monitor_enable) {
+		WL_ERR(("%s: Monitor mode is not enabled\n", __FUNCTION__));
+		return BCME_UNSUPPORTED;
+	}
+
+	ndev = bcmcfg_to_prmry_ndev(cfg);
+	/* Convert from struct cfg80211_chan_def to chanspec_t */
+	chspec = wl_freq_to_chanspec(chandef->chan->center_freq);
+	WL_ERR(("%s: target_channel(%d), target bandwidth(%d)\n",
+		__FUNCTION__, CHSPEC_CHANNEL(chspec), chandef->width));
+
+	if (
+#ifdef WL_6G_BAND
+		CHSPEC_IS6G(chspec) ||
+#endif /* WL_6G_BAND */
+		CHSPEC_IS5G(chspec)) {
+		switch (chandef->width) {
+			case NL80211_CHAN_WIDTH_20:
+				bw = WL_CHANSPEC_BW_20;
+				break;
+			case NL80211_CHAN_WIDTH_40:
+				bw = WL_CHANSPEC_BW_40;
+				break;
+			case NL80211_CHAN_WIDTH_80:
+				bw = WL_CHANSPEC_BW_80;
+				break;
+			case NL80211_CHAN_WIDTH_160:
+				bw = WL_CHANSPEC_BW_160;
+				break;
+			default:
+				err = wl_get_bandwidth_cap(ndev, CHSPEC_BAND(chspec), &bw);
+				if (err < 0) {
+					WL_ERR(("Failed to get bandwidth information, err=%d\n",
+						err));
+					return err;
+				}
+
+				/* In case of 5G downgrade BW to 80MHz
+				 * as 160MHz channels falls in DFS
+				 */
+				if (CHSPEC_IS5G(chspec) && (bw == WL_CHANSPEC_BW_160)) {
+					bw = WL_CHANSPEC_BW_80;
+				}
+				break;
+		}
+	} else if (CHSPEC_IS2G(chspec)) {
+		bw = WL_CHANSPEC_BW_20;
+	} else {
+		WL_ERR(("invalid band (%d)\n", CHSPEC_BAND(chspec)));
+		return -EINVAL;
+	}
+
+	WL_DBG(("%s: chandef->width(%u), bw(%u)\n",
+		__FUNCTION__, chandef->width, bw));
+	chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(chspec),
+		bw, CHSPEC_BAND(chspec));
+
+	if (!wf_chspec_valid(chspec)) {
+		WL_ERR(("Invalid chanspec 0x%x\n", chspec));
+		return -EINVAL;
+	}
+
+	/* Set chanspec for monitor channel */
+	err = wldev_iovar_setint(ndev, "chanspec", chspec);
+	if (unlikely(err)) {
+		WL_ERR(("%s: Could not set chanspec %d\n", __FUNCTION__, err));
+	}
+
+	return err;
+}
+#endif /* WL_CFG80211_MONITOR */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0))
 int wl_chspec_chandef(chanspec_t chanspec,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))

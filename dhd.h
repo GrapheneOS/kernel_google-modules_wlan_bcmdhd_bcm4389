@@ -334,6 +334,9 @@ enum dhd_bus_devreset_type {
 #ifndef USEC_PER_SEC
 #define USEC_PER_SEC (1000 * 1000)
 #endif
+#ifndef MSEC_PER_SEC
+#define MSEC_PER_SEC 1000u
+#endif
 #if (defined(LINUX) || defined(linux))
 /* (u64)result = (u64)dividend / (u64)divisor */
 #define DIV_U64_BY_U64(dividend, divisor)	div64_u64(dividend, divisor)
@@ -629,6 +632,8 @@ enum dhd_hang_reason {
 	HANG_REASON_BSS_DOWN_FAILURE			= 0x8011,
 	HANG_REASON_IOCTL_SUSPEND_ERROR			= 0x8012,
 	HANG_REASON_ESCAN_SYNCID_MISMATCH		= 0x8013,
+	HANG_REASON_SCAN_TIMEOUT			= 0x8014,
+	HANG_REASON_SCAN_TIMEOUT_SCHED_ERROR		= 0x8015,
 	HANG_REASON_PCIE_LINK_DOWN_RC_DETECT		= 0x8805,
 	HANG_REASON_INVALID_EVENT_OR_DATA		= 0x8806,
 	HANG_REASON_UNKNOWN				= 0x8807,
@@ -934,7 +939,7 @@ typedef enum {
 	LOG_DUMP_SECTION_HEALTH_CHK,
 	LOG_DUMP_SECTION_PRESERVE,
 	LOG_DUMP_SECTION_COOKIE,
-	LOG_DUMP_SECTION_FLOWRING,
+	LOG_DUMP_SECTION_RING,
 	LOG_DUMP_SECTION_STATUS,
 	LOG_DUMP_SECTION_RTT,
 	LOG_DUMP_SECTION_BCM_TRACE
@@ -978,7 +983,7 @@ enum {
 };
 
 #define DHD_LOG_DUMP_TS_MULTIPLIER_VALUE    60
-#define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSSMSMS    "%02d%02d%02d%02d%02d%02d%04d"
+#define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSSMSMS    "%02d%02d%02d%02d%02d%02d%04lu"
 #define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSS        "%02d%02d%02d%02d%02d%02d"
 #define DHD_DEBUG_DUMP_TYPE		"debug_dump"
 #define DHD_DUMP_SUBSTR_UNWANTED	"_unwanted"
@@ -1114,6 +1119,10 @@ typedef enum dhd_induce_error_states
 	DHD_INDUCE_DROP_AXI_SIG		= 0x5,
 	DHD_INDUCE_TX_BIG_PKT		= 0x6,
 	DHD_INDUCE_IOCTL_SUSPEND_ERROR	= 0x7,
+	DHD_INDUCE_SCAN_TIMEOUT         = 0x8,
+	DHD_INDUCE_SCAN_TIMEOUT_SCHED_ERROR     = 0x9,
+	DHD_INDUCE_PKTID_INVALID_SAVE   = 0xA,
+	DHD_INDUCE_PKTID_INVALID_FREE   = 0xB,
 	/* Big hammer induction */
 	DHD_INDUCE_BH_ON_FAIL_ONCE	= 0x10,
 	DHD_INDUCE_BH_ON_FAIL_ALWAYS	= 0x11,
@@ -1189,6 +1198,7 @@ typedef struct dhd_pub {
 	ulong tx_ctlpkts;	/* Control packets sent to dongle */
 	ulong tx_ctlerrs;	/* Errors sending control frames to dongle */
 	ulong rx_packets;	/* Packets sent up the network interface */
+	ulong rx_forward;	/* Packets forwarded at DHD driver level */
 	ulong rx_multicast;	/* Multicast packets sent up the network interface */
 	ulong rx_errors;	/* Errors processing rx data packets */
 	ulong rx_ctlpkts;	/* Control frames processed from dongle */
@@ -1321,6 +1331,7 @@ typedef struct dhd_pub {
 	bool	d3ack_timeout_occured;	/* flag to indicate d3ack resumed on timeout */
 	bool	livelock_occured;	/* flag to indicate livelock occured */
 	bool	pktid_audit_failed;	/* flag to indicate pktid audit failure */
+	bool	pktid_invalid_occured;	/* flag to indicate invalid pktid */
 #endif /* PCIE_FULL_DONGLE */
 	bool	iface_op_failed;	/* flag to indicate interface operation failed */
 	bool	scan_timeout_occurred;	/* flag to indicate scan has timedout */
@@ -1400,7 +1411,7 @@ typedef struct dhd_pub {
 	void    *flowid_lock;       /* per os lock for flowid info protection */
 	void    *flowring_list_lock;       /* per os lock for flowring list protection */
 	uint8	max_multi_client_flow_rings;
-	uint8	multi_client_flow_rings;
+	osl_atomic_t multi_client_flow_rings;
 	uint32  num_h2d_rings;		/* Max h2d rings including static and dynamic rings */
 	uint32  max_tx_flowid;		/* used to validate flowid */
 	cumm_ctr_t cumm_ctr;        /* cumm queue length placeholder  */
@@ -1785,6 +1796,7 @@ typedef struct {
 	uint rx_arp;
 	uint rx_mcast;
 	uint rx_multi_ipv6;
+	uint rx_icmp;
 	uint rx_icmpv6;
 	uint rx_icmpv6_ra;
 	uint rx_icmpv6_na;
@@ -2506,7 +2518,7 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size);
 #endif /* DHD_FW_COREDUMP */
 
 #if defined(linux) || defined(LINUX)
-int dhd_os_get_img_fwreq(dhd_pub_t *dhd, const struct firmware **fw, char *file_path);
+int dhd_os_get_img_fwreq(const struct firmware **fw, char *file_path);
 void dhd_os_close_img_fwreq(const struct firmware *fw);
 #if defined(DHD_SSSR_DUMP)
 void dhd_write_sssr_dump(dhd_pub_t *dhdp, uint32 dump_mode);
@@ -3108,6 +3120,13 @@ extern int dngl_xtalfreq;
 extern char fw_path2[MOD_PARAM_PATHLEN];
 #endif
 
+#ifdef SUPPORT_MULTIPLE_NVRAM
+#define MAX_HW_INFO_LEN   10
+#define MAX_FILE_COUNT    3
+#define MAX_FILE_LEN      90
+extern char val_revision[MAX_HW_INFO_LEN];
+#endif /* SUPPORT_MULTIPLE_NVRAM */
+
 #define VENDOR_PATH ""
 
 /* Platform path Name -
@@ -3304,10 +3323,11 @@ void dhd_set_bus_state(void *bus, uint32 state);
 typedef int (*f_droppkt_t)(dhd_pub_t *dhdp, int prec, void* p, bool bPktInQ);
 extern bool dhd_prec_drop_pkts(dhd_pub_t *dhdp, struct pktq *pq, int prec, f_droppkt_t fn);
 
+extern const uint8 wme_fifo2ac[];
+extern const uint8 prio2fifo[];
 #ifdef PROP_TXSTATUS
 int dhd_os_wlfc_block(dhd_pub_t *pub);
 int dhd_os_wlfc_unblock(dhd_pub_t *pub);
-extern const uint8 prio2fifo[];
 #endif /* PROP_TXSTATUS */
 
 int dhd_os_socram_dump(struct net_device *dev, uint32 *dump_size);
@@ -4268,11 +4288,15 @@ extern int dhd_sdtc_etb_hal_file_dump(void *dev, const void *user_buf, uint32 le
 #endif /* DHD_SDTC_ETB_DUMP */
 
 #ifdef DHD_TX_PROFILE
+/* whether or not a dhd_tx_profile_protocol_t matches with data in a packet */
+bool dhd_protocol_matches_profile(uint8 *p, int plen,
+	const dhd_tx_profile_protocol_t *proto, bool is_host_sfhllc);
 int dhd_tx_profile_attach(dhd_pub_t *dhdp);
 int dhd_tx_profile_detach(dhd_pub_t *dhdp);
 #endif /* defined (DHD_TX_PROFILE) */
 #if defined(DHD_LB_RXP)
 uint32 dhd_lb_rxp_process_qlen(dhd_pub_t *dhdp);
+#ifdef DHD_ENAB_LB_RXP_FLOW_CONTROL
 /*
  * To avoid OOM, Flow control will be kicked in when packet size in process_queue
  * crosses LB_RXP_STOP_THR * rcpl ring size * 1500(pkt size) and will stop
@@ -4280,6 +4304,10 @@ uint32 dhd_lb_rxp_process_qlen(dhd_pub_t *dhdp);
  */
 #define LB_RXP_STOP_THR 200	/* 200 * 1024 * 1500 = 300MB */
 #define LB_RXP_STRT_THR 199	/* 199 * 1024 * 1500 = 291MB */
+#else /* !DHD_ENAB_LB_RXP_FLOW_CONTROL */
+#define LB_RXP_STOP_THR 0
+#define LB_RXP_STRT_THR 0
+#endif /* DHD_ENAB_LB_RXP_FLOW_CONTROL */
 #endif /* DHD_LB_RXP */
 #ifdef DHD_SUPPORT_HDM
 extern bool hdm_trigger_init;
@@ -4321,12 +4349,13 @@ int dhd_8023_llc_to_ether_hdr(osl_t *osh, struct ether_header *eh8023, void *p);
 #endif
 int dhd_schedule_socram_dump(dhd_pub_t *dhdp);
 
-#if defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined (DHD_DEBUGABILITY_EVENT_RING)
+extern int dhd_dev_set_accel_force_reg_on(struct net_device *dev);
+
+#if defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined(DHD_DEBUGABILITY_EVENT_RING)
 #ifndef DEBUGABILITY
 #error "DHD_DEBUGABILITY_LOG_DUMP_RING or DHD_DEBUGABILITY_EVENT_RING without DEBUGABILITY"
 #endif /* DEBUGABILITY */
 #endif /* defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined(DHD_DEBUGABILITY_EVENT_RING) */
-
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 typedef enum dhd_alert_reason_codes {
 	ALERT_BCN_LOST = 0,
@@ -4413,7 +4442,10 @@ static INLINE int dhd_kern_path(char *name, int flags, struct path *file_path)
 	{ return 0; }
 #endif /* DHD_SUPPORT_VFS_CALL */
 #endif /* __linux__ */
-
+#if defined(DHD_WAKE_STATUS_PRINT) && defined(DHD_WAKE_RX_STATUS) && \
+	defined(DHD_WAKE_STATUS)
+void dhd_dump_wake_status(dhd_pub_t *dhdp, wake_counts_t *wcp, struct ether_header *eh);
+#endif /* DHD_WAKE_STATUS_PRINT && DHD_WAKE_RX_STATUS && DHD_WAKE_STATUS */
 #ifdef DHD_LOG_DUMP
 extern char *dhd_log_dump_get_timestamp(void);
 #ifdef DHD_EFI
@@ -4433,7 +4465,7 @@ extern void dhd_log_dump_print_drv(const char *fmt, ...);
 #define EXT_TRAP_LOG_HDR "\n-------------------- Extended trap data -------------------\n"
 #define HEALTH_CHK_LOG_HDR "\n-------------------- Health check data --------------------\n"
 #ifdef DHD_DUMP_PCIE_RINGS
-#define FLOWRING_DUMP_HDR "\n-------------------- Flowring dump --------------------\n"
+#define RING_DUMP_HDR "\n-------------------- Ring dump --------------------\n"
 #endif /* DHD_DUMP_PCIE_RINGS */
 #define DHD_LOG_DUMP_DLD(fmt, ...) \
 	dhd_log_dump_write(DLD_BUF_TYPE_GENERAL, NULL, 0, fmt, ##__VA_ARGS__)

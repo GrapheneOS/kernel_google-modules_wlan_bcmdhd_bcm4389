@@ -503,8 +503,8 @@ BCMFASTPATH(pktsegcnt)(osl_t *osh, void *p)
 void
 BCMFASTPATH(pktfrag_trim_tailbytes)(osl_t * osh, void* p, uint16 trim_len, uint8 type)
 {
-	uint16 tcmseg_len = PKTLEN(osh, p);	/* TCM segment length */
-	uint16 hostseg_len = PKTFRAGUSEDLEN(osh, p);	/* HOST segment length */
+	uint tcmseg_len = PKTLEN(osh, p);	/* TCM segment length */
+	uint hostseg_len = PKTFRAGUSEDLEN(osh, p);	/* HOST segment length */
 
 	/* return if zero trim length- Nothing to do */
 	if (trim_len == 0)
@@ -795,9 +795,12 @@ bcmdumplog(char *buf, int size)
 	char *limit;
 	int j = 0;
 	int num;
+	struct bcmstrbuf strubuf;
+	struct bcmstrbuf *b = &strubuf;
 
-	limit = buf + size - 80;
-	*buf = '\0';
+	bcm_binit(b, buf, size);
+
+	limit = BCMSTRBUF_BUF(b) + BCMSTRBUF_LEN(b) - 80;
 
 	num = logi - readi;
 
@@ -806,13 +809,12 @@ bcmdumplog(char *buf, int size)
 
 	/* print in chronological order */
 
-	for (j = 0; j < num && (buf < limit); readi = (readi + 1) % LOGSIZE, j++) {
+	for (j = 0; j < num && (BCMSTRBUF_BUF(b) < limit); readi = (readi + 1) % LOGSIZE, j++) {
 		if (logtab[readi].fmt == NULL)
 		    continue;
-		buf += snprintf(buf, (limit - buf), "%d\t", logtab[readi].cycles);
-		buf += snprintf(buf, (limit - buf), logtab[readi].fmt, logtab[readi].a1,
-			logtab[readi].a2);
-		buf += snprintf(buf, (limit - buf), "\n");
+		bcm_bprintf(b, "%d\t", logtab[readi].cycles);
+		bcm_bprintf(b, logtab[readi].fmt, logtab[readi].a1, logtab[readi].a2);
+		bcm_bprintf(b, "\n");
 	}
 
 }
@@ -825,6 +827,8 @@ int
 bcmdumplogent(char *buf, uint i)
 {
 	bool hit;
+	struct bcmstrbuf strubuf;
+	struct bcmstrbuf *b = &strubuf;
 
 	/*
 	 * If buf is NULL, return the starting index,
@@ -842,13 +846,14 @@ bcmdumplogent(char *buf, uint i)
 	if (i == logi)
 		return (-1);
 
+	bcm_binit(b, buf, i);
 	hit = FALSE;
 	for (; (i != logi) && !hit; i = (i + 1) % LOGSIZE) {
 		if (logtab[i].fmt == NULL)
 			continue;
-		buf += snprintf(buf, LOGSIZE, "%d: %d\t", i, logtab[i].cycles);
-		buf += snprintf(buf, LOGSIZE, logtab[i].fmt, logtab[i].a1, logtab[i].a2);
-		buf += snprintf(buf, LOGSIZE, "\n");
+		bcm_bprintf(b, "%d: %d\t", i, logtab[i].cycles);
+		bcm_bprintf(b, logtab[i].fmt, logtab[i].a1, logtab[i].a2);
+		bcm_bprintf(b, "\n");
 		hit = TRUE;
 	}
 
@@ -1045,8 +1050,8 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 	struct ether_header *eh;
 	struct ethervlan_header *evh;
 	uint8 *pktdata;
-	int priority = 0;
-	int rc = 0;
+	uint priority = 0;
+	uint rc = 0;
 
 	pktdata = (uint8 *)PKTDATA(OSH_NULL, pkt);
 	ASSERT_FP(ISALIGNED((uintptr)pktdata, sizeof(uint16)));
@@ -1055,18 +1060,18 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 
 	if (eh->ether_type == hton16(ETHER_TYPE_8021Q)) {
 		uint16 vlan_tag;
-		int vlan_prio, dscp_prio = 0;
+		uint vlan_prio, dscp_prio = 0;
 
 		evh = (struct ethervlan_header *)eh;
 
 		vlan_tag = ntoh16(evh->vlan_tag);
-		vlan_prio = (int) (vlan_tag >> VLAN_PRI_SHIFT) & VLAN_PRI_MASK;
+		vlan_prio = (vlan_tag >> VLAN_PRI_SHIFT) & VLAN_PRI_MASK;
 
 		if ((evh->ether_type == hton16(ETHER_TYPE_IP)) ||
 			(evh->ether_type == hton16(ETHER_TYPE_IPV6))) {
 			uint8 *ip_body = pktdata + sizeof(struct ethervlan_header);
 			uint8 tos_tc = IP_TOS46(ip_body);
-			dscp_prio = (int)(tos_tc >> IPV4_TOS_PREC_SHIFT);
+			dscp_prio = tos_tc >> IPV4_TOS_PREC_SHIFT;
 		}
 
 		/* DSCP priority gets precedence over 802.1P (vlan tag) */
@@ -1086,7 +1091,7 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 		 */
 		if (update_vtag && (priority != vlan_prio)) {
 			vlan_tag &= ~(VLAN_PRI_MASK << VLAN_PRI_SHIFT);
-			vlan_tag |= (uint16)priority << VLAN_PRI_SHIFT;
+			vlan_tag |= priority << VLAN_PRI_SHIFT;
 			evh->vlan_tag = hton16(vlan_tag);
 			rc |= PKTPRIO_UPD;
 		}
@@ -1133,14 +1138,14 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 			priority = PRIO_8021D_NC;
 			break;
 		default:
-			priority = (int)(tos_tc >> IPV4_TOS_PREC_SHIFT);
+			priority = tos_tc >> IPV4_TOS_PREC_SHIFT;
 			break;
 		}
 
 		rc |= PKTPRIO_DSCP;
 	}
 
-	ASSERT_FP(priority >= 0 && priority <= MAXPRIO);
+	ASSERT_FP(priority <= MAXPRIO);
 	PKTSETPRIO(pkt, priority);
 	return (rc | priority);
 }

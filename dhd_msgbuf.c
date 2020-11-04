@@ -62,7 +62,6 @@
 #ifdef DHD_TIMESYNC
 #include <dhd_timesync.h>
 #endif /* DHD_TIMESYNC */
-
 #if defined(DHD_LB)
 #include <linux/cpu.h>
 #include <bcm_ring.h>
@@ -2664,15 +2663,20 @@ dhd_pktid_map_save(dhd_pub_t *dhd, dhd_pktid_map_handle_t *handle, void *pkt,
 
 	DHD_PKTID_LOCK(map->pktid_lock, flags);
 
-	if ((nkey == DHD_PKTID_INVALID) || (nkey > DHD_PKIDMAP_ITEMS(map->items))) {
+	if ((nkey == DHD_PKTID_INVALID) || (nkey > DHD_PKIDMAP_ITEMS(map->items)) ||
+			(dhd->dhd_induce_error == DHD_INDUCE_PKTID_INVALID_SAVE)) {
 		DHD_ERROR(("%s:%d: Error! saving invalid pktid<%u> pkttype<%u>\n",
 			__FUNCTION__, __LINE__, nkey, pkttype));
 		DHD_PKTID_UNLOCK(map->pktid_lock, flags);
 #ifdef DHD_FW_COREDUMP
 		if (dhd->memdump_enabled) {
+			dhd->pktid_invalid_occured = TRUE;
 			/* collect core dump */
 			dhd->memdump_type = DUMP_TYPE_PKTID_INVALID;
 			dhd_bus_mem_dump(dhd);
+			dhd->hang_reason = HANG_REASON_PCIE_PKTID_ERROR;
+			dhd_os_send_hang_message(dhd);
+
 		}
 #else
 		ASSERT(0);
@@ -2744,15 +2748,19 @@ BCMFASTPATH(dhd_pktid_map_free)(dhd_pub_t *dhd, dhd_pktid_map_handle_t *handle, 
 	DHD_PKTID_LOCK(map->pktid_lock, flags);
 
 	/* XXX PLEASE DO NOT remove this ASSERT, fix the bug in caller. */
-	if ((nkey == DHD_PKTID_INVALID) || (nkey > DHD_PKIDMAP_ITEMS(map->items))) {
+	if ((nkey == DHD_PKTID_INVALID) || (nkey > DHD_PKIDMAP_ITEMS(map->items)) ||
+			(dhd->dhd_induce_error == DHD_INDUCE_PKTID_INVALID_FREE)) {
 		DHD_ERROR(("%s:%d: Error! Try to free invalid pktid<%u>, pkttype<%d>\n",
 		           __FUNCTION__, __LINE__, nkey, pkttype));
 		DHD_PKTID_UNLOCK(map->pktid_lock, flags);
 #ifdef DHD_FW_COREDUMP
 		if (dhd->memdump_enabled) {
+			dhd->pktid_invalid_occured = TRUE;
 			/* collect core dump */
 			dhd->memdump_type = DUMP_TYPE_PKTID_INVALID;
 			dhd_bus_mem_dump(dhd);
+			dhd->hang_reason = HANG_REASON_PCIE_PKTID_ERROR;
+			dhd_os_send_hang_message(dhd);
 		}
 #else
 		ASSERT(0);
@@ -2774,9 +2782,12 @@ BCMFASTPATH(dhd_pktid_map_free)(dhd_pub_t *dhd, dhd_pktid_map_handle_t *handle, 
 		/* XXX PLEASE DO NOT remove this ASSERT, fix the bug in caller. */
 #ifdef DHD_FW_COREDUMP
 		if (dhd->memdump_enabled) {
+			dhd->pktid_invalid_occured = TRUE;
 			/* collect core dump */
 			dhd->memdump_type = DUMP_TYPE_PKTID_INVALID;
 			dhd_bus_mem_dump(dhd);
+			dhd->hang_reason = HANG_REASON_PCIE_PKTID_ERROR;
+			dhd_os_send_hang_message(dhd);
 		}
 #else
 		ASSERT(0);
@@ -2804,9 +2815,12 @@ BCMFASTPATH(dhd_pktid_map_free)(dhd_pub_t *dhd, dhd_pktid_map_handle_t *handle, 
 		DHD_PKTID_UNLOCK(map->pktid_lock, flags);
 #ifdef DHD_FW_COREDUMP
 		if (dhd->memdump_enabled) {
+			dhd->pktid_invalid_occured = TRUE;
 			/* collect core dump */
 			dhd->memdump_type = DUMP_TYPE_PKTID_INVALID;
 			dhd_bus_mem_dump(dhd);
+			dhd->hang_reason = HANG_REASON_PCIE_PKTID_ERROR;
+			dhd_os_send_hang_message(dhd);
 		}
 #else
 		ASSERT(0);
@@ -3350,6 +3364,24 @@ dhd_alloc_host_scbs(dhd_pub_t *dhd)
 	return ret;
 }
 
+#ifdef DHD_PCIE_PTM
+/*
+ * Currently used to set PCIE PTM capability only.
+ */
+void
+dhd_set_host_cap2(dhd_pub_t *dhd)
+{
+	uint32 data = 0;
+
+	if (dhd->bus->api.fw_rev >= PCIE_SHARED_VERSION_7) {
+		/* Advertise PTM capability */
+		data |= HOSTCAP2_PCIE_PTM;
+		dhd_bus_cmn_writeshared(dhd->bus, &data, sizeof(uint32), HOST_CAP2, 0);
+		DHD_INFO(("Set host_cap2 0x%x\n", data));
+	}
+}
+#endif /* DHD_PCIE_PTM */
+
 void
 dhd_set_host_cap(dhd_pub_t *dhd)
 {
@@ -3534,6 +3566,10 @@ void dhd_agg_inflight_stats_dump(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 	uint64 *inflight_histo = dhd->prot->agg_h2d_db_info.inflight_histo;
 	uint32 i;
 	uint64 total_inflight_histo = 0;
+
+	if (inflight_histo == NULL) {
+		return;
+	}
 
 	bcm_bprintf(strbuf, "inflight: \t count\n");
 	for (i = 0; i < DHD_NUM_INFLIGHT_HISTO_ROWS; i++) {
@@ -3776,6 +3812,11 @@ dhd_prot_init(dhd_pub_t *dhd)
 
 	/* Init the host API version */
 	dhd_set_host_cap(dhd);
+
+#ifdef DHD_PCIE_PTM
+	/* Set host capability 2 flags; for PCIE PTM */
+	dhd_set_host_cap2(dhd);
+#endif /* DHD_PCIE_PTM */
 
 	/* alloc and configure scb host address for dongle */
 	if ((ret = dhd_alloc_host_scbs(dhd))) {
@@ -7180,9 +7221,12 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 		prhex("dhd_prot_txstatus_process:", (uchar *)msg, D2HRING_TXCMPLT_ITEMSIZE);
 #ifdef DHD_FW_COREDUMP
 		if (dhd->memdump_enabled) {
+			dhd->pktid_invalid_occured = TRUE;
 			/* collect core dump */
 			dhd->memdump_type = DUMP_TYPE_PKTID_INVALID;
 			dhd_bus_mem_dump(dhd);
+			dhd->hang_reason = HANG_REASON_PCIE_PKTID_ERROR;
+			dhd_os_send_hang_message(dhd);
 		}
 #else
 		ASSERT(0);
@@ -9184,6 +9228,8 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 #endif /* DHD_RECOVER_TIMEOUT */
 
 	if (timeleft == 0 && (!dhd->dongle_trap_data) && (!dhd_query_bus_erros(dhd))) {
+		/* Dump important config space registers */
+		dhd_bus_dump_imp_cfg_registers(dhd->bus);
 		if (dhd->check_trap_rot) {
 			/* check dongle trap first */
 			DHD_ERROR(("Check dongle trap in the case of iovar timeout\n"));
@@ -9413,24 +9459,52 @@ static
 int dhd_ring_write(dhd_pub_t *dhd, msgbuf_ring_t *ring, void *file,
 	const void *user_buf, unsigned long *file_posn)
 {
-	int ret = 0;
+	int ret = BCME_ERROR;
 
 	if (ring == NULL) {
 		DHD_ERROR(("%s: Ring not initialised, failed to dump ring contents\n",
 			__FUNCTION__));
-		return BCME_ERROR;
+		goto exit;
 	}
 	if (file) {
+		ret = dhd_os_write_file_posn(file, file_posn, &ring->max_items,
+				sizeof(ring->max_items));
+		if (ret < 0) {
+			DHD_ERROR(("%s: Error writing ring max_items to file !\n",
+				__FUNCTION__));
+			goto exit;
+		}
+		ret = dhd_os_write_file_posn(file, file_posn, &ring->item_len,
+				sizeof(ring->item_len));
+		if (ret < 0) {
+			DHD_ERROR(("%s: Error writing ring length to file !\n",
+				__FUNCTION__));
+			goto exit;
+		}
 		ret = dhd_os_write_file_posn(file, file_posn, (char *)(ring->dma_buf.va),
 				((unsigned long)(ring->max_items) * (ring->item_len)));
 		if (ret < 0) {
 			DHD_ERROR(("%s: write file error !\n", __FUNCTION__));
-			ret = BCME_ERROR;
+			goto exit;
 		}
 	} else if (user_buf) {
+		ret = dhd_export_debug_data(&ring->max_items, NULL, user_buf,
+			sizeof(ring->max_items), (int *)file_posn);
+		if (ret < 0) {
+			goto exit;
+		}
+		ret = dhd_export_debug_data(&ring->item_len, NULL, user_buf,
+			sizeof(ring->item_len), (int *)file_posn);
+		if (ret < 0) {
+			goto exit;
+		}
 		ret = dhd_export_debug_data((char *)(ring->dma_buf.va), NULL, user_buf,
 			((unsigned long)(ring->max_items) * (ring->item_len)), (int *)file_posn);
+		if (ret < 0) {
+			goto exit;
+		}
 	}
+exit:
 	return ret;
 }
 
@@ -12624,8 +12698,9 @@ dhd_prot_debug_info_print(dhd_pub_t *dhd)
 	DHD_ERROR(("%s: cur_ioctlresp_bufs_posted %d cur_event_bufs_posted %d\n",
 		__FUNCTION__, prot->cur_ioctlresp_bufs_posted, prot->cur_event_bufs_posted));
 #ifdef DHD_LIMIT_MULTI_CLIENT_FLOWRINGS
-	DHD_ERROR(("%s: multi_client_flow_rings:%d max_multi_client_flow_rings:%d\n",
-		__FUNCTION__, dhd->multi_client_flow_rings, dhd->max_multi_client_flow_rings));
+	DHD_ERROR(("%s: multi_client_flow_rings:%u max_multi_client_flow_rings:%d\n",
+		__FUNCTION__, OSL_ATOMIC_READ(dhd->osh, &dhd->multi_client_flow_rings),
+		dhd->max_multi_client_flow_rings));
 #endif /* DHD_LIMIT_MULTI_CLIENT_FLOWRINGS */
 
 	DHD_ERROR(("pktid_txq_start_cnt: %d\n", prot->pktid_txq_start_cnt));
