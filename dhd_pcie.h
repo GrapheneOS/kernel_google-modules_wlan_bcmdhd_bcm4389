@@ -782,7 +782,7 @@ extern void dhd_bus_doorbell_timeout_reset(struct dhd_bus *bus);
 #error "Not supported platform"
 #endif /* CONFIG_SOC_EXYNOSXXXX & CONFIG_MACH_UNIVERSALXXXX */
 extern void exynos_pcie_pm_suspend(int ch_num);
-extern void exynos_pcie_pm_resume(int ch_num);
+extern int exynos_pcie_pm_resume(int ch_num);
 #endif /* CONFIG_ARCH_EXYNOS */
 
 #if defined(CONFIG_ARCH_MSM)

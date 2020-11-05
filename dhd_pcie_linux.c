@@ -225,7 +225,7 @@ static int dhdpcie_pm_system_resume_noirq(struct device * dev);
 
 #ifdef SUPPORT_EXYNOS7420
 void exynos_pcie_pm_suspend(int ch_num) {}
-void exynos_pcie_pm_resume(int ch_num) {}
+int exynos_pcie_pm_resume(int ch_num) {}
 #endif /* SUPPORT_EXYNOS7420 */
 
 static void dhdpcie_config_save_restore_coherent(dhd_bus_t *bus, bool state);
@@ -1389,8 +1389,8 @@ int dhdpcie_pci_suspend_resume(dhd_bus_t *bus, bool state)
 #if !defined(BCMPCIE_OOB_HOST_WAKE) && !defined(PCIE_OOB)
 			dhdpcie_pme_active(bus->osh, state);
 #endif /* !BCMPCIE_OOB_HOST_WAKE && !PCIE_OOB */
+			dhdpcie_config_save_restore_coherent(bus, state);
 		}
-		dhdpcie_config_save_restore_coherent(bus, state);
 #if defined(DHD_HANG_SEND_UP_TEST)
 		if (bus->is_linkdown ||
 			bus->dhd->req_hang_type == HANG_REASON_PCIE_RC_LINK_UP_FAIL) {
@@ -2219,7 +2219,7 @@ dhdpcie_start_host_dev(dhd_bus_t *bus)
 	}
 
 #ifdef CONFIG_ARCH_EXYNOS
-	exynos_pcie_pm_resume(pcie_ch_num);
+	ret = exynos_pcie_pm_resume(pcie_ch_num);
 #endif /* CONFIG_ARCH_EXYNOS */
 #ifdef CONFIG_ARCH_MSM
 	ret = msm_pcie_pm_control(MSM_PCIE_RESUME, bus->dev->bus->number,
