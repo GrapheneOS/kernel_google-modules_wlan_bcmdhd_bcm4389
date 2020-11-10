@@ -16956,20 +16956,35 @@ dhd_dev_get_feature_set_matrix(struct net_device *dev, int num)
 
 	return ret;
 }
-#ifdef CUSTOM_FORCE_NODFS_FLAG
+
+#if defined(CUSTOM_FORCE_NODFS_FLAG) && defined(CUSTOM_COUNTRY_CODE)
 int
 dhd_dev_set_nodfs(struct net_device *dev, u32 nodfs)
 {
-	dhd_info_t *dhd = DHD_DEV_INFO(dev);
+        dhd_info_t *dhd = DHD_DEV_INFO(dev);
+        bool force_ccode_change = FALSE;
 
-	if (nodfs)
-		dhd->pub.dhd_cflags |= WLAN_PLAT_NODFS_FLAG;
-	else
-		dhd->pub.dhd_cflags &= ~WLAN_PLAT_NODFS_FLAG;
-	dhd->pub.force_country_change = TRUE;
-	return 0;
+        if (nodfs && !(dhd->pub.dhd_cflags & WLAN_PLAT_NODFS_FLAG)) {
+                dhd->pub.dhd_cflags |= WLAN_PLAT_NODFS_FLAG;
+                force_ccode_change = TRUE;
+        } else if (!nodfs && (dhd->pub.dhd_cflags & WLAN_PLAT_NODFS_FLAG)) {
+                dhd->pub.dhd_cflags &= ~WLAN_PLAT_NODFS_FLAG;
+                force_ccode_change = TRUE;
+        }
+
+#ifdef SKIP_CCODE_FOR_SAME_DFS_FLAG
+        if (force_ccode_change == FALSE) {
+                DHD_ERROR(("No change in dfs flags. dfs:%d\n", !!nodfs));
+                return 0;
+        }
+#endif /* SKIP_CCODE_FOR_SAME_DFS_FLAG */
+
+        DHD_ERROR(("Force country change. dfs:%d \n", !!nodfs));
+        dhd->pub.force_country_change = TRUE;
+        return 0;
 }
-#endif /* CUSTOM_FORCE_NODFS_FLAG */
+#endif /* CUSTOM_FORCE_NODFS_FLAG && CUSTOM_COUNTRY_CODE */
+
 #ifdef NDO_CONFIG_SUPPORT
 int
 dhd_dev_ndo_cfg(struct net_device *dev, u8 enable)
@@ -18381,11 +18396,16 @@ int dhd_wifi_platform_set_power(dhd_pub_t *pub, bool on)
 
 bool dhd_force_country_change(struct net_device *dev)
 {
-	dhd_info_t *dhd = DHD_DEV_INFO(dev);
+#if defined(CUSTOM_FORCE_NODFS_FLAG) && defined(CUSTOM_COUNTRY_CODE)
+        dhd_info_t *dhd = DHD_DEV_INFO(dev);
 
-	if (dhd && dhd->pub.up)
-		return dhd->pub.force_country_change;
-	return FALSE;
+        if (dhd && dhd->pub.up && dhd->pub.force_country_change) {
+                DHD_ERROR(("force country change\n"));
+                return TRUE;
+        }
+#endif /* CUSTOM_FORCE_NODFS_FLAG && CUSTOM_COUNTRY_CODE */
+        DHD_ERROR(("skip force country change\n"));
+        return FALSE;
 }
 
 void dhd_get_customized_country_code(struct net_device *dev, char *country_iso_code,
@@ -18444,6 +18464,7 @@ void dhd_bus_country_set(struct net_device *dev, wl_country_t *cspec, bool notif
 
 	if (dhd && dhd->pub.up) {
 		memcpy(&dhd->pub.dhd_cspec, cspec, sizeof(wl_country_t));
+		dhd->pub.force_country_change = FALSE;
 #ifdef WL_CFG80211
 		wl_update_wiphybands(cfg, notify);
 #endif
