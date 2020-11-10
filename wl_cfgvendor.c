@@ -1703,6 +1703,58 @@ wl_cfgvendor_stop_hal(struct wiphy *wiphy,
 }
 #endif /* WL_CFG80211 */
 
+#ifdef WL_LATENCY_MODE
+static int
+wl_cfgvendor_set_latency_mode(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void *data, int len)
+{
+	int err = BCME_OK, rem, type;
+	u32 latency_mode;
+	const struct nlattr *iter;
+#ifdef SUPPORT_LATENCY_CRITICAL_DATA
+	u32 mode = LATENCY_CRT_DATA_MODE_OFF;
+#endif /* SUPPORT_LATENCY_CRITICAL_DATA */
+#if defined(WL_AUTO_QOS)
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(wdev->netdev);
+#endif /* WL_AUTO_QOS */
+
+	nla_for_each_attr(iter, data, len, rem) {
+		type = nla_type(iter);
+		switch (type) {
+			case ANDR_WIFI_ATTRIBUTE_LATENCY_MODE:
+				latency_mode = nla_get_u32(iter);
+				WL_DBG(("%s,Setting latency mode %u\n", __FUNCTION__,
+					latency_mode));
+#ifdef WL_AUTO_QOS
+				/* Enable/Disable qos monitoring */
+				dhd_wl_sock_qos_set_status(dhdp, latency_mode);
+#endif /* WL_AUTO_QOS */
+#ifdef SUPPORT_LATENCY_CRITICAL_DATA
+				if (latency_mode) {
+					mode = LATENCY_CRT_DATA_MODE_2;
+				}
+				err = wldev_iovar_setint(wdev->netdev,
+						"latency_critical_data", mode);
+				if (err != BCME_OK) {
+					WL_ERR(("failed to set latency_critical_data "
+						"mode %d, error = %d\n", mode, err));
+					/* Proceed with other optimizations possible */
+					err = BCME_OK;
+				} else {
+					WL_INFORM_MEM(("latency_mode:%d\n", mode));
+				}
+#endif /* SUPPORT_LATENCY_CRITICAL_DATA */
+				break;
+			default:
+				WL_ERR(("Unknown type: %d\n", type));
+				return err;
+		}
+	}
+
+	return err;
+}
+#endif /* WL_LATENCY_MODE */
+
 #ifdef RTT_SUPPORT
 void
 wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
@@ -10797,6 +10849,20 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 #endif /* LINUX_VERSION >= 5.3 */
 	},
 #endif /* WL_CFG80211 */
+#ifdef WL_LATENCY_MODE
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = WIFI_SUBCMD_SET_LATENCY_MODE
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_set_latency_mode,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = andr_wifi_attr_policy,
+		.maxattr = ANDR_WIFI_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+#endif /* WL_LATENCY_MODE */
 #ifdef WL_P2P_RAND
 	{
 		{
