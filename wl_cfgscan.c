@@ -5503,6 +5503,7 @@ static int wl_cfgscan_acs_parse_result(acs_selected_channels_t *pResult,
 	case WL_CHANSPEC_BW_80:
 		if ((pParameter->vht_enabled) || (pParameter->he_enabled)) {
 			pResult->ch_width = 80;
+			chspec_center_ch = wf_chspec_primary80_channel((chanspec_t)ch_chosen);
 			pResult->vht_seg0_center_ch = chspec_center_ch;
 			pResult->vht_seg1_center_ch = 0;
 			switch (chspec_sb) {
