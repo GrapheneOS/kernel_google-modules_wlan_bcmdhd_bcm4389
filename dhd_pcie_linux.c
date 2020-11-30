@@ -48,7 +48,7 @@
 #include <dhd_pcie.h>
 #include <dhd_linux.h>
 #ifdef CONFIG_ARCH_MSM
-#if defined(CONFIG_PCI_MSM) || defined(CONFIG_ARCH_MSM8996)
+#if IS_ENABLED(CONFIG_PCI_MSM) || defined(CONFIG_ARCH_MSM8996)
 #include <linux/msm_pcie.h>
 #else
 #include <mach/msm_pcie.h>
@@ -225,7 +225,7 @@ static int dhdpcie_pm_system_resume_noirq(struct device * dev);
 
 #ifdef SUPPORT_EXYNOS7420
 void exynos_pcie_pm_suspend(int ch_num) {}
-void exynos_pcie_pm_resume(int ch_num) {}
+int exynos_pcie_pm_resume(int ch_num) { return 0; }
 #endif /* SUPPORT_EXYNOS7420 */
 
 static void dhdpcie_config_save_restore_coherent(dhd_bus_t *bus, bool state);
@@ -1185,6 +1185,11 @@ static int dhdpcie_resume_host_dev(dhd_bus_t *bus)
 		DHD_ERROR(("%s: PCIe RC resume failed!!! (%d)\n",
 			__FUNCTION__, bcmerror));
 		bus->is_linkdown = 1;
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+		bus->no_cfg_restore = 1;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 	}
 
 	return bcmerror;
@@ -1389,8 +1394,8 @@ int dhdpcie_pci_suspend_resume(dhd_bus_t *bus, bool state)
 #if !defined(BCMPCIE_OOB_HOST_WAKE) && !defined(PCIE_OOB)
 			dhdpcie_pme_active(bus->osh, state);
 #endif /* !BCMPCIE_OOB_HOST_WAKE && !PCIE_OOB */
+			dhdpcie_config_save_restore_coherent(bus, state);
 		}
-		dhdpcie_config_save_restore_coherent(bus, state);
 #if defined(DHD_HANG_SEND_UP_TEST)
 		if (bus->is_linkdown ||
 			bus->dhd->req_hang_type == HANG_REASON_PCIE_RC_LINK_UP_FAIL) {
@@ -1530,6 +1535,14 @@ dhdpcie_pci_remove(struct pci_dev *pdev)
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
 	if (bus) {
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+		msm_pcie_deregister_event(&bus->pcie_event);
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_EXYNOS
+		exynos_pcie_deregister_event(&bus->pcie_event);
+#endif /* CONFIG_ARCH_EXYNOS */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 		bus->rc_dev = NULL;
 
@@ -1606,7 +1619,6 @@ dhdpcie_request_irq(dhdpcie_info_t *dhdpcie_info)
 {
 	dhd_bus_t *bus = dhdpcie_info->bus;
 	struct pci_dev *pdev = dhdpcie_info->bus->dev;
-	int host_irq_disabled;
 
 	if (!bus->irq_registered) {
 		snprintf(dhdpcie_info->pciname, sizeof(dhdpcie_info->pciname),
@@ -1635,12 +1647,7 @@ dhdpcie_request_irq(dhdpcie_info_t *dhdpcie_info)
 		DHD_ERROR(("%s: PCI IRQ is already registered\n", __FUNCTION__));
 	}
 
-	host_irq_disabled = dhdpcie_irq_disabled(bus);
-	if (host_irq_disabled) {
-		DHD_ERROR(("%s: PCIe IRQ was disabled(%d), so, enabled it again\n",
-			__FUNCTION__, host_irq_disabled));
-		dhdpcie_enable_irq(bus);
-	}
+	dhdpcie_enable_irq_loop(bus);
 
 	DHD_TRACE(("%s %s\n", __FUNCTION__, dhdpcie_info->pciname));
 
@@ -1836,15 +1843,58 @@ void dhdpcie_dump_resource(dhd_bus_t *bus)
 	}
 
 	/* BAR0 */
-	DHD_ERROR_MEM(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_ERROR(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->regs, pci_resource_start(bus->dev, 0),
 		DONGLE_REG_MAP_SIZE));
 
 	/* BAR1 */
-	DHD_ERROR_MEM(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_ERROR(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->tcm, pci_resource_start(bus->dev, 2),
 		pch->bar1_size));
 }
+
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#if defined(CONFIG_ARCH_MSM) || defined(CONFIG_ARCH_EXYNOS)
+void dhdpcie_linkdown_cb(struct_pcie_notify *noti)
+{
+	struct pci_dev *pdev = (struct pci_dev *)noti->user;
+	dhdpcie_info_t *pch = NULL;
+
+	if (pdev) {
+		pch = pci_get_drvdata(pdev);
+		if (pch) {
+			dhd_bus_t *bus = pch->bus;
+			if (bus) {
+				dhd_pub_t *dhd = bus->dhd;
+				if (dhd) {
+#ifdef CONFIG_ARCH_MSM
+					DHD_ERROR(("%s: Set no_cfg_restore flag\n",
+						__FUNCTION__));
+					bus->no_cfg_restore = 1;
+#endif /* CONFIG_ARCH_MSM */
+#ifdef DHD_SSSR_DUMP
+					if (dhd->fis_triggered) {
+						DHD_ERROR(("%s: PCIe linkdown due to FIS, Ignore\n",
+							__FUNCTION__));
+					} else
+#endif /* DHD_SSSR_DUMP */
+					{
+						DHD_ERROR(("%s: Event HANG send up "
+							"due to PCIe linkdown\n",
+							__FUNCTION__));
+						bus->is_linkdown = 1;
+						dhd->hang_reason =
+							HANG_REASON_PCIE_LINK_DOWN_RC_DETECT;
+						dhd_os_send_hang_message(dhd);
+					}
+				}
+			}
+		}
+	}
+
+}
+#endif /* CONFIG_ARCH_MSM || CONFIG_ARCH_EXYNOS */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 int dhdpcie_init(struct pci_dev *pdev)
 {
@@ -1991,6 +2041,25 @@ int dhdpcie_init(struct pci_dev *pdev)
 #ifdef DONGLE_ENABLE_ISOLATION
 		bus->dhd->dongle_isolation = TRUE;
 #endif /* DONGLE_ENABLE_ISOLATION */
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+		bus->pcie_event.events = MSM_PCIE_EVENT_LINKDOWN;
+		bus->pcie_event.user = pdev;
+		bus->pcie_event.mode = MSM_PCIE_TRIGGER_CALLBACK;
+		bus->pcie_event.callback = dhdpcie_linkdown_cb;
+		bus->pcie_event.options = MSM_PCIE_CONFIG_NO_RECOVERY;
+		msm_pcie_register_event(&bus->pcie_event);
+		bus->no_cfg_restore = FALSE;
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_EXYNOS
+		bus->pcie_event.events = EXYNOS_PCIE_EVENT_LINKDOWN;
+		bus->pcie_event.user = pdev;
+		bus->pcie_event.mode = EXYNOS_PCIE_TRIGGER_CALLBACK;
+		bus->pcie_event.callback = dhdpcie_linkdown_cb;
+		exynos_pcie_register_event(&bus->pcie_event);
+#endif /* CONFIG_ARCH_EXYNOS */
+		bus->read_shm_fail = FALSE;
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 		if (bus->intr) {
 			/* Register interrupt callback, but mask it (not operational yet). */
@@ -2045,9 +2114,9 @@ int dhdpcie_init(struct pci_dev *pdev)
 		}
 
 		dhdpcie_init_succeeded = TRUE;
-#ifdef CONFIG_ARCH_MSM
+#if defined(CONFIG_ARCH_MSM) && defined(CONFIG_SEC_PCIE_L1SS)
 		sec_pcie_set_use_ep_loaded(bus->rc_dev);
-#endif /* CONFIG_ARCH_MSM */
+#endif /* CONFIG_ARCH_MSM && CONFIG_SEC_PCIE_L1SS */
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 		pm_runtime_set_autosuspend_delay(&pdev->dev, AUTO_SUSPEND_TIMEOUT);
 		pm_runtime_use_autosuspend(&pdev->dev);
@@ -2190,6 +2259,16 @@ dhdpcie_enable_irq(dhd_bus_t *bus)
 	return BCME_OK;
 }
 
+void
+dhdpcie_enable_irq_loop(dhd_bus_t *bus)
+{
+	/* Enable IRQ in a loop till host_irq_disable_count becomes 0 */
+	uint host_irq_disable_count = dhdpcie_irq_disabled(bus);
+	while (host_irq_disable_count--) {
+		dhdpcie_enable_irq(bus); /* Enable back interrupt!! */
+	}
+}
+
 int
 dhdpcie_irq_disabled(dhd_bus_t *bus)
 {
@@ -2207,6 +2286,9 @@ dhdpcie_start_host_dev(dhd_bus_t *bus)
 {
 	int ret = 0;
 #ifdef CONFIG_ARCH_MSM
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+	int options = 0;
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 #endif /* CONFIG_ARCH_MSM */
 	DHD_TRACE(("%s Enter:\n", __FUNCTION__));
 
@@ -2219,11 +2301,23 @@ dhdpcie_start_host_dev(dhd_bus_t *bus)
 	}
 
 #ifdef CONFIG_ARCH_EXYNOS
-	exynos_pcie_pm_resume(pcie_ch_num);
+	ret = exynos_pcie_pm_resume(pcie_ch_num);
 #endif /* CONFIG_ARCH_EXYNOS */
 #ifdef CONFIG_ARCH_MSM
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+	if (bus->no_cfg_restore) {
+		options = MSM_PCIE_CONFIG_NO_CFG_RESTORE;
+	}
+	ret = msm_pcie_pm_control(MSM_PCIE_RESUME, bus->dev->bus->number,
+		bus->dev, NULL, options);
+	if (bus->no_cfg_restore && !ret) {
+		msm_pcie_recover_config(bus->dev);
+		bus->no_cfg_restore = 0;
+	}
+#else
 	ret = msm_pcie_pm_control(MSM_PCIE_RESUME, bus->dev->bus->number,
 		bus->dev, NULL, 0);
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 #endif /* CONFIG_ARCH_MSM */
 #ifdef CONFIG_ARCH_TEGRA
 	ret = tegra_pcie_pm_resume();
@@ -2244,6 +2338,9 @@ dhdpcie_stop_host_dev(dhd_bus_t *bus)
 {
 	int ret = 0;
 #ifdef CONFIG_ARCH_MSM
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+	int options = 0;
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 #endif /* CONFIG_ARCH_MSM */
 
 	DHD_TRACE(("%s Enter:\n", __FUNCTION__));
@@ -2260,8 +2357,17 @@ dhdpcie_stop_host_dev(dhd_bus_t *bus)
 	exynos_pcie_pm_suspend(pcie_ch_num);
 #endif /* CONFIG_ARCH_EXYNOS */
 #ifdef CONFIG_ARCH_MSM
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+	if (bus->no_cfg_restore) {
+		options = MSM_PCIE_CONFIG_NO_CFG_RESTORE | MSM_PCIE_CONFIG_LINKDOWN;
+	}
+
+	ret = msm_pcie_pm_control(MSM_PCIE_SUSPEND, bus->dev->bus->number,
+		bus->dev, NULL, options);
+#else
 	ret = msm_pcie_pm_control(MSM_PCIE_SUSPEND, bus->dev->bus->number,
 		bus->dev, NULL, 0);
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 #endif /* CONFIG_ARCH_MSM */
 #ifdef CONFIG_ARCH_TEGRA
 	ret = tegra_pcie_pm_suspend();
@@ -2341,6 +2447,11 @@ dhdpcie_enable_device(dhd_bus_t *bus)
 			/* Check if the PCIe link is down */
 			if (vid == (uint32)-1) {
 				bus->is_linkdown = 1;
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+				bus->no_cfg_restore = TRUE;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 			}
 			return BCME_ERROR;
 		}
@@ -2911,7 +3022,7 @@ static uint32 dhd_ps_mode_managed_dur(dhd_pub_t *dhdp)
 	}
 
 	if (_net_info->ps_managed) {
-		dur = (OSL_SYSUPTIME() - _net_info->ps_managed_start_ts) / MSEC_PER_SEC;
+		dur = (uint32)((OSL_SYSUPTIME() - _net_info->ps_managed_start_ts) / MSEC_PER_SEC);
 	}
 
 	return dur;
@@ -2974,15 +3085,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 					/* Reschedule tasklet to process Rx frames */
 					DHD_ERROR(("%s: Schedule DPC to process pending"
 						" Rx packets\n", __FUNCTION__));
-					/* irq will be enabled at the end of dpc */
 					dhd_schedule_delayed_dpc_on_dpc_cpu(bus->dhd, 0);
-				} else {
-					/* enabling host irq deferred from system suspend */
-					if (dhdpcie_irq_disabled(bus)) {
-						dhdpcie_enable_irq(bus);
-						/* increasing intrrupt count when it enabled */
-						bus->resume_intr_enable_count++;
-					}
 				}
 				smp_wmb();
 				wake_up(&bus->rpm_queue);
@@ -3019,14 +3122,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 				DHD_ERROR(("%s: Schedule DPC to process pending Rx packets\n",
 					__FUNCTION__));
 				bus->rpm_sched_dpc_time = OSL_LOCALTIME_NS();
-				dhd_sched_dpc(bus->dhd);
-			}
-
-			/* enabling host irq deferred from system suspend */
-			if (dhdpcie_irq_disabled(bus)) {
-				dhdpcie_enable_irq(bus);
-				/* increasing intrrupt count when it enabled */
-				bus->resume_intr_enable_count++;
+				dhd_schedule_delayed_dpc_on_dpc_cpu(bus->dhd, 0);
 			}
 
 			smp_wmb();
@@ -3154,13 +3250,13 @@ dhd_dongle_mem_dump(void)
 EXPORT_SYMBOL(dhd_dongle_mem_dump);
 #endif /* DHD_FW_COREDUMP */
 
-#ifdef CONFIG_ARCH_MSM
+#if defined(CONFIG_ARCH_MSM) && defined(CONFIG_SEC_PCIE_L1SS)
 void
 dhd_bus_inform_ep_loaded_to_rc(dhd_pub_t *dhdp, bool up)
 {
 	sec_pcie_set_ep_driver_loaded(dhdp->bus->rc_dev, up);
 }
-#endif /* CONFIG_ARCH_MSM */
+#endif /* CONFIG_ARCH_MSM && CONFIG_SEC_PCIE_L1SS */
 
 bool
 dhd_bus_check_driver_up(void)

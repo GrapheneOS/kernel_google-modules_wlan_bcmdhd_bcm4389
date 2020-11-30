@@ -59,8 +59,9 @@
 #define RTEDEVRMPMK		0x8918  /* Remove PMK */
 #define RTEDEVDBGVAL		0x8919  /* Set debug val */
 #define RTEDEVVIFDEL		0x891A  /* Delete virtual cfgs */
+#define RTEQUIESCEFORCE		0x891B	/* Force D11 core into quiesce */
 /* Ensure last RTE IOCTL define val is assigned to RTEIOCTLEND */
-#define RTEIOCTLEND		0x891A  /* LAST RTE IOCTL value */
+#define RTEIOCTLEND		0x891B  /* LAST RTE IOCTL value */
 
 #define RTE_IOCTL_QUERY		0x00
 #define RTE_IOCTL_SET		0x01
@@ -174,5 +175,36 @@ typedef struct mpu_test_args {
 	uint16 size;	/* valid for read/write */
 	uint8 val[];
 } mpu_test_args_t;
+
+/* dsec command uses bcm iov framework (bcm_iov_buf_t) for iovar input/output */
+/* dsec command vesion */
+#define DSEC_IOV_VERSION_V1		1u
+
+/* TRANSIENT unlock command */
+#define TRANSIENT_UNLOCK_VER_V1		1u
+#define TRANSIENT_UNLOCK_KEY_SIZE	4u	/* 4 Words of 32-bit each */
+#define TRANSIENT_UNLOCK_SALT_SIZE	16u	/* 16 Words of 32-bit each */
+
+enum desc_cmd_ids {
+	DSEC_CMD_ALL			= 0u,
+	DSEC_CMD_TRANSUNLOCK		= 1u,
+	DSEC_CMD_SBOOT			= 2u
+};
+
+enum desc_crypto_subcmd_ids {
+	DSEC_TRUNLOCK_SUBCMD_NONE	= 0u,
+	DSEC_TRUNLOCK_SUBCMD_VER	= 1u,
+	DSEC_TRUNLOCK_SUBCMD_STATUS	= 2u,
+	DSEC_TRUNLOCK_SUBCMD_UNLOCK	= 3u
+};
+
+typedef struct {
+	uint16 version;				/* cmd structure version */
+	uint16 length;				/* cmd struct len */
+	uint16 subcmd_id;			/* transient_unlock sub command */
+	uint16 status;				/* Unlock status */
+	uint32 key[TRANSIENT_UNLOCK_KEY_SIZE];	/* otp read mode */
+	uint32 salt[TRANSIENT_UNLOCK_SALT_SIZE]; /* byte offset into otp to start read */
+} transient_unlock_cmd_v1_t;
 
 #endif /* _dngl_ioctl_h_ */

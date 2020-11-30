@@ -166,8 +166,22 @@ void dhd_select_cpu_candidacy(dhd_info_t *dhd)
 		 * cpumask_next returns >= nr_cpu_ids
 		 */
 		tx_cpu = cpumask_next(napi_cpu, dhd->cpumask_primary_new);
-		if (tx_cpu >= nr_cpu_ids)
-			tx_cpu = 0;
+		if (tx_cpu >= nr_cpu_ids) {
+			/* If no CPU is available for tx processing in primary CPUs,
+			 * choose the same CPU with net_tx_cpu
+			 * in case net_tx_cpu is in primary CPUs.
+			 */
+			cpumask_and(dhd->cpumask_primary_new, dhd->cpumask_primary,
+					dhd->cpumask_curr_avail);
+
+			if (cpumask_test_cpu(net_tx_cpu, dhd->cpumask_primary_new)) {
+				tx_cpu = net_tx_cpu;
+				DHD_INFO(("%s If no CPU is for tx cpu, use net_tx_cpu %d\n",
+					__FUNCTION__, net_tx_cpu));
+			} else {
+				tx_cpu = 0;
+			}
+		}
 	}
 
 	DHD_INFO(("%s After primary CPU check napi_cpu %d tx_cpu %d\n",

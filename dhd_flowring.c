@@ -699,6 +699,13 @@ dhd_flowid_map_alloc(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *da)
 	uint16 flowid = FLOWID_INVALID;
 	ASSERT(dhdp->flowid_allocator != NULL);
 
+	/* P2P Connections are always 80Mhz */
+	if (DHD_IF_ROLE_P2PGC(dhdp, ifindex) ||
+	    DHD_IF_ROLE_P2PGO(dhdp, ifindex)) {
+		flowid = id16_map_alloc(dhdp->flowid_allocator);
+		return flowid;
+	}
+
 #if defined(DHD_HTPUT_TUNABLES)
 	if (dhdp->htput_flowid_allocator) {
 		if (prio == HTPUT_FLOW_RING_PRIO) {
@@ -710,7 +717,8 @@ dhd_flowid_map_alloc(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *da)
 				 * will take care assigning same for those HTPUT_PRIO packets.
 				 */
 				flowid = id16_map_alloc(dhdp->htput_flowid_allocator);
-			} else if (DHD_IF_ROLE_MULTI_CLIENT(dhdp, ifindex) && !ETHER_ISMULTI(da)) {
+			} else if (DHD_IF_ROLE_MULTI_CLIENT(dhdp, ifindex) && !ETHER_ISMULTI(da) &&
+				dhd_is_sta_htput(dhdp, ifindex, (uint8 *)da)) {
 				/* Use HTPUT flowrings for only HTPUT_NUM_CLIENT_FLOW_RINGS */
 				if (dhdp->htput_client_flow_rings < HTPUT_NUM_CLIENT_FLOW_RINGS) {
 					flowid = id16_map_alloc(dhdp->htput_flowid_allocator);

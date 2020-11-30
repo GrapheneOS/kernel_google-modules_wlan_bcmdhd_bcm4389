@@ -68,7 +68,7 @@ static int wlan_host_wake_irq = 0;
 	defined(CONFIG_SOC_GS101)
 #define EXYNOS_PCIE_RC_ONOFF
 extern int pcie_ch_num;
-extern void exynos_pcie_pm_resume(int);
+extern int exynos_pcie_pm_resume(int);
 extern void exynos_pcie_pm_suspend(int);
 #endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_GS101 */
 
@@ -192,6 +192,7 @@ char val_revision[MAX_HW_INFO_LEN] = {0};
 int
 dhd_wlan_init_hardware_info(void)
 {
+
 	struct device_node *node;
 	char *cp;
 	const char *command_line = NULL;
@@ -202,6 +203,7 @@ dhd_wlan_init_hardware_info(void)
 		DHD_ERROR(("Node not created under chosen\n"));
 		return -ENODEV;
 	} else {
+
 		of_property_read_string(node, "bootargs", &command_line);
 		len = strlen(command_line);
 
@@ -277,7 +279,10 @@ dhd_wifi_init_gpio(void)
 	/* Wait for WIFI_TURNON_DELAY due to power stability */
 	msleep(WIFI_TURNON_DELAY);
 #ifdef EXYNOS_PCIE_RC_ONOFF
-	exynos_pcie_pm_resume(pcie_ch_num);
+	if (exynos_pcie_pm_resume(pcie_ch_num)) {
+		WARN(1, "pcie link up failure\n");
+		return -ENODEV;
+	}
 #endif /* EXYNOS_PCIE_RC_ONOFF */
 #ifdef CONFIG_BCMDHD_OOB_HOST_WAKE
 	/* ========== WLAN_HOST_WAKE ============ */
@@ -326,13 +331,7 @@ dhd_wlan_power(int onoff)
 					"failed to pull up\n", __func__));
 			}
 		}
-#ifdef EXYNOS_PCIE_RC_ONOFF
-		exynos_pcie_pm_resume(pcie_ch_num);
-#endif /* EXYNOS_PCIE_RC_ONOFF */
 	} else {
-#ifdef EXYNOS_PCIE_RC_ONOFF
-		exynos_pcie_pm_suspend(pcie_ch_num);
-#endif /* EXYNOS_PCIE_RC_ONOFF */
 		if (gpio_direction_output(wlan_reg_on, 0)) {
 			DHD_ERROR(("%s: WL_REG_ON is failed to pull up\n", __FUNCTION__));
 			return -EIO;

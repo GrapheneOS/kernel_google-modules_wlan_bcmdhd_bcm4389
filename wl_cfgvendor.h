@@ -164,6 +164,11 @@ typedef enum {
 	/* define all customer related setting command between 0x2000 and 0x20FF */
 	ANDROID_NL80211_SUBCMD_CUSTOM_SETTING_START =	0x2000,
 	ANDROID_NL80211_SUBCMD_CUSTOM_SETTING_END   =	0x20FF,
+
+	/* define all Channel Avoidance related commands between 0x2100 and 0x211F */
+	ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START =	0x2100,
+	ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_END   =	0x211F,
+
 	/* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -226,6 +231,7 @@ enum andr_vendor_subcmd {
 	DEBUG_SET_HAL_START,
 	DEBUG_SET_HAL_STOP,
 	DEBUG_SET_HAL_PID,
+	DEBUG_SET_TPUT_DEBUG_DUMP_CMD,
 
 	WIFI_OFFLOAD_SUBCMD_START_MKEEP_ALIVE = ANDROID_NL80211_SUBCMD_WIFI_OFFLOAD_RANGE_START,
 	WIFI_OFFLOAD_SUBCMD_STOP_MKEEP_ALIVE,
@@ -256,6 +262,7 @@ enum andr_vendor_subcmd {
 	WIFI_SUBCMD_THERMAL_MITIGATION = ANDROID_NL80211_SUBCMD_MITIGATION_RANGE_START,
 	WIFI_SUBCMD_CUSTOM_MAPPING_OF_DSCP = ANDROID_NL80211_SUBCMD_CUSTOM_SETTING_START,
 	WIFI_SUBCMD_CUSTOM_MAPPING_OF_DSCP_RESET,
+	WIFI_SUBCMD_CHAVOID_SUBCMD_SET_CONFIG = ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START,
 	/* Add more sub commands here */
 	VENDOR_SUBCMD_MAX
 };
@@ -560,6 +567,33 @@ enum custom_setting_attributes {
 	CUSTOM_SETTING_ATTRIBUTE_MAX
 };
 
+#ifdef CHANNEL_AVOIDANCE_SUPPORT
+enum wifi_chavoid_attributes {
+	CHAVOID_ATTRIBUTE_INVALID   = 0,
+	CHAVOID_ATTRIBUTE_CNT       = 1,
+	CHAVOID_ATTRIBUTE_CONFIG    = 2,
+	CHAVOID_ATTRIBUTE_BAND      = 3,
+	CHAVOID_ATTRIBUTE_CHANNEL   = 4,
+	CHAVOID_ATTRIBUTE_PWRCAP    = 5,
+	CHAVOID_ATTRIBUTE_MANDATORY = 6,
+	/* Add more attributes here */
+	CHAVOID_ATTRIBUTE_MAX
+};
+
+#define CHAVOID_WIFI_DIRECT 0x0001
+#define CHAVOID_SOFTAP      0x0002
+#define CHAVOID_WIFI_AWARE  0x0004
+#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+
+#ifdef TPUT_DEBUG_DUMP
+enum tput_debug_attributes {
+	DUMP_TPUT_DEBUG_ATTR_INVALID = 0,
+	DUMP_TPUT_DEBUG_ATTR_FILE_NAME  = 1,
+	DUMP_TPUT_DEBUG_ATTR_CMD = 2,
+	DUMP_TPUT_DEBUG_ATTR_BUF = 3
+};
+#endif /* TPUT_DEBUG_DUMP */
+
 typedef enum wl_vendor_event {
 	BRCM_VENDOR_EVENT_UNSPEC		= 0,
 	BRCM_VENDOR_EVENT_PRIV_STR		= 1,
@@ -611,6 +645,8 @@ typedef enum wl_vendor_event {
 	BRCM_VENDOR_EVENT_RCC_INFO		= 41,
 	BRCM_VENDOR_EVENT_ACS			= 42,
 	BRCM_VENDOR_EVENT_TWT			= 43,
+	BRCM_VENDOR_EVENT_TPUT_DUMP		= 44,
+	GOOGLE_NAN_EVENT_MATCH_EXPIRY		= 45,
 	BRCM_VENDOR_EVENT_LAST
 } wl_vendor_event_t;
 
@@ -810,10 +846,21 @@ typedef enum {
 	WIFI_TWT_ATTR_NEXT_TWT_L	= 16,
 	WIFI_TWT_ATTR_CONFIG_ID		= 17,
 	WIFI_TWT_ATTR_NOTIFICATION	= 18,
+	WIFI_TWT_ATTR_FLOW_TYPE		= 19,
+	WIFI_TWT_ATTR_TRIGGER_TYPE	= 20,
 
 	WIFI_TWT_ATTR_MAX
 } wifi_twt_attribute;
 #endif /* WL_TWT */
+
+#ifdef TPUT_DEBUG_DUMP
+typedef enum {
+	TPUT_DEBUG_ATTRIBUTE_CMD_STR = 0x0001,
+	TPUT_DEBUG_ATTRIBUTE_SUB_CMD_STR_AMPDU = 0x0002,
+	TPUT_DEBUG_ATTRIBUTE_SUB_CMD_STR_CLEAR = 0x0003,
+	TPUT_DEBUG_ATTRIBUTE_MAX
+} TPUT_DEBUG_ATTRIBUTE;
+#endif /* TPUT_DEBUG_DUMP */
 
 /* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
 #define BRCM_VENDOR_SCMD_CAPA	"cap"
@@ -934,4 +981,10 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 void wl_cfgvendor_send_alert_event(struct net_device *dev, uint32 reason);
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
+#ifdef TPUT_DEBUG_DUMP
+void wl_cfgdbg_tput_debug_mode(struct net_device *ndev, bool enable);
+void wl_cfgdbg_tput_debug_work(struct work_struct *work);
+int wl_cfgdbg_tput_debug_get_cmd(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void *data, int len);
+#endif /* TPUT_DEBUG_DUMP */
 #endif /* _wl_cfgvendor_h_ */

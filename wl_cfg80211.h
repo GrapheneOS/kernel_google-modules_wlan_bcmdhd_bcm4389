@@ -59,6 +59,7 @@
 #define WL_CFG_VNDR_OUI_SYNC_LOCK(lock, flags)		(flags) = osl_spin_lock(lock)
 #define WL_CFG_VNDR_OUI_SYNC_UNLOCK(lock, flags)	osl_spin_unlock((lock), (flags))
 
+#include <wifi_stats.h>
 #include <wl_cfgp2p.h>
 #ifdef WL_NAN
 #include <wl_cfgnan.h>
@@ -104,6 +105,23 @@ struct wl_ibss;
 
 /* mandatory for Android 11 */
 #define WL_ACT_FRAME_MAC_RAND
+
+/* Define to default v6 */
+#define USE_STA_INFO_V6
+#ifdef USE_STA_INFO_V6
+typedef sta_info_v6_t wlcfg_sta_info_t;
+/* Support ver >= 6 */
+#define IS_STA_INFO_VER(sta) (dtoh16(sta->ver) >= WL_STA_VER_6)
+#define WL_STAINFO_VER WL_STA_VER_6
+#elif defined(USE_STA_INFO_V5)
+typedef sta_info_v5_t wlcfg_sta_info_t;
+#define IS_STA_INFO_VER(sta) (dtoh16(sta->ver) == WL_STA_VER_5)
+#define WL_STAINFO_VER WL_STA_VER_5
+#else
+typedef sta_info_v4_t wlcfg_sta_info_t;
+#define IS_STA_INFO_VER(sta) (dtoh16(sta->ver) == WL_STA_VER_4)
+#define WL_STAINFO_VER WL_STA_VER_4
+#endif /* USE_STA_INFO_V6 */
 
 #define CH_TO_CHSPC(band, _channel) \
 	((_channel | band) | WL_CHANSPEC_BW_20 | WL_CHANSPEC_CTL_SB_NONE)
@@ -235,7 +253,6 @@ struct wl_ibss;
 extern void dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
 extern char *dhd_log_dump_get_timestamp(void);
-extern char *dhd_dbg_get_system_timestamp(void);
 #ifndef _DHD_LOG_DUMP_DEFINITIONS_
 #define DHD_LOG_DUMP_WRITE(fmt, ...) \
 	dhd_log_dump_write(DLD_BUF_TYPE_GENERAL, NULL, 0, fmt, ##__VA_ARGS__)
@@ -390,7 +407,7 @@ extern char *dhd_dbg_get_system_timestamp(void);
 
 #if defined(CUSTOMER_DBG_SYSTEM_TIME) && defined(DHD_DEBUGABILITY_LOG_DUMP_RING)
 #define WL_DBG_PRINT_SYSTEM_TIME \
-	pr_cont("[%s]", dhd_dbg_get_system_timestamp())
+	pr_cont("[%s]", OSL_GET_RTCTIME())
 #else
 #define WL_DBG_PRINT_SYSTEM_TIME
 #endif /* defined(CUSTOMER_DBG_SYSTEM_TIME) && defined(DHD_DEBUGABILITY_LOG_DUMP_RING) */
@@ -848,6 +865,7 @@ enum wl_status {
 	WL_STATUS_CONNECTED,
 	WL_STATUS_DISCONNECTING,
 	WL_STATUS_AP_CREATING,
+	WL_STATUS_AP_ROLE_UPGRADED,
 	WL_STATUS_AP_CREATED,
 	/* whole sending action frame procedure:
 	 * includes a) 'finding common channel' for public action request frame
@@ -879,6 +897,7 @@ enum wl_status {
 	WL_STATUS_NESTED_CONNECT,
 	WL_STATUS_CFG80211_CONNECT,
 	WL_STATUS_AUTHORIZED
+
 };
 
 typedef enum wl_iftype {
@@ -969,7 +988,8 @@ enum wl_tdls_config {
 typedef enum wl_assoc_state {
 	WL_STATE_ASSOC_IDLE,
 	WL_STATE_ASSOCIATING,
-	WL_STATE_ASSOCIATED
+	WL_STATE_ASSOCIATED,
+	WL_STATE_LINKDOWN
 } wl_assoc_state_t;
 
 typedef enum wl_link_action {
@@ -1147,10 +1167,18 @@ struct net_info {
 	s32 bssidx;
 	wl_cfgbss_t bss;
 	u8 ifidx;
+	u8 passphrase[WSEC_MAX_PASSPHRASE_LEN];
+	u16 passphrase_len;
 	struct list_head list; /* list of all net_info structure */
 
 	bool ps_managed;
 	uint32 ps_managed_start_ts;
+	/* used to comapre with incoming config
+	* Delete config from firmware if both are not matching
+	* If matching, skip configuring iovar again
+	*/
+	u8* passphrase_cfg;
+	u16 passphrase_cfg_len;
 };
 
 #ifdef WL_BCNRECV
@@ -1462,14 +1490,14 @@ typedef struct wl_rssi_ant_mimo {
 } wl_rssi_ant_mimo_t;
 #endif /* SUPPORT_RSSI_SUM_REPORT */
 
-/* MBO-OCE prune event reason codes */
-#if defined(WL_MBO) || defined(WL_OCE)
+/* prune event reason codes */
 typedef enum wl_prune_evt_reason {
-	WIFI_PRUNE_UNSPECIFIED = 0,		/* Unspecified event reason code */
-	WIFI_PRUNE_ASSOC_RETRY_DELAY = 1,	/* MBO assoc retry delay */
-	WIFI_PRUNE_RSSI_ASSOC_REJ = 2		/* OCE RSSI-based assoc rejection */
+	WIFI_PRUNE_UNSPECIFIED		= 0,   /* Unspecified event reason code */
+	WIFI_PRUNE_ASSOC_RETRY_DELAY	= 1,   /* MBO assoc retry delay */
+	WIFI_PRUNE_RSSI_ASSOC_REJ	= 2,   /* OCE RSSI-based assoc rejection */
+	WIFI_PRUNE_CHANNEL_NOT_IN_VLP	= 3,    /* Prune AP due to Chanspec not in VLP cat */
+	WIFI_PRUNE_WRONG_CCODE		= 4,    /* wrong country code */
 } wl_prune_evt_reason_t;
-#endif /* WL_MBO || WL_OCE */
 
 #ifdef WL_MBO
 typedef struct wl_event_mbo wl_event_mbo_t;
@@ -1477,9 +1505,7 @@ typedef struct wl_event_mbo_cell_nw_switch wl_event_mbo_cell_nw_switch_t;
 typedef struct wl_btm_event_type_data wl_btm_event_type_data_t;
 #endif /* WL_MBO */
 
-#if defined(WL_MBO) || defined(WL_OCE)
 typedef struct wl_bssid_prune_evt_info wl_bssid_pruned_evt_info_t;
-#endif /* WL_MBO || WL_OCE */
 
 #ifdef WL_NAN
 #ifdef WL_NANP2P
@@ -1596,8 +1622,8 @@ typedef enum wl_sar_modes {
 typedef enum
 {
 	SAR_DISABLE = 0,
-	SAR_HEAD,
-	SAR_GRIP,
+	SAR_HEAD,			/* bit 0 */
+	SAR_GRIP,			/* bit 1 */
 	SAR_HEAD_GRIP,
 	SAR_NR_mW_ONLY,
 	SAR_NR_mW_HEAD,
@@ -1611,7 +1637,8 @@ typedef enum
 	SAR_NR_SUB6_mW_INVALID2,
 	SAR_NR_SUB6_mW_INVALID3,
 	SAR_NR_SUB6_mW_INVALID4,
-	SAR_BT = 16
+	SAR_BT = 16,			/* bit 4 */
+	SAR_HOTSPOT = 32		/* bit 5 */
 } sar_advance_modes;
 
 /* Pre selected Power scenarios to be applied from BDF file */
@@ -1627,7 +1654,7 @@ typedef enum {
 } wifi_power_scenario;
 
 #if defined(WL_SAR_TX_POWER) && defined(WL_SAR_TX_POWER_CONFIG)
-#define MAX_SAR_CONFIG_INFO 7
+#define SAR_CONFIG_SCENARIO_COUNT	100
 typedef struct wl_sar_config_info {
 	int8 scenario;
 	int8 sar_tx_power_val;
@@ -1683,6 +1710,49 @@ typedef struct {
 	u32 band;
 	u32 bw_cap;
 } wl_bw_cap_t;
+
+#ifdef TPUT_DEBUG_DUMP
+struct tput_debug_cmd_config {
+	char cmd[WLC_IOCTL_SMLEN];
+	char sub_cmd[WLC_IOCTL_SMLEN];
+};
+#define TPUT_DBG_CMD_CONFIG_MAX 2
+#endif /* TPUT_DEBUG_DUMP */
+
+#ifdef DEBUG_SETROAMMODE
+typedef struct wl_roamoff_info {
+	uint64 roam_disable_time;
+	uint64 roam_enable_time;
+	uint roam_disable_rsn;
+	uint roam_enable_rsn;
+} wl_roamoff_info_t;
+#endif /* DEBUG_SETROAMMODE */
+
+#ifdef CHANNEL_AVOIDANCE_SUPPORT
+#define CHAVOID_MAX_CH 128u
+
+typedef struct wl_chavoid_config {
+	struct list_head list;
+	u32 chanspec;
+	int band;	/* The band for the channel as param */
+	int channel;	/* The channel number as param */
+	int pwr_cap;	/* The pwrcap as param */
+	int center_freq;
+} wl_chavoid_config_t;
+
+typedef struct wl_chavoid_info {
+	struct list_head configs;
+	u8 config_cnt;
+	u32 mandatory;
+} wl_chavoid_info_t;
+
+typedef struct wl_chavoid_param {
+	wl_chavoid_config_t *configs;
+	u8 config_cnt;
+	u32 mandatory;
+} wl_chavoid_param_t;
+
+#endif /* CHANNEL_AVOIDANCE_SUPPORT */
 
 /* private data of cfg80211 interface */
 struct bcm_cfg80211 {
@@ -1915,9 +1985,10 @@ struct bcm_cfg80211 {
 	int ncho_mode;
 	int ncho_band;
 #ifdef WL_SAR_TX_POWER
-	wifi_power_scenario wifi_tx_power_mode;
+	int8 wifi_tx_power_mode;
 #if defined(WL_SAR_TX_POWER_CONFIG)
-	wl_sar_config_info_t sar_config_info[MAX_SAR_CONFIG_INFO];
+	wl_sar_config_info_t *sar_config_info;
+	int sar_config_info_cnt;
 #endif /* WL_SAR_TX_POWER_CONFIG */
 #endif /* WL_SAR_TX_POWER */
 	struct mutex connect_sync;  /* For assoc/resssoc state sync */
@@ -1942,6 +2013,22 @@ struct bcm_cfg80211 {
 	uint16 btmreq_len;
 	uint8 btmreq_token;
 #endif /* WL_MBO_HOST */
+#ifdef CHANNEL_AVOIDANCE_SUPPORT
+	wl_chavoid_info_t *chavoid_info;
+#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+#ifdef TPUT_DEBUG_DUMP
+	struct tput_debug_cmd_config tput_dbg_cmds[TPUT_DBG_CMD_CONFIG_MAX];
+	struct delayed_work tput_debug_work;
+	bool tput_dbg_mode_enable;
+	bool tput_dbg_cmd_config;
+	uint8 tput_dbg_ifindex;
+#endif /* TPUT_DEBUG_DUMP */
+#ifdef DEBUG_SETROAMMODE
+	wl_roamoff_info_t *roamoff_info;
+#endif /* DEBUG_SETROAMMODE */
+#ifdef DHD_CLEANUP_KEEP_ALIVE
+	uint8 mkeep_alive_avail;
+#endif /* DHD_CLEANUP_KEEP_ALIVE */
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -2063,6 +2150,23 @@ typedef struct acs_delay_work {
 	drv_acs_params_t parameter;
 } acs_delay_work_t;
 #endif /* WL_SOFTAP_ACS */
+
+/* Struct used to populate fields needed for
+* wsec_info passphrase iovar config..
+* Passphrase can be configured per
+* 1. SSID
+* 2. SSID + AKM
+* 3. BSSID
+*/
+typedef struct wl_config_passphrase {
+	u8* passphrase;
+	u16 passphrase_len;
+	const u8 *ssid;
+	u8 ssid_len;
+	u8 *bssid;
+	u32 akm;
+} wl_config_passphrase_t;
+
 s32 wl_iftype_to_mode(wl_iftype_t iftype);
 
 #define BCM_LIST_FOR_EACH_ENTRY_SAFE(pos, next, head, member) \
@@ -2146,6 +2250,13 @@ wl_dealloc_netinfo_by_wdev(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev)
 				MFREE(cfg->osh, bss->wps_ie, bss->wps_ie[1] + 2);
 				bss->wps_ie = NULL;
 			}
+
+			if (_net_info->passphrase_cfg) {
+				MFREE(cfg->osh, _net_info->passphrase_cfg,
+					_net_info->passphrase_cfg_len);
+				_net_info->passphrase_cfg = NULL;
+			}
+
 			list_del(&_net_info->list);
 			cfg->iface_cnt--;
 			MFREE(cfg->osh, _net_info, sizeof(struct net_info));
@@ -3058,6 +3169,7 @@ static inline s32 wl_rssi_offset(s32 rssi)
 #else
 #define wl_rssi_offset(x)	x
 #endif
+extern u8 wl_chanspec_to_host_bw_map(chanspec_t cur_chanspec);
 extern int wl_channel_to_frequency(u32 chan, chanspec_band_t band);
 extern int wl_cfg80211_config_rsnxe_ie(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		const u8 *parse, u32 len);
@@ -3110,4 +3222,55 @@ typedef enum auth_assoc_status_ext {
 extern s32 wl_get_auth_assoc_status_ext(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, const wl_event_msg_t *e);
 #endif	/* AUTH_ASSOC_STATUS_EXT */
+
+s32 wl_cfg80211_set_netinfo_passphrase(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, const u8* passphrase, u8 len);
+s32 wl_cfg80211_config_passphrase(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, wl_config_passphrase_t *pp_config);
+
+#ifdef CHANNEL_AVOIDANCE_SUPPORT
+extern void wl_chavoid_clean_unsafe_list(struct bcm_cfg80211 *cfg, struct list_head *configs);
+#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+
+#ifdef WL_UWB_COEX
+#define UWB_COEX_CH_MAP_NUM	64
+
+uint16 wl_cfg_uwb_coex_get_ch_val(const int idx);
+int wl_cfg_uwb_coex_enable(struct net_device *dev, int enable, int start_ch, int end_ch);
+int wl_cfg_uwb_coex_execute_ioctl(struct net_device *dev, struct bcm_cfg80211 *cfg,
+	const uint8 is_set, uint16 id, void *data, uint16 data_len,
+	uint8 *resp_buf, uint16 resp_buf_xz);
+#endif /* WL_UWB_COEX */
+
+#ifdef DEBUG_SETROAMMODE
+#define CMD_ROAMOFF	"roam_off"
+typedef enum wl_roamoff_dbg_reason {
+	SET_ROAM_RF_TEST	= 0,
+	SET_ROAM_DHD_SUSPEND,
+	SET_ROAM_PREINIT,
+	SET_ROAM_FILS_TOGGLE,
+	SET_ROAM_ROAMMODE,
+	SET_ROAM_IOLIST_ADD,
+	SET_ROAM_IOLIST_RESUME,
+	SET_ROAM_P2P_GC,
+	SET_ROAM_CONCRT_MODE,
+	SET_ROAM_VNDR_POLICY,
+	SET_ROAM_MAX			/* Max set roam_off reason */
+} wl_roamoff_dbg_reason_t;
+
+extern void wl_android_roamoff_dbg_clr(struct bcm_cfg80211 *cfg);
+extern void wl_android_roamoff_dbg_save(struct net_device *dev, uint rsn, uint roamvar);
+extern void wl_android_roamoff_dbg_dump(struct bcm_cfg80211 *cfg);
+
+#define ROAMOFF_DBG_CLR(cfg)	\
+    wl_android_roamoff_dbg_clr((cfg));
+#define ROAMOFF_DBG_SAVE(dev, rsn, var)	\
+    wl_android_roamoff_dbg_save((dev), (rsn), (var));
+#define ROAMOFF_DBG_DUMP(cfg)	\
+    wl_android_roamoff_dbg_dump((cfg));
+#else
+#define ROAMOFF_DBG_CLR(cfg)
+#define ROAMOFF_DBG_SAVE(dev, rsn, var)
+#define ROAMOFF_DBG_DUMP(cfg)
+#endif /* DEBUG_SETROAMMODE */
 #endif /* _wl_cfg80211_h_ */

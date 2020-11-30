@@ -304,9 +304,10 @@ typedef union bcm_event_msg_u {
 #define WLC_E_AUTH_START		194	/* notify upper layer to start auth */
 #define WLC_E_TWT				195	/* TWT event */
 #define WLC_E_AMT			196	/* Address Management Table (AMT) */
-#define WLC_E_LAST			197	/* highest val + 1 for range checking */
-#if (WLC_E_LAST > 197)
-#error "WLC_E_LAST: Invalid value for last event; must be <= 197."
+#define WLC_E_ROAM_SCAN_RESULT		197	/* roam/reassoc scan result event */
+#define WLC_E_LAST			199	/* highest val + 1 for range checking */
+#if (WLC_E_LAST > 199)
+#error "WLC_E_LAST: Invalid value for last event; must be <= 198."
 #endif /* WLC_E_LAST */
 
 /* define an API for getting the string name of an event */
@@ -534,6 +535,8 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_PRUNE_RSSI_ASSOC_REJ	22	/* OCE RSSI-based assoc rejection */
 #define WLC_E_PRUNE_MAC_AVOID		23	/* AP's MAC addr is in STA's MAC avoid list */
 #define WLC_E_PRUNE_TRANSITION_DISABLE	24	/* AP's Transition Disable Policy */
+#define WLC_E_PRUNE_WRONG_COUNTRY_CODE	25	/* Prune AP due to Wrong Country Code */
+#define WLC_E_PRUNE_CHANNEL_NOT_IN_VLP	26	/* Prune AP  due to Chanspec not in VLP cat */
 
 /* WPA failure reason codes carried in the WLC_E_PSK_SUP event */
 #define WLC_E_SUP_OTHER			0	/* Other reason */
@@ -967,10 +970,15 @@ typedef enum wl_nan_events {
 	WL_NAN_EVENT_DISC_CACHE_TIMEOUT		= 46,	/* Disc cache timeout */
 	WL_NAN_EVENT_OOB_AF_TXS			= 47,	/* OOB AF transmit status */
 	WL_NAN_EVENT_OOB_AF_RX			= 48,   /* OOB AF receive event */
+	WL_NAN_EVENT_NMI_ADDR			= 49,	/* NMI address change event */
 
 	/* keep WL_NAN_EVENT_INVALID as the last element */
 	WL_NAN_EVENT_INVALID				/* delimiter for max value */
 } nan_app_events_e;
+
+/* WL_NAN_EVENT_STOP reason codes */
+#define	  WL_NAN_EVENT_STOP_HOSTCMD		  0u
+#define	  WL_NAN_EVENT_STOP_CNTRY_CODE_CHNG	  1u
 
 /* remove after precommit */
 #define NAN_EV_MASK(ev)	(1 << (ev - 1))
@@ -1163,15 +1171,14 @@ typedef struct wl_twt_setup_cplt {
 
 /* TWT teardown Reason code */
 typedef enum wl_twt_td_rc {
-	WL_TWT_TD_RC_SUCCESS	= 0u,	/* Teardown complete Successful */
-	WL_TWT_TD_RC_HOST	= 1u,	/* Teardown triggered by Host */
-	WL_TWT_TD_RC_PEER	= 2u,	/* Peer initiated teardown */
-	WL_TWT_TD_RC_MCHAN	= 3u,	/* Teardown due to MCHAN Active */
-	WL_TWT_TD_RC_MCNX	= 4u,	/* Teardown due to MultiConnection */
-	WL_TWT_TD_RC_SETUP_FAIL	= 5u, /* Setup fail midway. Teardown all connections */
-	WL_TWT_TD_RC_SCHED	= 6u,	/* Teardown by TWT Scheduler */
-	WL_TWT_TD_RC_CSA	= 7u,	/* Teardown due to CSA */
-	WL_TWT_TD_RC_BTCX	= 8u,	/* Teardown due to BTCX */
+	WL_TWT_TD_RC_HOST	= 0u,	/* Teardown triggered by Host */
+	WL_TWT_TD_RC_PEER	= 1u,	/* Peer initiated teardown */
+	WL_TWT_TD_RC_MCHAN	= 2u,	/* Teardown due to MCHAN Active */
+	WL_TWT_TD_RC_MCNX	= 3u,	/* Teardown due to MultiConnection */
+	WL_TWT_TD_RC_CSA	= 4u,	/* Teardown due to CSA */
+	WL_TWT_TD_RC_BTCX	= 5u,	/* Teardown due to BTCX */
+	WL_TWT_TD_RC_SETUP_FAIL	= 6u, /* Setup fail midway. Teardown all connections */
+	WL_TWT_TD_RC_SCHED	= 7u,	/* Teardown by TWT Scheduler */
 	/* Any new reason code add before this */
 	WL_TWT_TD_RC_ERROR	= 255u,	/* Generic Error cases */
 } wl_twt_td_rc_t;
@@ -1479,7 +1486,8 @@ typedef struct wlc_obss_hw_event_data {
 #define WLC_OBSS_BW_AVAILABLE	2 /* Sent When a change in BW is detected / noticed */
 
 /* WLC_E_DYNSAR event structure version */
-#define WL_DYNSAR_VERSION 1
+#define WL_DYNSAR_VERSION 1u
+#define WL_DYNSAR_VERSION_2 2u
 
 /* bits used in status field */
 #define WL_STATUS_DYNSAR_PWR_OPT	(1 << 0)	/* power optimized */
@@ -1497,7 +1505,7 @@ typedef struct wl_event_dynsar {
 	uint8  status;		/* WL_STATUS_DYNSAR_XXX, to indicate which optimization
 				* is being applied
 				*/
-	uint8  pad;
+	uint8  fs_reason;	/* failsafe reason */
 } wl_event_dynsar_t;
 
 /* status when WLC_E_AP_BCN_MUTE event is sent */

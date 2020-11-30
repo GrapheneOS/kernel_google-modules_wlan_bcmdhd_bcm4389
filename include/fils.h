@@ -202,6 +202,16 @@ typedef BWL_PRE_PACKED_STRUCT struct fils_rnr_element {
 #define TBTT_INFO_HDR_LENGTH(hdr)\
 	(((hdr) & TBTT_INFO_HDR_LENGTH_MASK) >> 8u)
 
+/* TBTT Information Header subfield - Draft P802.11REVmd D5.0 Figure 9-631 */
+#define TBTT_INFO_HDR_TI_FLD_TYPE_POS	0u	/* TBTT Information Field Type */
+#define TBTT_INFO_HDR_TI_FLD_TYPE_SZ	2u
+#define TBTT_INFO_HDR_FLTR_NAP_POS	2u	/* Filtered Neighbor AP */
+#define TBTT_INFO_HDR_FLTR_NAP_SZ	1u
+#define TBTT_INFO_HDR_TI_CNT_POS	4u	/* TBTT Information Count */
+#define TBTT_INFO_HDR_TI_CNT_SZ		4u
+#define TBTT_INFO_HDR_TI_LEN_POS	8u	/* TBTT Information Length */
+#define TBTT_INFO_HDR_TI_LEN_SZ		8u
+
 /* BSS Params Macros */
 #define RNR_BSS_PARAMS_OCT_REC_MASK		(0x01u)
 #define RNR_BSS_PARAMS_SAME_SSID_MASK		(0x02u)

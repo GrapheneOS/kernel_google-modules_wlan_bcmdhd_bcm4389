@@ -348,9 +348,13 @@ extern uint64 osl_sysuptime_us(void);
 extern uint64 osl_localtime_ns(void);
 extern void osl_get_localtime(uint64 *sec, uint64 *usec);
 extern uint64 osl_systztime_us(void);
+extern char* osl_get_rtctime(void);
 #define OSL_LOCALTIME_NS()	osl_localtime_ns()
 #define OSL_GET_LOCALTIME(sec, usec)	osl_get_localtime((sec), (usec))
 #define OSL_SYSTZTIME_US()	osl_systztime_us()
+#define OSL_GET_RTCTIME()	osl_get_rtctime()
+/* RTC format %02d:%02d:%02d.%06lu, LEN including the trailing null space */
+#define RTC_TIME_BUF_LEN	16u
 #define	printf(fmt, args...)	printk(fmt , ## args)
 #include <linux/kernel.h>	/* for vsn/printf's */
 #include <linux/string.h>	/* for mem*, str* */
@@ -879,4 +883,18 @@ extern void *osl_mutex_lock_init(osl_t *osh);
 extern void osl_mutex_lock_deinit(osl_t *osh, void *lock);
 extern unsigned long osl_mutex_lock(void *lock);
 void osl_mutex_unlock(void *lock, unsigned long flags);
+
+#ifndef CUSTOM_PREFIX
+#define OSL_PRINT(args)	\
+do {			\
+	pr_cont args;	\
+} while (0)
+#else
+#define OSL_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#define OSL_PRINT(args)			\
+do {					\
+	pr_cont(OSL_PRINT_PREFIX);	\
+	pr_cont args;			\
+} while (0)
+#endif /* CUSTOM_PREFIX */
 #endif	/* _linux_osl_h_ */
