@@ -875,7 +875,8 @@ typedef enum dhd_ring_id {
 	DRIVER_LOG_RING_ID = 0x4,
 	ROAM_STATS_RING_ID = 0x5,
 	BT_LOG_RING_ID = 0x6,
-	DEBUG_RING_ID_MAX = 0x7
+	PACKET_LOG_RING_ID = 0x7,
+	DEBUG_RING_ID_MAX = 0x8
 } dhd_ring_id_t;
 
 #ifdef DHD_LOG_DUMP
@@ -1097,6 +1098,7 @@ typedef enum {
 typedef struct dhd_db7_info {
 	bool	fw_db7w_trap;
 	bool	fw_db7w_trap_inprogress;
+	bool	fw_db7w_trap_recieved;
 	uint32	db7_magic_number;
 
 	uint32	debug_db7_send_cnt;
@@ -1207,6 +1209,7 @@ typedef struct dhd_pub {
 	ulong rx_flushed;  /* Packets flushed due to unscheduled sendup thread */
 	ulong wd_dpc_sched;   /* Number of times dhd dpc scheduled by watchdog timer */
 	ulong rx_pktgetfail; /* Number of PKTGET failures in DHD on RX */
+	ulong rx_pktgetpool_fail;	/* Number of PKTGET_POOL failures in DHD on RX */
 	ulong tx_pktgetfail; /* Number of PKTGET failures in DHD on TX */
 	ulong rx_readahead_cnt;	/* Number of packets where header read-ahead was used. */
 	ulong tx_realloc;	/* Number of tx packets we had to realloc for headroom */
@@ -1452,6 +1455,7 @@ typedef struct dhd_pub {
 #endif /* DHD_L2_FILTER */
 #ifdef DHD_SSSR_DUMP
 	bool sssr_inited;
+	bool force_sssr_init;
 	bool sssr_dump_collected;	/* Flag to indicate sssr dump is collected */
 	sssr_reg_info_cmn_t *sssr_reg_info;
 	uint8 *sssr_mempool;
@@ -1779,6 +1783,8 @@ typedef struct dhd_pub {
 #ifdef DBG_PKT_MON
 	bool aml_enable;	/* aml(assoc mgmt frame logger) enable flags */
 #endif /* DBG_PKT_MON */
+	bool do_chip_bighammer;
+	uint chip_bighammer_count;
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -2831,6 +2837,9 @@ extern struct dhd_sta *dhd_find_sta(void *pub, int ifidx, void *ea);
 extern struct dhd_sta *dhd_findadd_sta(void *pub, int ifidx, void *ea);
 extern void dhd_del_all_sta(void *pub, int ifidx);
 extern void dhd_del_sta(void *pub, int ifidx, void *ea);
+extern void dhd_update_sta_chanspec_info(void *pub, int ifidx, const uint8 *ea,
+	chanspec_t chanspec);
+extern bool dhd_is_sta_htput(void *pub, int ifidx, void *ea);
 extern int dhd_get_ap_isolate(dhd_pub_t *dhdp, uint32 idx);
 extern int dhd_set_ap_isolate(dhd_pub_t *dhdp, uint32 idx, int val);
 extern int dhd_bssidx2idx(dhd_pub_t *dhdp, uint32 bssidx);
@@ -2842,6 +2851,9 @@ static INLINE void* dhd_find_sta(void *pub, int ifidx, void *ea) { return NULL;}
 static INLINE void *dhd_findadd_sta(void *pub, int ifidx, void *ea) { return NULL; }
 static INLINE void dhd_del_all_sta(void *pub, int ifidx) { }
 static INLINE void dhd_del_sta(void *pub, int ifidx, void *ea) { }
+static INLINE void dhd_update_sta_chanspec_info(void *pub, int ifidx, const uint8 *ea,
+	chanspec_t chanspec) {}
+static INLINE bool dhd_is_sta_htput(void *pub, int ifidx, void *ea) { return FALSE; }
 static INLINE int dhd_get_ap_isolate(dhd_pub_t *dhdp, uint32 idx) { return 0; }
 static INLINE int dhd_set_ap_isolate(dhd_pub_t *dhdp, uint32 idx, int val) { return 0; }
 static INLINE int dhd_bssidx2idx(dhd_pub_t *dhdp, uint32 bssidx) { return 0; }
@@ -3121,9 +3133,9 @@ extern char fw_path2[MOD_PARAM_PATHLEN];
 #endif
 
 #ifdef SUPPORT_MULTIPLE_NVRAM
-#define MAX_HW_INFO_LEN   10
-#define MAX_FILE_COUNT    3
-#define MAX_FILE_LEN      90
+#define MAX_HW_INFO_LEN   10u
+#define MAX_FILE_COUNT    3u
+#define MAX_FILE_LEN      90u
 extern char val_revision[MAX_HW_INFO_LEN];
 #endif /* SUPPORT_MULTIPLE_NVRAM */
 
@@ -4039,6 +4051,7 @@ int
 dhd_sssr_dump_dig_buf_after(void *dev, const void *user_buf, uint32 len);
 #ifdef DHD_PKT_LOGGING
 extern int dhd_os_get_pktlog_dump(void *dev, const void *user_buf, uint32 len);
+extern spinlock_t* dhd_os_get_pktlog_lock(dhd_pub_t *dhdp);
 extern uint32 dhd_os_get_pktlog_dump_size(struct net_device *dev);
 extern void dhd_os_get_pktlogdump_filename(struct net_device *dev, char *dump_path, int len);
 #endif /* DHD_PKT_LOGGING */
@@ -4375,6 +4388,12 @@ int dhd_os_send_alert_message(dhd_pub_t *dhdp);
 bool dhd_validate_chipid(dhd_pub_t *dhdp);
 #endif /* CUSTOMER_HW4_DEBUG */
 
+#ifdef RX_PKT_POOL
+#define MAX_RX_PKT_POOL	(512)
+void dhd_rx_pktpool_create(struct dhd_info *dhd, uint16 len);
+void * BCMFASTPATH(dhd_rxpool_pktget)(osl_t *osh, struct dhd_info *dhd, uint16 len);
+#endif /* RX_PKT_POOL */
+
 #if defined(__linux__)
 #ifdef DHD_SUPPORT_VFS_CALL
 static INLINE struct file *dhd_filp_open(const char *filename, int flags, int mode)
@@ -4481,7 +4500,6 @@ extern void dhd_log_dump_print_drv(const char *fmt, ...);
 /* Enabled DHD_DEBUGABILITY_LOG_DUMP_RING */
 extern void dhd_dbg_ring_write(int type, char *binary_data,
 	int binary_len, const char *fmt, ...);
-extern char* dhd_dbg_get_system_timestamp(void);
 #define DHD_DBG_RING(fmt, ...) \
 	dhd_dbg_ring_write(DRIVER_LOG_RING_ID, NULL, 0, fmt, ##__VA_ARGS__)
 #define DHD_DBG_RING_EX(fmt, ...) \
@@ -4495,9 +4513,9 @@ extern char* dhd_dbg_get_system_timestamp(void);
 #define DHD_LOG_DUMP_WRITE_ROAM		DHD_DBG_RING_ROAM
 
 #define DHD_PREFIX_TS "[%s][%s] ",	\
-	dhd_dbg_get_system_timestamp(), dhd_log_dump_get_timestamp()
+	OSL_GET_RTCTIME(), dhd_log_dump_get_timestamp()
 #define DHD_PREFIX_TS_FN "[%s][%s] %s: ",	\
-	dhd_dbg_get_system_timestamp(), dhd_log_dump_get_timestamp(), __func__
+	OSL_GET_RTCTIME(), dhd_log_dump_get_timestamp(), __func__
 #define DHD_LOG_DUMP_WRITE_TS		DHD_DBG_RING(DHD_PREFIX_TS)
 #define DHD_LOG_DUMP_WRITE_TS_FN	DHD_DBG_RING(DHD_PREFIX_TS_FN)
 #define DHD_LOG_DUMP_WRITE_EX_TS	DHD_DBG_RING_EX(DHD_PREFIX_TS)

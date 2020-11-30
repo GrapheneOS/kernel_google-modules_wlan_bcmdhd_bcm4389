@@ -452,11 +452,11 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 	pfn_param.flags = ((PFN_LIST_ORDER << SORT_CRITERIA_BIT) |
 		(ENABLE << IMMEDIATE_SCAN_BIT) | (ENABLE << REPORT_SEPERATELY_BIT));
 	if (mode == DHD_PNO_LEGACY_MODE) {
+		pfn_param.repeat = (uchar) (pno_params->params_legacy.pno_repeat);
 		/* check and set extra pno params */
-		if ((pno_params->params_legacy.pno_repeat != 0) ||
+		if ((pno_params->params_legacy.pno_repeat != 0) &&
 			(pno_params->params_legacy.pno_freq_expo_max != 0)) {
 			pfn_param.flags |= htod16(ENABLE << ENABLE_ADAPTSCAN_BIT);
-			pfn_param.repeat = (uchar) (pno_params->params_legacy.pno_repeat);
 			pfn_param.exp = (uchar) (pno_params->params_legacy.pno_freq_expo_max);
 		}
 		/* set up pno scan fr */
@@ -977,7 +977,7 @@ _dhd_pno_cfg(dhd_pub_t *dhd, uint16 *channel_list, int nchan)
 
 		for (i = 0; i < nchan; i++) {
 			if (dhd->wlc_ver_major >= DHD_PNO_CHSPEC_SUPPORT_VER) {
-				pfncfg_param.channel_list[i] = CH20MHZ_CHSPEC(channel_list[i]);
+				pfncfg_param.channel_list[i] = wf_chspec_ctlchspec(channel_list[i]);
 			} else {
 				pfncfg_param.channel_list[i] = channel_list[i];
 			}

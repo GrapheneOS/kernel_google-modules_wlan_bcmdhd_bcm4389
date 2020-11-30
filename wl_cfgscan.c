@@ -1329,6 +1329,13 @@ wl_cfgscan_map_nl80211_scan_type(struct bcm_cfg80211 *cfg, struct cfg80211_scan_
 		return scan_flags;
 	}
 
+	if (cfg->latency_mode &&
+		wl_is_sta_connected(cfg)) {
+		WL_DBG_MEM(("latency mode on. force LP scan\n"));
+		scan_flags |= WL_SCANFLAGS_LOW_POWER_SCAN;
+		goto exit;
+	}
+
 	if (request->flags & NL80211_SCAN_FLAG_LOW_SPAN) {
 		scan_flags |= WL_SCANFLAGS_LOW_SPAN;
 	}
@@ -1342,6 +1349,7 @@ wl_cfgscan_map_nl80211_scan_type(struct bcm_cfg80211 *cfg, struct cfg80211_scan_
 		scan_flags |= WL_SCANFLAGS_LOW_PRIO;
 	}
 
+exit:
 	WL_INFORM(("scan flags. wl:%x cfg80211:%x\n", scan_flags, request->flags));
 	return scan_flags;
 }
@@ -2093,6 +2101,12 @@ wl_cfgscan_handle_scanbusy(struct bcm_cfg80211 *cfg, struct net_device *ndev, s3
 		busy_count = 0;
 		return scanbusy_err;
 	}
+
+	if (!p2p_scan(cfg) && wl_get_drv_status_all(cfg, REMAINING_ON_CHANNEL)) {
+		WL_ERR(("Scan err = (%d) due to p2p scan, nothing to do\n", err));
+		busy_count = 0;
+	}
+
 	if (err == BCME_BUSY || err == BCME_NOTREADY) {
 		WL_ERR(("Scan err = (%d), busy?%d", err, -EBUSY));
 		scanbusy_err = -EBUSY;
@@ -2224,6 +2238,13 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 		WL_ERR(("Sending Action Frames. Try it again.\n"));
 		return -EAGAIN;
 	}
+
+#ifdef WL_SCHED_SCAN
+	if (cfg->sched_scan_running) {
+		WL_ERR(("PNO SCAN in progress\n"));
+		return -EAGAIN;
+	}
+#endif /* WL_SCHED_SCAN */
 
 	WL_DBG(("Enter wiphy (%p)\n", wiphy));
 	mutex_lock(&cfg->scan_sync);
@@ -3499,10 +3520,10 @@ wl_cfg80211_scan_mac_disable(struct net_device *dev)
 #endif /* SUPPORT_RANDOM_MAC_SCAN */
 
 #ifdef WL_SCHED_SCAN
-#define PNO_TIME                    30
-#define PNO_REPEAT                  4
-#define PNO_FREQ_EXPO_MAX           2
-#define PNO_ADAPTIVE_SCAN_LIMIT     60
+#define PNO_TIME                    30u
+#define PNO_REPEAT_MAX              100u
+#define PNO_FREQ_EXPO_MAX           2u
+#define PNO_ADAPTIVE_SCAN_LIMIT     60u
 static bool
 is_ssid_in_list(struct cfg80211_ssid *ssid, struct cfg80211_ssid *ssid_list, int count)
 {
@@ -3527,9 +3548,9 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 {
 	u16 chan_list[WL_NUMCHANNELS] = {0};
 	u32 num_channels = 0;
-	ushort pno_time;
-	int pno_repeat = PNO_REPEAT;
-	int pno_freq_expo_max = PNO_FREQ_EXPO_MAX;
+	ushort pno_time = 0;
+	int pno_repeat = 0;
+	int pno_freq_expo_max = 0;
 	wlc_ssid_ext_t ssids_local[MAX_PFN_LIST_COUNT];
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
@@ -3543,29 +3564,47 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	int i;
 	int ret = 0;
 	unsigned long flags;
+	bool adaptive_pno = false;
 
 	if (!request) {
 		WL_ERR(("Sched scan request was NULL\n"));
 		return -EINVAL;
 	}
 
-	if ((request->n_scan_plans == 1) && request->scan_plans &&
-			(request->scan_plans->interval > PNO_ADAPTIVE_SCAN_LIMIT)) {
-		/* If the host gives a high value for scan interval, then
-		 * doing adaptive scan doesn't make sense. Better stick to the
-		 * scan interval that host gives.
-		 */
-		pno_time = request->scan_plans->interval;
-		pno_repeat = 0;
-		pno_freq_expo_max = 0;
-	} else {
-		/* Run adaptive PNO */
-		pno_time = PNO_TIME;
+	if (!(request->n_scan_plans == 1) || !request->scan_plans) {
+		WL_ERR(("wrong input. plans:%d\n", request->n_scan_plans));
+		return -EINVAL;
 	}
 
-	WL_INFORM(("Enter. ssids:%d match_sets:%d pno_time:%d pno_repeat:%d channels:%d\n",
-		request->n_ssids, request->n_match_sets,
-		pno_time, pno_repeat, request->n_channels));
+#ifndef DISABLE_ADAPTIVE_PNO
+	if (request->scan_plans->interval <= PNO_ADAPTIVE_SCAN_LIMIT) {
+		/* If the host gives a high value for scan interval, then
+		 * doing adaptive scan doesn't make sense. For smaller
+		 * values attempt adaptive scan.
+		 */
+		adaptive_pno = true;
+	}
+#endif /* DISABLE_ADAPTIVE_PNO */
+
+	/* Use host provided iterations */
+	pno_repeat = request->scan_plans->iterations;
+	if (!pno_repeat || pno_repeat > PNO_REPEAT_MAX) {
+		/* (scan_plan->iterations == zero) means infinite */
+		pno_repeat = PNO_REPEAT_MAX;
+	}
+
+	if (adaptive_pno) {
+		/* Run adaptive PNO */
+		pno_time = PNO_TIME;
+		pno_freq_expo_max = PNO_FREQ_EXPO_MAX;
+	} else {
+		/* use host provided values */
+		pno_time = request->scan_plans->interval;
+	}
+
+	WL_INFORM_MEM(("Enter. ssids:%d match_sets:%d pno_time:%d pno_repeat:%d "
+		"channels:%d adaptive:%d\n", request->n_ssids, request->n_match_sets,
+		pno_time, pno_repeat, request->n_channels, adaptive_pno));
 
 	if (!request->n_ssids || !request->n_match_sets) {
 		WL_ERR(("Invalid sched scan req!! n_ssids:%d \n", request->n_ssids));
@@ -3582,7 +3621,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		/* get channel list. Note PNO uses channels and not chanspecs */
 		wl_cfgscan_populate_scan_channels(cfg,
 				request->channels, request->n_channels,
-				chan_list, &num_channels, false, false);
+				chan_list, &num_channels, true, false);
 	}
 
 	if (DBG_RING_ACTIVE(dhdp, DHD_EVENT_RING_ID)) {
@@ -4983,8 +5022,7 @@ wl_priortize_scan_over_listen(struct bcm_cfg80211 *cfg,
 
 	wl_clr_p2p_status(cfg, LISTEN_EXPIRED);
 
-	INIT_TIMER(&cfg->p2p->listen_timer,
-		wl_cfgp2p_listen_expired, duration, 0);
+	mod_timer(&cfg->p2p->listen_timer, jiffies + msecs_to_jiffies(duration));
 }
 #endif /* WL_CFG80211_VSDB_PRIORITIZE_SCAN_REQUEST */
 
@@ -5341,6 +5379,7 @@ wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 					WL_INFORM_MEM(("6G channel in rcc. use fw nw sel\n"));
 					/* skip bssid hint inclusion and provide bcast bssid */
 					info->bssid_hint = false;
+					info->targeted_join = false;
 					(void)memcpy_s(&info->bssid,
 							ETH_ALEN, &ether_bcast, ETH_ALEN);
 					break;
@@ -5379,14 +5418,31 @@ wl_cfgscan_is_dfs_set(wifi_band band)
 }
 
 s32
-wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg, int band,
-	uint16 *list, uint32 *num_channels)
+wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev, int band,
+	uint32 *list, uint32 *num_channels)
 {
 	s32 err = BCME_OK;
 	uint32 i, freq, list_count, count = 0;
 	struct net_device *dev = bcmcfg_to_prmry_ndev(cfg);
 	uint32 chspec, chaninfo;
 	bool dfs_set = false;
+	bool ap_iface;
+
+	if (!wdev) {
+		WL_ERR(("wdev null\n"));
+		return -EINVAL;
+	}
+
+	ap_iface = IS_AP_IFACE(wdev);
+#ifndef WL_DUAL_APSTA
+	if (!ap_iface && (wdev->netdev != bcmcfg_to_prmry_ndev(cfg))) {
+		/* The GETCHANNEL API could come before role conversion. so
+		 * for now consider the requests coming on non primary I/F
+		 * too as request for AP.
+		 */
+		ap_iface = TRUE;
+	}
+#endif /* WL_DUAL_APSTA */
 
 	dfs_set = wl_cfgscan_is_dfs_set(band);
 	err = wldev_iovar_getbuf_bsscfg(dev, "chan_info_list", NULL,
@@ -5405,14 +5461,25 @@ wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg, int band,
 		chaninfo = dtoh32(((wl_chanspec_list_v1_t *)list)->chspecs[i].chaninfo);
 		freq = wl_channel_to_frequency(wf_chspec_ctlchan(chspec),
 			CHSPEC_BAND(chspec));
-		if (((band & WIFI_BAND_BG) && CHSPEC_IS2G(chspec)) ||
-				((band & WIFI_BAND_6GHZ) && CHSPEC_IS6G(chspec))) {
-			/* add 2g/6g channels */
-			list[i] = freq;
-			count++;
+
+		if ((band & WIFI_BAND_BG) && CHSPEC_IS2G(chspec)) {
+			/* add 2g channels */
+			list[count++] = freq;
 		}
+
+		if ((band & WIFI_BAND_6GHZ) && CHSPEC_IS6G(chspec) && CHSPEC_IS20(chspec)) {
+			/* For AP interface and 6G band, use only VLP, PSC channels */
+			if (ap_iface && (!(chaninfo & WL_CHAN_BAND_6G_PSC) ||
+					!(chaninfo & WL_CHAN_BAND_6G_VLP))) {
+				WL_DBG(("skipping chspec:%x freq:%d for ap_iface\n", chspec, freq));
+				continue;
+			}
+			/* add 6g channels */
+			list[count++] = freq;
+		}
+
 		/* handle 5g separately */
-		if (CHSPEC_IS5G(chspec)) {
+		if (CHSPEC_IS5G(chspec) && CHSPEC_IS20(chspec)) {
 			if (!((band == WIFI_BAND_A_DFS) && IS_DFS(chaninfo)) &&
 				!(band & WIFI_BAND_A)) {
 				/* Not DFS only case nor 5G case */
@@ -5422,11 +5489,11 @@ wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg, int band,
 			if ((band & WIFI_BAND_A) && !dfs_set && IS_DFS(chaninfo)) {
 				continue;
 			}
-
-			list[i] = freq;
-			count++;
+			list[count++] = freq;
 		}
 	}
+
+	WL_INFORM_MEM(("get_freqlist_cnt:%d band:%d\n", count, band));
 	*num_channels = count;
 	return err;
 }

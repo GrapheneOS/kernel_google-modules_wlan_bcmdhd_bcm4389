@@ -292,9 +292,9 @@ extern int dhd_bus_get_cto(dhd_pub_t *dhdp);
 extern bool dhd_bus_get_read_shm(dhd_pub_t *dhdp);
 extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
 extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
-#ifdef CONFIG_ARCH_MSM
+#if defined(CONFIG_ARCH_MSM) && defined(CONFIG_SEC_PCIE_L1SS)
 extern void dhd_bus_inform_ep_loaded_to_rc(dhd_pub_t *dhdp, bool up);
-#endif /* CONFIG_ARCH_MSM */
+#endif /* CONFIG_ARCH_MSM  && CONFIG_SEC_PCIE_L1SS */
 extern int dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size);
 #else
 #define dhd_bus_dump_console_buffer(x)
@@ -404,4 +404,6 @@ extern int dhdpcie_get_max_eventbufpost(struct dhd_bus *bus);
 extern void dhd_bus_flow_ring_status_isr_trace(dhd_pub_t *dhd);
 extern void dhd_bus_flow_ring_status_dpc_trace(dhd_pub_t *dhd);
 #endif /* DHD_FLOW_RING_STATUS_TRACE */
+
+extern bool dhd_bus_init_done(struct dhd_bus *bus);
 #endif /* _dhd_bus_h_ */

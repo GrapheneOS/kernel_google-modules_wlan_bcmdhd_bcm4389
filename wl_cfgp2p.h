@@ -212,13 +212,6 @@ enum wl_cfgp2p_status {
 		}									\
 	} while (0)
 
-#define INIT_TIMER(timer, func, duration, extra_delay)	\
-	do {				   \
-		init_timer_compat(timer, func, cfg); \
-		timer_expires(timer) = jiffies + msecs_to_jiffies(duration + extra_delay); \
-		add_timer(timer); \
-	} while (0);
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) && !defined(WL_CFG80211_P2P_DEV_IF)
 #define WL_CFG80211_P2P_DEV_IF
 

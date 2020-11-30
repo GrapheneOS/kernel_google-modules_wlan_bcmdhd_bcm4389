@@ -1334,7 +1334,9 @@ enum nan_sec_csid {
 	NAN_SEC_ALGO_NONE = 0,
 	NAN_SEC_ALGO_NCS_SK_CCM_128 = 1,     /* CCMP 128 */
 	NAN_SEC_ALGO_NCS_SK_GCM_256 = 2,     /* GCMP 256 */
-	NAN_SEC_ALGO_LAST = 3
+	NAN_SEC_ALGO_NCS_PK_CCM_128 = 3,     /* CCMP 128 */
+	NAN_SEC_ALGO_NCS_PK_GCM_256 = 4,     /* GCMP 256 */
+	NAN_SEC_ALGO_LAST
 };
 typedef int8 nan_sec_csid_e;
 

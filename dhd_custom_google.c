@@ -192,6 +192,7 @@ char val_revision[MAX_HW_INFO_LEN] = {0};
 int
 dhd_wlan_init_hardware_info(void)
 {
+
 	struct device_node *node;
 	char *cp;
 	const char *command_line = NULL;
@@ -202,6 +203,7 @@ dhd_wlan_init_hardware_info(void)
 		DHD_ERROR(("Node not created under chosen\n"));
 		return -ENODEV;
 	} else {
+
 		of_property_read_string(node, "bootargs", &command_line);
 		len = strlen(command_line);
 

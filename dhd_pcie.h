@@ -28,6 +28,22 @@
 
 #include <bcmpcie.h>
 #include <hnd_cons.h>
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+#if IS_ENABLED(CONFIG_PCI_MSM)
+#include <linux/msm_pcie.h>
+#else
+#include <mach/msm_pcie.h>
+#endif /* CONFIG_PCI_MSM */
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_EXYNOS
+#ifndef SUPPORT_EXYNOS7420
+#include <linux/exynos-pci-noti.h>
+extern int exynos_pcie_register_event(struct exynos_pcie_register_event *reg);
+extern int exynos_pcie_deregister_event(struct exynos_pcie_register_event *reg);
+#endif /* !SUPPORT_EXYNOS7420 */
+#endif /* CONFIG_ARCH_EXYNOS */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 #ifdef DHD_PCIE_RUNTIMEPM
 #include <linux/mutex.h>
@@ -47,6 +63,19 @@
 #endif /* DHD_DEBUG */
 #define	REMAP_ENAB(bus)			((bus)->remap)
 #define	REMAP_ISADDR(bus, a)		(((a) >= ((bus)->orig_ramsize)) && ((a) < ((bus)->ramsize)))
+
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+#define struct_pcie_notify		struct msm_pcie_notify
+#define struct_pcie_register_event	struct msm_pcie_register_event
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_EXYNOS
+#ifndef SUPPORT_EXYNOS7420
+#define struct_pcie_notify		struct exynos_pcie_notify
+#define struct_pcie_register_event	struct exynos_pcie_register_event
+#endif /* !SUPPORT_EXYNOS7420 */
+#endif /* CONFIG_ARCH_EXYNOS */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 #define MAX_DHD_TX_FLOWS	320
 
@@ -234,6 +263,13 @@ typedef struct _dhd_flow_ring_status_trace_t {
 } dhd_frs_trace_t;
 #endif /* DHD_FLOW_RING_STATUS_TRACE */
 
+typedef enum dhd_pcie_link_state {
+	DHD_PCIE_ALL_GOOD = 0,
+	DHD_PCIE_LINK_DOWN = 1,
+	DHD_PCIE_COMMON_BP_DOWN = 2,
+	DHD_PCIE_WLAN_BP_DOWN = 3
+} dhd_pcie_link_state_type_t;
+
 /** Instantiated once for each hardware (dongle) instance that this DHD manages */
 typedef struct dhd_bus {
 	dhd_pub_t	*dhd;	/**< pointer to per hardware (dongle) unique instance */
@@ -361,6 +397,16 @@ typedef struct dhd_bus {
 #endif /* PCIE_OOB */
 	bool	irq_registered;
 	bool	d2h_intr_method;
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#if defined(CONFIG_ARCH_MSM) || (defined(CONFIG_ARCH_EXYNOS) && \
+	!defined(SUPPORT_EXYNOS7420))
+#ifdef CONFIG_ARCH_MSM
+	uint8 no_cfg_restore;
+#endif /* CONFIG_ARCH_MSM */
+	struct_pcie_register_event pcie_event;
+#endif /* CONFIG_ARCH_MSM || CONFIG_ARCH_EXYNOS && !SUPPORT_EXYNOS7420  */
+	bool read_shm_fail;
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 	int32 idletime;                 /* Control for activity timeout */
 	bool rpm_enabled;
 #ifdef DHD_PCIE_RUNTIMEPM
@@ -407,10 +453,10 @@ typedef struct dhd_bus {
 	bool	oob_presuspend;
 #endif /* PCIE_OOB || BCMPCIE_OOB_HOST_WAKE */
 	dhdpcie_config_save_t saved_config;
-	ulong resume_intr_enable_count;
-	ulong dpc_intr_enable_count;
-	ulong isr_intr_disable_count;
-	ulong suspend_intr_disable_count;
+	ulong host_irq_enable_count;
+	ulong host_irq_disable_count;
+	ulong dngl_intmask_disable_count;
+	ulong dngl_intmask_enable_count;
 	ulong dpc_return_busdown_count;
 	ulong non_ours_irq_count;
 #ifdef BCMPCIE_OOB_HOST_WAKE
@@ -535,6 +581,7 @@ typedef struct dhd_bus {
 	uint64 rd_shared_pass_time;
 	uint32 hwa_mem_base;
 	uint32 hwa_mem_size;
+	dhd_pcie_link_state_type_t link_state;
 } dhd_bus_t;
 
 #ifdef DHD_MSI_SUPPORT
@@ -707,6 +754,7 @@ extern uint32 dhdpcie_rc_access_cap(dhd_bus_t *bus, int cap, uint offset, bool i
 extern uint32 dhdpcie_ep_access_cap(dhd_bus_t *bus, int cap, uint offset, bool is_ext,
 		bool is_write, uint32 writeval);
 extern uint32 dhd_debug_get_rc_linkcap(dhd_bus_t *bus);
+extern void dhdpcie_enable_irq_loop(dhd_bus_t *bus);
 #else
 static INLINE uint32 dhdpcie_rc_config_read(dhd_bus_t *bus, uint offset) { return 0;}
 static INLINE uint32 dhdpcie_rc_access_cap(dhd_bus_t *bus, int cap, uint offset, bool is_ext,
@@ -714,7 +762,8 @@ static INLINE uint32 dhdpcie_rc_access_cap(dhd_bus_t *bus, int cap, uint offset,
 static INLINE uint32 dhdpcie_ep_access_cap(dhd_bus_t *bus, int cap, uint offset, bool is_ext,
 		bool is_write, uint32 writeval) { return -1;}
 static INLINE uint32 dhd_debug_get_rc_linkcap(dhd_bus_t *bus) { return -1;}
-#endif
+static INLINE void dhdpcie_enable_irq_loop(dhd_bus_t *bus) { return; }
+#endif /* LINUX || linux */
 #if defined(linux) || defined(LINUX)
 extern int dhdpcie_start_host_dev(dhd_bus_t *bus);
 extern int dhdpcie_stop_host_dev(dhd_bus_t *bus);

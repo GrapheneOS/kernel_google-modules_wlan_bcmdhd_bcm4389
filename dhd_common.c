@@ -666,12 +666,6 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 {
 	bool ret = FALSE;
 
-	if (dhdp->dongle_reset) {
-		DHD_ERROR_RLMT(("%s: Dongle Reset occurred, cannot proceed\n",
-			__FUNCTION__));
-		ret = TRUE;
-	}
-
 	if (dhdp->dongle_trap_occured) {
 		DHD_ERROR_RLMT(("%s: FW TRAP has occurred, cannot proceed\n",
 			__FUNCTION__));
@@ -754,6 +748,10 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 		ret = TRUE;
 	}
 
+	if (ret) {
+		dhdp->do_chip_bighammer = TRUE;
+	}
+
 	return ret;
 }
 
@@ -780,7 +778,16 @@ dhd_clear_bus_errors(dhd_pub_t *dhdp)
 #ifdef DHD_SSSR_DUMP
 
 /* This can be overwritten by module parameter defined in dhd_linux.c */
+#ifdef GDB_PROXY
+/* GDB Proxy can't connect to crashed firmware after SSSR dump is generated.
+ * SSSR dump generation disabled for GDB Proxy enabled firmware by default.
+ * Still it can be explicitly enabled by echo 1 > /sys/wifi/sssr_enab or by
+ * sssr_enab=1 in insmod command line
+ */
+uint sssr_enab = FALSE;
+#else /* GDB_PROXY */
 uint sssr_enab = TRUE;
+#endif /* else GDB_PROXY */
 
 #ifdef DHD_FIS_DUMP
 uint fis_enab = TRUE;
@@ -835,10 +842,19 @@ dhd_dump_sssr_reg_info(dhd_pub_t *dhd)
 {
 }
 
+void dhdpcie_fill_sssr_reg_info(dhd_pub_t *dhd);
+
 int
 dhd_get_sssr_reg_info(dhd_pub_t *dhd)
 {
 	int ret;
+
+	if (dhd->force_sssr_init) {
+		dhdpcie_fill_sssr_reg_info(dhd);
+		dhd->force_sssr_init = FALSE;
+		goto done;
+	}
+
 	/* get sssr_reg_info from firmware */
 	ret = dhd_iovar(dhd, 0, "sssr_reg_info", NULL, 0,  (char *)dhd->sssr_reg_info,
 		sizeof(sssr_reg_info_cmn_t), FALSE);
@@ -848,6 +864,7 @@ dhd_get_sssr_reg_info(dhd_pub_t *dhd)
 		return BCME_ERROR;
 	}
 
+done:
 	dhd_dump_sssr_reg_info(dhd);
 	return BCME_OK;
 }
@@ -1356,6 +1373,9 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 	bcm_bprintf(strbuf, "\n");
 	bcm_bprintf(strbuf, "pub.up %d pub.txoff %d pub.busstate %d\n",
 	            dhdp->up, dhdp->txoff, dhdp->busstate);
+#ifdef WBRC
+	bcm_bprintf(strbuf, "chip_bighammer_count:%d\n", dhdp->chip_bighammer_count);
+#endif /* WBRC */
 	bcm_bprintf(strbuf, "pub.hdrlen %u pub.maxctl %u pub.rxsz %u\n",
 	            dhdp->hdrlen, dhdp->maxctl, dhdp->rxsz);
 	bcm_bprintf(strbuf, "pub.iswl %d pub.drv_version %ld pub.mac "MACDBG"\n",
@@ -1382,8 +1402,8 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 	            dhdp->rx_ctlpkts, dhdp->rx_ctlerrs, dhdp->rx_dropped);
 	bcm_bprintf(strbuf, "rx_readahead_cnt %lu tx_realloc %lu\n",
 	            dhdp->rx_readahead_cnt, dhdp->tx_realloc);
-	bcm_bprintf(strbuf, "tx_pktgetfail %lu rx_pktgetfail %lu\n",
-	            dhdp->tx_pktgetfail, dhdp->rx_pktgetfail);
+	bcm_bprintf(strbuf, "tx_pktgetfail %lu rx_pktgetfail %lu rx_pktgetpool_fail %lu\n",
+	            dhdp->tx_pktgetfail, dhdp->rx_pktgetfail, dhdp->rx_pktgetpool_fail);
 	bcm_bprintf(strbuf, "tx_big_packets %lu\n",
 	            dhdp->tx_big_packets);
 	bcm_bprintf(strbuf, "\n");
@@ -4366,6 +4386,10 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		}
 		break;
 
+	case WLC_E_JOIN_START:
+		DHD_EVENT(("MACEVENT: %s, MAC %s\n", event_name, eabuf));
+		break;
+
 	case WLC_E_BEACON_RX:
 		if (status == WLC_E_STATUS_SUCCESS) {
 			DHD_EVENT(("MACEVENT: %s, SUCCESS\n", event_name));
@@ -4471,11 +4495,11 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 	}
 #endif /* SHOW_LOGTRACE */
 
-	case WLC_E_RSSI:
-		if (datalen >= sizeof(int)) {
-			DHD_EVENT(("MACEVENT: %s %d\n", event_name, ntoh32(*((int *)event_data))));
-		}
-		break;
+	case WLC_E_RSSI: {
+		wl_event_data_rssi_t *e_data = (wl_event_data_rssi_t *)event_data;
+		DHD_EVENT(("MACEVENT: %s (RSSI=%d SNR=%d NF=%d)\n", event_name,
+			ntoh32(e_data->rssi), ntoh32(e_data->snr), ntoh32(e_data->noise)));
+		} break;
 
 	case WLC_E_SERVICE_FOUND:
 	case WLC_E_P2PO_ADD_DEVICE:
@@ -4529,9 +4553,27 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 					cca_only_event->cca_busy_pm.congest_obss,
 					cca_only_event->cca_busy_pm.interference));
 				if (cca_event->id == WL_CHAN_QUAL_FULLPM_CCA_OFDM_DESENSE) {
-					DHD_EVENT(("\t OFDM desense %d\n",
-						((const cca_only_chan_qual_event_v2_t *)
-						cca_only_event)->ofdm_desense));
+					const cca_only_chan_qual_event_v2_t *cca_only_event_v2 =
+						(const cca_only_chan_qual_event_v2_t *)
+						cca_only_event;
+					if (cca_event->len >
+						(OFFSETOF(
+						cca_only_chan_qual_event_v2_t, ofdm_desense) +
+						sizeof(cca_only_event_v2->ofdm_desense)) -
+						(OFFSETOF(cca_only_chan_qual_event_v2_t, len) +
+						sizeof(cca_only_event_v2->len))) {
+						const wl_phy_rxdesense_t *phy_desense =
+							(const wl_phy_rxdesense_t *)
+							&cca_only_event_v2->ofdm_desense;
+						DHD_EVENT(("\t OFDM desense %d BPHY desense %d"
+							" reason 0x%x)\n",
+							phy_desense->ofdm_desense,
+							phy_desense->bphy_desense,
+							phy_desense->reason));
+					} else {
+						DHD_EVENT(("\t OFDM desense %d\n",
+							cca_only_event_v2->ofdm_desense));
+					}
 				}
 			} else if (cca_event->id == WL_CHAN_QUAL_FULL_CCA) {
 				DHD_EVENT((
@@ -5317,7 +5359,6 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 #if defined(RTT_SUPPORT)
 	case WLC_E_PROXD:
 #ifndef WL_CFG80211
-		dhd_rtt_event_handler(dhd_pub, event, (void *)event_data);
 #endif /* WL_CFG80211 */
 		break;
 #endif /* RTT_SUPPORT */
@@ -7414,10 +7455,11 @@ int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t com
 				*length = fw->size;
 				goto err;
 			}
-			*buffer = MALLOCZ(dhd->osh, fw->size);
+			*buffer = VMALLOCZ(dhd->osh, fw->size);
 			if (*buffer == NULL) {
 				DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
 					__FUNCTION__, (int)fw->size));
+				ret = BCME_NOMEM;
 				goto err;
 			}
 			*length = fw->size;
@@ -7491,11 +7533,11 @@ int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t com
 				goto err;
 			}
 		}
-
 		buf = MALLOCZ(dhd->osh, file_len);
 		if (buf == NULL) {
 			DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
 				__FUNCTION__, file_len));
+			ret = BCME_NOMEM;
 			goto err;
 		}
 
@@ -7930,7 +7972,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
 	DHD_ERROR(("Clmblob file : %s\n", clm_blob_path));
 	len = MAX_CLM_BUF_SIZE;
-	dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
+	err = dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
 #ifdef DHD_LINUX_STD_FW_API
 	memblock_len = len;
 #else
@@ -7945,9 +7987,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #if defined(LINUX) || defined(linux)
 	if (memblock == NULL) {
 #if defined(DHD_BLOB_EXISTENCE_CHECK)
-		if (dhd->is_blob) {
-			err = BCME_ERROR;
-		} else {
+		if (!dhd->is_blob) {
 			status = dhd_check_current_clm_data(dhd);
 			if (status == TRUE) {
 				err = BCME_OK;
@@ -8039,7 +8079,11 @@ void dhd_free_download_buffer(dhd_pub_t	*dhd, void *buffer, int length)
 #ifdef CACHE_FW_IMAGES
 	return;
 #endif
+#if defined(DHD_LINUX_STD_FW_API)
+	VMFREE(dhd->osh, buffer, length);
+#else
 	MFREE(dhd->osh, buffer, length);
+#endif /* DHD_LINUX_STD_FW_API */
 }
 
 #ifdef REPORT_FATAL_TIMEOUTS
@@ -8918,7 +8962,7 @@ int dhd_parse_map_file(osl_t *osh, void *ptr, uint32 *ramstart, uint32 *rodata_s
 	*ramstart = 0;
 	*rodata_start = 0;
 	*rodata_end = 0;
-	size = (((struct firmware *)ptr)->size);
+	size = (uint32)(((struct firmware *)ptr)->size);
 
 	/* Allocate 1 byte more than read_size to terminate it with NULL */
 	raw_fmts = MALLOCZ(osh, read_size + 1);
@@ -11163,7 +11207,7 @@ dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *param_buf, uint param_len
 	 * to avoid the length check error in fw
 	 */
 	if (!set && !param_len) {
-		input_len += sizeof(int);
+		input_len += (uint) sizeof(int);
 	}
 	if (input_len > WLC_IOCTL_MAXLEN)
 		return BCME_BADARG;
@@ -11320,6 +11364,11 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			type_str = "DONGLE_INIT_FAIL";
 			break;
 #endif /* DEBUG_DNGL_INIT_FAIL */
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+		case DUMP_TYPE_READ_SHM_FAIL:
+			type_str = "READ_SHM_FAIL";
+			break;
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 		case DUMP_TYPE_DONGLE_HOST_EVENT:
 			type_str = "BY_DONGLE_HOST_EVENT";
 			break;
