@@ -9353,8 +9353,13 @@ static int
 dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		uint32 lr, char *lr_fn)
 {
+#ifdef DHD_LINUX_STD_FW_API
+	const struct firmware *fw = NULL;
+	uint32 size = 0, mem_offset = 0;
+#else
 	struct file *filep = NULL;
 	mm_segment_t fs;
+#endif /* DHD_LINUX_STD_FW_API */
 	char *raw_fmts = NULL, *raw_fmts_loc = NULL, *cptr = NULL;
 	uint32 read_size = READ_NUM_BYTES;
 	int err = BCME_ERROR;
@@ -9381,6 +9386,15 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		return BCME_ERROR;
 	}
 
+#ifdef DHD_LINUX_STD_FW_API
+        err = dhd_os_get_img_fwreq(&fw, fname);
+        if (err < 0) {
+                DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
+                        err));
+                goto fail;
+        }
+        size = fw->size;
+#else
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
@@ -9389,6 +9403,7 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		DHD_ERROR(("%s: Failed to open %s \n",  __FUNCTION__, fname));
 		goto fail;
 	}
+#endif /* DHD_LINUX_STD_FW_API */
 
 	if (pc_fn == NULL) {
 		count |= PC_FOUND_BIT;
@@ -9398,12 +9413,27 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 	}
 	while (count != ALL_ADDR_VAL)
 	{
+#ifdef DHD_LINUX_STD_FW_API
+                /* Bound check for size before doing memcpy() */
+                if ((mem_offset + read_size) > size) {
+                        read_size = size - mem_offset;
+                }
+
+                err = memcpy_s(raw_fmts, read_size,
+                        ((char *)(fw->data) + mem_offset), read_size);
+                if (err) {
+                        DHD_ERROR(("%s: failed to copy raw_fmts, err=%d\n",
+                                __FUNCTION__, err));
+                        goto fail;
+                }
+#else
 		err = dhd_os_read_file(filep, raw_fmts, read_size);
 		if (err < 0) {
 			DHD_ERROR(("%s: map file read failed err:%d \n",
 				__FUNCTION__, err));
 			goto fail;
 		}
+#endif /* DHD_LINUX_STD_FW_API */
 
 		/* End raw_fmts with NULL as strstr expects NULL terminated
 		* strings
@@ -9495,7 +9525,14 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 			}
 			offset += (len + 1);
 		}
+#ifdef DHD_LINUX_STD_FW_API
+                if ((mem_offset + read_size) >= size) {
+                        break;
+                }
 
+                memset(raw_fmts, 0, read_size);
+                mem_offset += (read_size -(len + 1));
+#else
 		if (err < (int)read_size) {
 			/*
 			* since we reset file pos back to earlier pos by
@@ -9513,14 +9550,21 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		* the string and addr even if it comes as splited in next read.
 		*/
 		dhd_os_seek_file(filep, -(len + 1));
+#endif /* DHD_LINUX_STD_FW_API */
 		DHD_TRACE(("%s: seek %d \n", __FUNCTION__, -(len + 1)));
 	}
 
 fail:
+#ifdef DHD_LINUX_STD_FW_API
+        if (fw) {
+                dhd_os_close_img_fwreq(fw);
+        }
+#else
 	if (!IS_ERR(filep))
 		dhd_filp_close(filep, NULL);
 
 	set_fs(fs);
+#endif /* DHD_LINUX_STD_FW_API */
 
 	if (!(count & PC_FOUND_BIT)) {
 		sprintf(pc_fn, "0x%08x", pc);
@@ -20433,7 +20477,11 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #define DUMP_SSSR_DUMP_MAX_COUNT	8
 #endif
 #ifdef DHD_COREDUMP
+#ifdef DHD_LINUX_STD_FW_API
+char map_path[PATH_MAX] = DHD_MAP_NAME;
+#else
 char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
+#endif /* DHD_LINUX_STD_FW_API */
 
 #define DHD_COREDUMP_MAGIC 0xDDCEDACF
 #define TLV_TYPE_LENGTH_SIZE	(8u)
@@ -24303,8 +24351,15 @@ dhd_write_file_and_check(const char *filepath, char *buf, int buf_len)
 #ifdef FILTER_IE
 int dhd_read_from_file(dhd_pub_t *dhd)
 {
-	int ret = 0, nread = 0;
+	int ret = 0;
+#ifdef DHD_LINUX_STD_FW_API
+	const struct firmware *fw = NULL;
+	char *filepath = FILTER_IE_PATH;
+	int filelen = 0;
+#else
+	int nread = 0;
 	void *fd;
+#endif /* DHD_LINUX_STD_FW_API */
 	uint8 *buf;
 	NULL_CHECK(dhd, "dhd is NULL", ret);
 
@@ -24315,6 +24370,32 @@ int dhd_read_from_file(dhd_pub_t *dhd)
 	}
 
 	/* open file to read */
+#ifdef DHD_LINUX_STD_FW_API
+	ret = dhd_os_get_img_fwreq(&fw, filepath);
+	if (ret < 0) {
+		DHD_ERROR(("dhd_os_get_img_fwreq(%s) error : %d\n",
+			filepath, ret));
+		goto exit;
+	}
+
+	filelen = fw->size;
+	if (filelen == 0) {
+		DHD_ERROR(("error: zero length file.failed to read\n"));
+		ret = BCME_ERROR;
+		goto exit;
+	}
+
+	ret = memcpy_s(buf, FILE_BLOCK_READ_SIZE, fw->data, fw->size);
+	if (ret < 0) {
+		DHD_ERROR((" memcpy_s() error : %d\n", ret));
+		goto exit;
+	}
+
+	ret = dhd_parse_filter_ie(dhd, buf);
+	if (ret < 0) {
+		DHD_ERROR(("error: failed to parse filter ie\n"));
+	}
+#else
 	fd = dhd_os_open_image1(dhd, FILTER_IE_PATH);
 	if (!fd) {
 		DHD_ERROR(("No filter file(not an error), filter path%s\n", FILTER_IE_PATH));
@@ -24331,8 +24412,16 @@ int dhd_read_from_file(dhd_pub_t *dhd)
 		DHD_ERROR(("error: zero length file.failed to read\n"));
 		ret = BCME_ERROR;
 	}
-	dhd_os_close_image1(dhd, fd);
+#endif /* DHD_LINUX_STD_FW_API */
+
 exit:
+#ifdef DHD_LINUX_STD_FW_API
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+#else
+	dhd_os_close_image1(dhd, fd);
+#endif /* DHD_LINUX_STD_FW_API */
 	if (buf) {
 		MFREE(dhd->osh, buf, FILE_BLOCK_READ_SIZE);
 	}
