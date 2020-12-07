@@ -303,6 +303,7 @@ naming_info_t bcm4389_naming_table[] = {
 	{ {"usi_es12"}, {"_ES12"}, {""} },
 	{ {"usi_es13"}, {"_ES13"}, {""} },
 	{ {"usi_es15"}, {"_ES15"}, {""} },
+	{ {"usi_es17"}, {"_ES17"}, {""} },
 };
 
 /* select the NVRAM/FW tag naming table */
@@ -1666,6 +1667,7 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x12, 0x99, }, { "USI_WM_usi_es12" } },
 	{ 3, { 0x13, 0x99, }, { "USI_WM_usi_es13" } },
 	{ 3, { 0x15, 0x99, }, { "USI_WM_usi_es15" } },
+	{ 3, { 0x17, 0x99, }, { "USI_WM_usi_es17" } },
 #endif /* SUPPORT_MIXED_MODULES */
 };
 #else
@@ -1689,7 +1691,7 @@ dhd_get_cid_info(unsigned char *vid, int vid_length)
 		}
 	}
 
-	DHD_ERROR(("%s : Can't find the cid info\n", __FUNCTION__));
+	DHD_ERROR(("%s : Can't find the cid info, (%s)\n", __FUNCTION__, vid));
 	return NULL;
 }
 
