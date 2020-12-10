@@ -997,6 +997,23 @@ dhd_check_icmp(uint8 *pktdata)
 	return TRUE;
 }
 
+bool
+dhd_check_icmpv6(uint8 *pktdata, uint32 plen)
+{
+	uint8 *pkt = (uint8 *)&pktdata[ETHER_HDR_LEN];
+	struct ipv6_hdr *ip6h = (struct ipv6_hdr *)pkt;
+
+	if (IPV6_PROT(ip6h) != IP_PROT_ICMP6) {
+		return FALSE;
+	}
+
+	/* check header length */
+	if (plen <= IPV6_MIN_HLEN) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
 #ifdef DHD_ICMP_DUMP
 #define ICMP_TYPE_DEST_UNREACH		3
 #define ICMP_ECHO_SEQ_OFFSET		6

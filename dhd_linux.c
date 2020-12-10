@@ -3810,6 +3810,11 @@ dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata, uint32
 			pkt_type = PKT_TYPE_DNS;
 		}
 	}
+	else if (ether_type == ETHER_TYPE_IPV6) {
+		if (dhd_check_icmpv6(pktdata, pktlen)) {
+			pkt_type = PKT_TYPE_ICMPV6;
+		}
+	}
 	else if (dhd_check_arp(pktdata, ether_type)) {
 		pkt_type = PKT_TYPE_ARP;
 	}
