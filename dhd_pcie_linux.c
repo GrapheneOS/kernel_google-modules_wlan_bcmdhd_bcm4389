@@ -1978,6 +1978,12 @@ int dhdpcie_init(struct pci_dev *pdev)
 			break;
 		}
 #endif /* USE_SMMU_ARCH_MSM */
+        // Override dma mask to 36 bits
+        if (pci_set_dma_mask(pdev, DMA_BIT_MASK(36)) ||
+		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(36))) {
+		DHD_ERROR(("%s: AA: DMA set 36bit mask failed.\n", __FUNCTION__));
+		return -EINVAL;
+	}
 
 #ifdef DHD_WAKE_STATUS
 		/* Initialize pkt_wake_lock */
