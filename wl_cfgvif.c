@@ -520,7 +520,8 @@ wl_cfg80211_get_sec_iface(struct bcm_cfg80211 *cfg)
 	}
 
 #ifdef WL_NAN
-	if (wl_cfgnan_is_dp_active(bcmcfg_to_prmry_ndev(cfg))) {
+	if (wl_cfgnan_is_nan_active(bcmcfg_to_prmry_ndev(cfg)) ||
+			wl_cfgnan_is_dp_active(bcmcfg_to_prmry_ndev(cfg))) {
 		return WL_IF_TYPE_NAN;
 	}
 #endif /* WL_NAN */
@@ -1565,9 +1566,13 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	u32 bw = WL_CHANSPEC_BW_20;
 	s32 err = BCME_OK;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-#if defined(CUSTOM_SET_CPUCORE) || defined(APSTA_RESTRICTED_CHANNEL)
+#if defined(CUSTOM_SET_CPUCORE) || defined(APSTA_RESTRICTED_CHANNEL) || \
+	defined(SUPPORT_AP_INIT_BWCONF)
 	dhd_pub_t *dhd =  (dhd_pub_t *)(cfg->pub);
 #endif /* CUSTOM_SET_CPUCORE || APSTA_RESTRICTED_CHANNEL */
+#if defined(SUPPORT_AP_INIT_BWCONF)
+	u32 configured_bw;
+#endif /* SUPPORT_AP_INIT_BWCONF */
 
 	dev = ndev_to_wlc_ndev(dev, cfg);
 	chspec = wl_freq_to_chanspec(chan->center_freq);
@@ -1639,6 +1644,14 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 		WL_ERR(("Failed to get bandwidth information, err=%d\n", err));
 		return err;
 	}
+
+#if defined(SUPPORT_AP_INIT_BWCONF)
+	/* Update BW for 5G and 6G SoftAP if BW is configured */
+	configured_bw = wl_update_configured_bw(wl_get_configured_ap_bw(dhd));
+	if (configured_bw != INVCHANSPEC) {
+		bw = configured_bw;
+	}
+#endif /* SUPPORT_AP_INIT_BWCONF */
 
 	/* In case of 5G downgrade BW to 80MHz as 160MHz channels falls in DFS */
 	if (CHSPEC_IS5G(chspec) && (bw == WL_CHANSPEC_BW_160)) {
@@ -2933,6 +2946,7 @@ wl_cfg80211_bcn_bringup_ap(
 #endif /* SOFTAP_UAPSD_OFF */
 	s32 err = BCME_OK;
 	s32 is_rsdb_supported = BCME_ERROR;
+	u8 buf[WLC_IOCTL_SMLEN] = {0};
 
 #if defined(BCMDONGLEHOST)
 	is_rsdb_supported = DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_RSDB_MODE);
@@ -3064,10 +3078,10 @@ wl_cfg80211_bcn_bringup_ap(
 		if ((wsec == WEP_ENABLED) && cfg->wep_key.len) {
 			WL_DBG(("Applying buffered WEP KEY \n"));
 			err = wldev_iovar_setbuf_bsscfg(dev, "wsec_key", &cfg->wep_key,
-				sizeof(struct wl_wsec_key), cfg->ioctl_buf,
-				WLC_IOCTL_MAXLEN, bssidx, &cfg->ioctl_buf_sync);
+				sizeof(struct wl_wsec_key), buf, WLC_IOCTL_SMLEN, bssidx, NULL);
 			/* clear the key after use */
 			bzero(&cfg->wep_key, sizeof(struct wl_wsec_key));
+			bzero(buf, sizeof(buf));
 			if (unlikely(err)) {
 				WL_ERR(("WLC_SET_KEY error (%d)\n", err));
 				goto exit;
@@ -5845,16 +5859,17 @@ int wl_cfg80211_set_he_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
 	he_xtlv_v32 v32;
 	u32 he_feature = 0;
 	s32 err = 0;
+	uint8 iovar_buf[WLC_IOCTL_SMLEN];
 
 	read_he_xtlv.id = WL_HE_CMD_FEATURES;
 	read_he_xtlv.len = 0;
 	err = wldev_iovar_getbuf_bsscfg(dev, "he", &read_he_xtlv, sizeof(read_he_xtlv),
-			cfg->ioctl_buf, WLC_IOCTL_SMLEN, bssidx, NULL);
+			iovar_buf, WLC_IOCTL_SMLEN, bssidx, NULL);
 	if (err < 0) {
 		WL_ERR(("HE get failed. error=%d\n", err));
 		return err;
 	} else {
-		he_feature =  *(int*)cfg->ioctl_buf;
+		he_feature = *(int*)iovar_buf;
 		he_feature = dtoh32(he_feature);
 	}
 
@@ -6614,3 +6629,40 @@ wl_cfgvif_dualsta_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	}
 }
 #endif /* WL_DUAL_APSTA */
+
+#ifdef SUPPORT_AP_INIT_BWCONF
+uint32
+wl_get_configured_ap_bw(dhd_pub_t *dhdp)
+{
+	WL_DBG(("%s: Confitured SoftAP BW is %d\n", __FUNCTION__, dhdp->wl_softap_bw));
+
+	return dhdp->wl_softap_bw;
+}
+
+uint32
+wl_update_configured_bw(uint32 bw)
+{
+	uint32 configured_bw = INVCHANSPEC;
+
+	switch (bw)
+	{
+	case 20:
+		configured_bw = WL_CHANSPEC_BW_20;
+		break;
+	case 40:
+		configured_bw = WL_CHANSPEC_BW_40;
+		break;
+	case 80:
+		configured_bw = WL_CHANSPEC_BW_80;
+		break;
+	case 160:
+		configured_bw = WL_CHANSPEC_BW_160;
+		break;
+	default:
+		/* wl_softap_bw have invalid BW, use default BW for each band */
+		WL_ERR(("BW %d is not allowed, Use default BW \n", bw));
+	}
+
+	return configured_bw;
+}
+#endif /* SUPPORT_AP_INIT_BWCONF */

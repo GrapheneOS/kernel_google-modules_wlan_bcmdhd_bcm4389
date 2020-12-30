@@ -876,7 +876,9 @@ typedef enum dhd_ring_id {
 	ROAM_STATS_RING_ID = 0x5,
 	BT_LOG_RING_ID = 0x6,
 	PACKET_LOG_RING_ID = 0x7,
-	DEBUG_RING_ID_MAX = 0x8
+	DEBUG_DUMP_RING1_ID = 0x8,
+	DEBUG_DUMP_RING2_ID = 0x9,
+	DEBUG_RING_ID_MAX = 0xa
 } dhd_ring_id_t;
 
 #ifdef DHD_LOG_DUMP
@@ -908,6 +910,7 @@ struct dhd_dbg_ring_buf
 {
 	void *dhd_pub;
 };
+extern struct dhd_dbg_ring_buf g_ring_buf;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 #define LOG_DUMP_MAGIC 0xDEB3DEB3
@@ -943,7 +946,11 @@ typedef enum {
 	LOG_DUMP_SECTION_RING,
 	LOG_DUMP_SECTION_STATUS,
 	LOG_DUMP_SECTION_RTT,
-	LOG_DUMP_SECTION_BCM_TRACE
+	LOG_DUMP_SECTION_BCM_TRACE,
+	LOG_DUMP_SECTION_PKTID_MAP_LOG,
+	LOG_DUMP_SECTION_PKTID_UNMAP_LOG,
+	LOG_DUMP_SECTION_TIMESTAMP,
+	LOG_DUMP_SECTION_MAX
 } log_dump_section_type_t;
 
 /* Each section in the debug_dump log file shall begin with a header */
@@ -953,6 +960,11 @@ typedef struct {
 	uint64 timestamp;
 	uint32 length;  /* length of the section that follows */
 } log_dump_section_hdr_t;
+
+typedef struct dhd_debug_dump_ring_entry {
+	log_dump_section_type_t type;
+	uint32 debug_dump_ring;
+} dhd_debug_dump_ring_entry_t;
 
 /* below structure describe ring buffer. */
 struct dhd_log_dump_buf
@@ -1125,12 +1137,34 @@ typedef enum dhd_induce_error_states
 	DHD_INDUCE_SCAN_TIMEOUT_SCHED_ERROR     = 0x9,
 	DHD_INDUCE_PKTID_INVALID_SAVE   = 0xA,
 	DHD_INDUCE_PKTID_INVALID_FREE   = 0xB,
+	DHD_INDUCE_PCIE_LINK_DOWN	= 0xC,
 	/* Big hammer induction */
 	DHD_INDUCE_BH_ON_FAIL_ONCE	= 0x10,
 	DHD_INDUCE_BH_ON_FAIL_ALWAYS	= 0x11,
 	DHD_INDUCE_BH_CBP_HANG		= 0x12,
 	DHD_INDUCE_ERROR_MAX
 } dhd_induce_error_states_t;
+
+#define MAX_RX_LAT_PRIO		8
+#define MAX_RX_LAT_HIST_BIN	50
+#define MAX_RXCPL_HISTORY	50
+#define	RX_LAT_TIME_SCALE	32
+#define	RX_LAT_BIN_SCALE	500
+
+typedef struct rx_cpl_history {
+	uint32 rx_t0;
+	uint16 latency;
+	uint8 slice;
+	uint8 priority;
+	int8 rssi;
+} rx_cpl_history_t;
+
+typedef struct rx_cpl_lat_info {
+	rx_cpl_history_t rx_history[MAX_RXCPL_HISTORY];
+	uint32 rxcpl_hist_count;
+	uint32	rx_dur_2g[MAX_RX_LAT_PRIO][MAX_RX_LAT_HIST_BIN];
+	uint32	rx_dur_5g[MAX_RX_LAT_PRIO][MAX_RX_LAT_HIST_BIN];
+} rx_cpl_lat_info_t;
 
 #if defined(SHOW_LOGTRACE) && defined(DHD_USE_KTHREAD_FOR_LOGTRACE)
 /* Timestamps to trace dhd_logtrace_thread() */
@@ -1142,7 +1176,16 @@ struct dhd_logtrace_thr_ts {
 	uint64 complete_time;
 };
 #endif /* SHOW_LOGTRACE && DHD_USE_KTHREAD_FOR_LOGTRACE */
-
+#ifdef SUPPORT_OTA_UPDATE
+#define MAX_EXT_INFO_LEN	10u
+typedef struct ota_update_info {
+	uint32 clm_len;
+	uint8 *clm_buf;
+	uint32 nvram_len;
+	uint8 *nvram_buf;
+	uint8 nvram_ext[MAX_EXT_INFO_LEN];
+} ota_update_info_t;
+#endif /* SUPPORT_OTA_UPDATE */
 /**
  * Common structure for module and instance linkage.
  * Instantiated once per hardware (dongle) instance that this DHD manages.
@@ -1717,6 +1760,9 @@ typedef struct dhd_pub {
 #ifdef DHD_STATUS_LOGGING
 	void *statlog;
 #endif /* DHD_STATUS_LOGGING */
+#ifdef DHD_MAP_PKTID_LOGGING
+	bool enable_pktid_log_dump;
+#endif /* DHD_MAP_PKTID_LOGGING */
 #ifdef DHD_DB0TS
 	bool db0ts_capable;
 #endif /* DHD_DB0TS */
@@ -1770,6 +1816,7 @@ typedef struct dhd_pub {
 	uint64 lb_rxp_strt_thr_hitcnt;
 	uint64 lb_rxp_napi_sched_cnt;
 	uint64 lb_rxp_napi_complete_cnt;
+	uint64 rx_dma_stall_hc_ignore_cnt;
 #endif /* DHD_LB_STATS */
 	bool check_trap_rot;
 	/* if FW supports host insertion of SFH LLC */
@@ -1783,8 +1830,14 @@ typedef struct dhd_pub {
 #ifdef DBG_PKT_MON
 	bool aml_enable;	/* aml(assoc mgmt frame logger) enable flags */
 #endif /* DBG_PKT_MON */
+	bool fw_mode_changed;
 	bool do_chip_bighammer;
 	uint chip_bighammer_count;
+	bool rx_cpl_lat_capable; /* FW supports latency posting in Rx cpl ring */
+	rx_cpl_lat_info_t rxcpl_lat_info; /* Rx Cpl latency information */
+#ifdef SUPPORT_OTA_UPDATE
+	ota_update_info_t ota_update_info;
+#endif /* SUPPORT_OTA_UPDATE */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -2520,6 +2573,11 @@ extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
 #endif /* KEEP_ALIVE */
 
 #if defined(DHD_FW_COREDUMP)
+#ifdef LINUX
+extern bool dhd_memdump_is_scheduled(dhd_pub_t *dhdp);
+#else
+static INLINE bool dhd_memdump_is_scheduled(dhd_pub_t *dhdp) { return FALSE; }
+#endif /* LINUX */
 void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size);
 #endif /* DHD_FW_COREDUMP */
 
@@ -2934,6 +2992,14 @@ extern uint dhd_radio_up;
 /* TCM verification control */
 extern uint dhd_tcm_test_enable;
 
+/* TCM test status */
+typedef enum tcm_test_status {
+	TCM_TEST_NOT_RUN = 0,
+	TCM_TEST_FAILED = 1,
+	TCM_TEST_PASSED = 2
+} tcm_test_status_t;
+extern tcm_test_status_t dhd_tcm_test_status;
+
 /* Initial idletime ticks (may be -1 for immediate idle, 0 for no idle) */
 extern int dhd_idletime;
 #ifdef DHD_USE_IDLECOUNT
@@ -3254,6 +3320,8 @@ extern naming_info_t * dhd_find_naming_info_by_chip_rev(dhd_pub_t *dhdp, bool *i
 #define MD_REV_OFF 0
 #define A0_REV "_a0"
 #define B0_REV "_b0"
+#define C0_REV "_c0"
+#define C1_REV "_c1"
 extern int dhd_check_stored_module_info(char *vid);
 extern int concate_nvram_by_vid(dhd_pub_t *dhdp, char *nv_path, char *chipstr);
 #endif /* USE_DIRECT_VID_TAG */
@@ -3982,6 +4050,9 @@ void dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd);
 #endif
 
 #ifdef DHD_LOG_DUMP
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+int dhd_debug_dump_get_ring_num(int sec_type);
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 int dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 		unsigned long *file_posn, log_dump_section_hdr_t *sec_hdr, char *text_hdr,
 		uint32 sec_type);
@@ -4020,6 +4091,14 @@ extern int dhd_print_status_log_data(void *dev, dhd_pub_t *dhdp,
 	const void *user_buf, void *fp, uint32 len, void *pos);
 extern uint32 dhd_get_status_log_len(void *ndev, dhd_pub_t *dhdp);
 #endif /* DHD_STATUS_LOGGING */
+#ifdef DHD_MAP_PKTID_LOGGING
+extern uint32 dhd_pktid_buf_len(dhd_pub_t *dhd, bool is_map);
+extern int dhd_print_pktid_map_log_data(void *dev, dhd_pub_t *dhdp,
+	const void *user_buf, void *fp, uint32 len, void *pos, bool is_map);
+extern int dhd_write_pktid_log_dump(dhd_pub_t *dhdp, const void *user_buf,
+	void *fp, uint32 len, unsigned long *pos, bool is_map);
+extern uint32 dhd_get_pktid_map_logging_len(void *ndev, dhd_pub_t *dhdp, bool is_map);
+#endif /* DHD_MAP_PKTID_LOGGING */
 int dhd_print_ecntrs_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
 	void *fp, uint32 len, void *pos);
 int dhd_print_rtt_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
@@ -4062,6 +4141,9 @@ extern int dhd_os_get_axi_error_dump_size(struct net_device *dev);
 extern void dhd_os_get_axi_error_filename(struct net_device *dev, char *dump_path, int len);
 #endif /*  DNGL_AXI_ERROR_LOGGING */
 
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+extern int dhd_debug_dump_to_ring(dhd_pub_t *dhdp);
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 #endif /* DHD_LOG_DUMP */
 
 #define DHD_WORD_TO_LEN_SHIFT		(2u)       /* WORD to BYTES SHIFT */
@@ -4389,7 +4471,7 @@ bool dhd_validate_chipid(dhd_pub_t *dhdp);
 #endif /* CUSTOMER_HW4_DEBUG */
 
 #ifdef RX_PKT_POOL
-#define MAX_RX_PKT_POOL	(512)
+#define MAX_RX_PKT_POOL	(1024)
 void dhd_rx_pktpool_create(struct dhd_info *dhd, uint16 len);
 void * BCMFASTPATH(dhd_rxpool_pktget)(osl_t *osh, struct dhd_info *dhd, uint16 len);
 #endif /* RX_PKT_POOL */
@@ -4465,6 +4547,9 @@ static INLINE int dhd_kern_path(char *name, int flags, struct path *file_path)
 	defined(DHD_WAKE_STATUS)
 void dhd_dump_wake_status(dhd_pub_t *dhdp, wake_counts_t *wcp, struct ether_header *eh);
 #endif /* DHD_WAKE_STATUS_PRINT && DHD_WAKE_RX_STATUS && DHD_WAKE_STATUS */
+#ifdef SUPPORT_OTA_UPDATE
+void dhd_ota_buf_clean(dhd_pub_t *dhdp);
+#endif /* SUPPORT_OTA_UPDATE */
 #ifdef DHD_LOG_DUMP
 extern char *dhd_log_dump_get_timestamp(void);
 #ifdef DHD_EFI
@@ -4553,5 +4638,8 @@ extern void dhd_dbg_ring_write(int type, char *binary_data,
 #define RTT_LOG_HDR "\n-------------------- RTT log --------------------------\n"
 #define BCM_TRACE_LOG_HDR "\n-------------------- BCM Trace log --------------------------\n"
 #define COOKIE_LOG_HDR "\n-------------------- Cookie List ----------------------------\n"
+#define DHD_PKTID_MAP_LOG_HDR "\n---------------- PKTID MAP log -----------------------\n"
+#define DHD_PKTID_UNMAP_LOG_HDR "\n------------------ PKTID UNMAP log -----------------------\n"
+#define PKTID_LOG_DUMP_FMT "\nIndex(Current=%d) Timestamp Pktaddr(PA) Pktid Size\n"
 #endif /* DHD_LOG_DUMP */
 #endif /* _dhd_h_ */

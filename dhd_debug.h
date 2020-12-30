@@ -79,6 +79,15 @@ enum {
 /* ROAM stats log ring */
 #define ROAM_STATS_RING_NAME		"roam_stats"
 #define ROAM_STATS_RING_SIZE		(64 * 1024)
+
+#define DEBUG_DUMP_RING1_NAME		"debug_dump1_"
+#define DEBUG_DUMP_RING1_SIZE		(2 * 1024 * 1024)
+
+#define DEBUG_DUMP_RING2_NAME		"debug_dump2_"
+#define DEBUG_DUMP_RING2_SIZE		(2 * 1024 * 1024)
+
+#define DHD_DEBUG_DUMP_NETLINK_MAX	(1024 * 8)
+#define DHD_DEBUG_DUMP_MAX_SYNC_CNT	5u
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 #ifdef BTLOG
@@ -822,6 +831,9 @@ int dhd_dbg_pull_single_from_ring(dhd_pub_t *dhdp, int ring_id, void *data, uint
 int dhd_dbg_update_to_ring(dhd_pub_t *dhdp, void *ring, uint32 w_len);
 int dhd_dbg_pull_from_pktlog(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_len);
 #endif /* DHD_PKT_LOGGING_DBGRING */
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+int dhd_debug_dump_ring_push(dhd_pub_t *dhdp, int ring_id, uint32 len, void *data);
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 int dhd_dbg_push_to_ring(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_entry_t *hdr,
 		void *data);
 int __dhd_dbg_get_ring_status(dhd_dbg_ring_t *ring, dhd_dbg_ring_status_t *ring_status);

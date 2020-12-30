@@ -1507,7 +1507,7 @@ typedef struct phy_periodic_log_cmn_v5 {
 	uint16 crsmin_pwr_apply_cnt;	/* Count of desense power threshold update to phy */
 
 	uint16 txpustatus;		/* txpu off definations */
-
+	uint16 tempinvalid_count;	/* Count no. of invalid temp. measurements */
 	/* Misc general purpose debug counters (will be used for future debugging) */
 	uint16 debug_01;
 	uint16 debug_02;
@@ -1834,6 +1834,7 @@ typedef enum {
 	ROAM_LOG_BCN_REP = 7,		/* EVT log for BCNRPT REP */
 	ROAM_LOG_BTM_REP = 8,		/* EVT log for BTM REP */
 	ROAM_LOG_WIPS_EVENT = 9,	/* EVT log for WIPS Event */
+	ROAM_LOG_6G_NOVLP_REP = 10,	/* EVT log for 6G NoVLP Report */
 	PRSV_PERIODIC_ID_MAX
 } prsv_periodic_id_enum_t;
 
@@ -2061,6 +2062,12 @@ typedef struct roam_log_wips_evt_v3 {
 	int16	deauth_rssi;
 } roam_log_wips_evt_v3_t;
 
+typedef struct roam_log_6g_novlp_v3 {
+	prsv_periodic_log_hdr_t hdr;
+	struct ether_addr bssid;	/* ether addr */
+	uint16	chanspec;		/* Chanspec */
+} roam_log_6g_novlp_v3_t;
+
 #define EVENT_LOG_BUFFER_ID_PMK			0
 #define EVENT_LOG_BUFFER_ID_ANONCE		1
 #define EVENT_LOG_BUFFER_ID_SNONCE		2
@@ -2126,4 +2133,31 @@ typedef struct phy_periodic_log_v7 {
 	/* This will be a variable length based on the numcores field defined above */
 	phy_periodic_log_core_t phy_perilog_core[1];
 } phy_periodic_log_v7_t;
+
+/* Slotted BSS timer reference for RX deafness debug */
+#define WLC_SLOTTED_BSS_TIMEREF_VERSION_1	(1u)
+typedef struct wlc_slotted_bss_timeref_v1 {
+	uint16 version;
+	uint8 wlc_unit;	/* WLC unit that triggered generation of this timestamp */
+	uint8 idx;	/* Slotted BSS index for which this timestamp is present */
+	uint32 nan_timeref_h;	/* NAN reference TSF high */
+	uint32 nan_timeref_l;	/* NAN reference TSF low */
+	uint32 aw_timeref;	/* aw counter value in AWDL case */
+} wlc_slotted_bss_timeref_v1_t;
+
+/* Bus device HTOD RX dump info */
+#define PCIEDEV_HTOD_RX_INFO_VERSION_1		(1u)
+typedef struct pciedev_htod_rx_ring_info_v1 {
+	uint16 version;
+	uint16 g_rxcplist_max;
+	uint16 g_rxcplist_avail;
+	uint16 htod_rx_rd_idx;
+	uint16 htod_rx_wr_idx;
+	uint16 dtoh_rxcpl_rd_idx;
+	uint16 dtoh_rxcpl_wr_idx;
+	uint16 htod_rx_buf_pool_buf_cnt;
+	uint16 htod_rx_buf_pool_item_cnt;
+	uint16 htod_rx_buf_pool_availcnt;
+	uint16 htod_rx_buf_pool_pend_item_cnt;
+} pciedev_htod_rx_ring_info_v1_t;
 #endif /* _EVENT_LOG_PAYLOAD_H_ */

@@ -131,13 +131,13 @@ BCMPOSTTRAPRAMFN(get_pktpools_registry)(int id)
 }
 
 static void
-BCMRAMFN(pktpool_registry_set)(int id, pktpool_t *pp)
+BCMRAMFN(pktpool_registry_set)(uint id, pktpool_t *pp)
 {
 	pktpools_registry[id] = pp;
 }
 
 static bool
-BCMRAMFN(pktpool_registry_cmp)(int id, pktpool_t *pp)
+BCMRAMFN(pktpool_registry_cmp)(uint id, pktpool_t *pp)
 {
 	return pktpools_registry[id] == pp;
 }
@@ -1886,8 +1886,8 @@ hnd_pktpool_refill(bool minimal)
 }
 
 #ifdef POOL_HEAP_RECONFIG
-#define hnd_pktpool_release_active_set(pktp)	(pktpool_heap_rel_active |= (1 << pktp->id))
-#define hnd_pktpool_release_active_reset(pktp)	(pktpool_heap_rel_active &= ~(1 << pktp->id))
+#define hnd_pktpool_release_active_set(pktp)	(pktpool_heap_rel_active |= (1u << pktp->id))
+#define hnd_pktpool_release_active_reset(pktp)	(pktpool_heap_rel_active &= ~(1u << pktp->id))
 /* Function enable/disable heap pool usage */
 
 void

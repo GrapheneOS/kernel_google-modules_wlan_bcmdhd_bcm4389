@@ -6701,42 +6701,6 @@ wl_android_get_sta_channel(struct bcm_cfg80211 *cfg)
 	return channel;
 }
 
-chanspec_t
-wl_android_get_sta_chanspec(struct bcm_cfg80211 *cfg)
-{
-	chanspec_t *sta_chanspec = NULL;
-
-#ifdef WL_DUAL_APSTA
-	if (wl_get_drv_status_all(cfg, CONNECTED) >= 2) {
-		/* If both STA interfaces are connected return failure */
-		return 0;
-	} else {
-		struct net_info *iter, *next;
-
-		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
-		for_each_ndev(cfg, iter, next) {
-			GCC_DIAGNOSTIC_POP();
-			if ((iter->ndev) && (wl_get_drv_status(cfg, CONNECTED, iter->ndev)) &&
-				(iter->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION)) {
-				if ((sta_chanspec = (chanspec_t *)wl_read_prof(cfg,
-					iter->ndev, WL_PROF_CHAN))) {
-					return *sta_chanspec;
-				}
-			}
-		}
-	}
-#else
-	if (wl_get_drv_status(cfg, CONNECTED, bcmcfg_to_prmry_ndev(cfg))) {
-		if ((sta_chanspec = (chanspec_t *)wl_read_prof(cfg,
-			bcmcfg_to_prmry_ndev(cfg), WL_PROF_CHAN))) {
-			return *sta_chanspec;
-		}
-	}
-#endif /* WL_DUAL_APSTA */
-
-	return 0;
-}
-
 static int
 wl_cfg80211_get_acs_band(int band)
 {
@@ -6848,7 +6812,7 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 	/* If STA is connected, return is STA chanspec, else ACS can be issued,
 	 * set spect to 0 and proceed with ACS
 	 */
-	sta_chanspec = wl_android_get_sta_chanspec(cfg);
+	sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
 	if (sta_chanspec) {
 		sta_channel = wf_chspec_ctlchan((chanspec_t)sta_chanspec);
 		sta_band = CHSPEC_BAND((chanspec_t)sta_chanspec);
@@ -6873,11 +6837,13 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 #ifdef WL_6G_BAND
 			case (WL_CHANSPEC_BAND_6G):
 			{
-				if (band == WLC_BAND_6G || band == WLC_BAND_AUTO) {
+				if ((CHSPEC_IS_6G_PSC((chanspec_t)sta_chanspec)) &&
+					(band == WLC_BAND_6G || band == WLC_BAND_AUTO)) {
 					/* scc */
 					channel = sta_channel;
 					acs_band = sta_band;
 				} else {
+					WL_INFORM_MEM(("Fall back to 2g default\n"));
 					channel = APCS_DEFAULT_2G_CH;
 					acs_band = wl_cfg80211_get_acs_band(WLC_BAND_2G);
 				}

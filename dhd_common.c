@@ -198,6 +198,10 @@ extern uint wl_msg_level;
 #error "BT logging supported only with PCIe"
 #endif  /* defined(BTLOG) && !defined(BCMPCIE) */
 
+#if defined(DHD_LOGLEVEL) && !defined(DHD_DEBUG)
+#error "Log level control is supported only with DHD_DEBUG"
+#endif  /* defined(DHD_LOGLEVEL) && !defined(DHD_DEBUG) */
+
 #ifdef SOFTAP
 char fw_path2[MOD_PARAM_PATHLEN];
 extern bool softap_enabled;
@@ -322,6 +326,11 @@ static int traffic_mgmt_add_dwm_filter(dhd_pub_t *dhd,
 #endif
 
 static char* ioctl2str(uint32 ioctl);
+
+#ifdef DHD_LOGLEVEL
+void dhd_loglevel_set(dhd_loglevel_data_t *);
+void dhd_loglevel_get(dhd_loglevel_data_t *);
+#endif /* DHD_LOGLEVEL */
 
 /* IOVar table */
 enum {
@@ -475,6 +484,9 @@ enum {
 	IOV_TX_PROFILE_DUMP,
 #endif /* defined(DHD_TX_PROFILE) */
 	IOV_CHECK_TRAP_ROT,
+#ifdef DHD_LOGLEVEL
+	IOV_LOGLEVEL,
+#endif /* DHD_LOGLEVEL */
 	IOV_LAST
 };
 
@@ -647,6 +659,9 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"tx_profile_dump",	IOV_TX_PROFILE_DUMP,	0,	0,	IOVT_UINT32,	0},
 #endif /* defined(DHD_TX_PROFILE) */
 	{"check_trap_rot", IOV_CHECK_TRAP_ROT, (0), 0, IOVT_BOOL, 0},
+#ifdef DHD_LOGLEVEL
+	{"loglevel", IOV_LOGLEVEL, (0), 0, IOVT_BUFFER, sizeof(dhd_loglevel_data_t)},
+#endif /* DHD_LOGLEVEL */
 	/* --- add new iovars *ABOVE* this line --- */
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -731,6 +746,9 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 #endif /* DNGL_AXI_ERROR_LOGGING */
 
 	if (dhd_bus_get_linkdown(dhdp)) {
+		/* pcie link down, so do chip big hammer */
+		DHD_ERROR_RLMT(("%s: set do_chip_bighammer\n", __FUNCTION__));
+		dhdp->do_chip_bighammer = TRUE;
 		DHD_ERROR_RLMT(("%s : PCIE Link down occurred, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
@@ -746,10 +764,6 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 		DHD_ERROR_RLMT(("%s : read shm check failed, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
-	}
-
-	if (ret) {
-		dhdp->do_chip_bighammer = TRUE;
 	}
 
 	return ret;
@@ -1471,8 +1485,10 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 		total_dhd_mem, (total_dhd_mem / 1024));
 #endif /* DHD_MEM_STATS */
 #if defined(DHD_LB_STATS)
-	bcm_bprintf(strbuf, "\nlb_rxp_stop_thr_hitcnt: %llu lb_rxp_strt_thr_hitcnt: %llu\n",
-		dhdp->lb_rxp_stop_thr_hitcnt, dhdp->lb_rxp_strt_thr_hitcnt);
+	bcm_bprintf(strbuf, "\nlb_rxp_stop_thr_hitcnt: %llu lb_rxp_strt_thr_hitcnt: %llu"
+		" rx_dma_stall_hc_ignore_cnt: %llu\n",
+		dhdp->lb_rxp_stop_thr_hitcnt, dhdp->lb_rxp_strt_thr_hitcnt,
+		dhdp->rx_dma_stall_hc_ignore_cnt);
 	bcm_bprintf(strbuf, "\nlb_rxp_napi_sched_cnt: %llu lb_rxp_napi_complete_cnt: %llu\n",
 		dhdp->lb_rxp_napi_sched_cnt, dhdp->lb_rxp_napi_complete_cnt);
 #endif /* DHD_LB_STATS */
@@ -1488,7 +1504,7 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 		}
 #endif /* DHD_WET */
 
-	DHD_ERROR(("%s bufsize: %d free: %d", __FUNCTION__, buflen, strbuf->size));
+	DHD_ERROR(("%s bufsize: %d free: %d\n", __FUNCTION__, buflen, strbuf->size));
 	/* return remaining buffer length */
 	return (!strbuf->size ? BCME_BUFTOOSHORT : strbuf->size);
 }
@@ -2281,14 +2297,30 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		 * do not change dhd msg level enable whole WL msg level
 		 */
 		/* Enable DHD and WL logs in oneshot */
-		if (int_val & DHD_WL_VAL2)
+		if (int_val & DHD_WL_VAL2) {
 			wl_cfg80211_enable_trace(TRUE, int_val & (~DHD_WL_VAL2));
-		else if (int_val & DHD_WL_VAL)
+			wl_cfg80211_enable_log_trace(TRUE, int_val & (~DHD_WL_VAL2));
+		} else if (int_val & DHD_WL_VAL) {
 			wl_cfg80211_enable_trace(FALSE, WL_DBG_DBG);
+			wl_cfg80211_enable_log_trace(FALSE, WL_DBG_DBG);
+		}
 		if (!(int_val & DHD_WL_VAL2))
 #endif /* WL_CFG80211 */
-		dhd_msg_level = int_val;
+		{
+			dhd_msg_level = int_val;
+			dhd_log_level = int_val;
+		}
 		break;
+#ifdef DHD_LOGLEVEL
+	case IOV_GVAL(IOV_LOGLEVEL):
+		dhd_loglevel_get((dhd_loglevel_data_t *)arg);
+		break;
+
+	case IOV_SVAL(IOV_LOGLEVEL):
+		dhd_loglevel_set((dhd_loglevel_data_t *)arg);
+		break;
+#endif /* DHD_LOGLEVEL */
+
 #if defined(NDIS) && defined(BCMDBG)
 	case IOV_GVAL(IOV_WLMSGLEVEL):
 		int_val = (int32)wl_msg_level;
@@ -3324,6 +3356,14 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 #ifdef BCMPCIE
 			if (dhd_pub->dhd_induce_error == DHD_INDUCE_BH_CBP_HANG) {
 				dhdpcie_induce_cbp_hang(dhd_pub);
+			}
+			if (dhd_pub->dhd_induce_error == DHD_INDUCE_PCIE_LINK_DOWN) {
+				dhd_bus_set_linkdown(dhd_pub, TRUE);
+				dhd_pub->hang_reason = HANG_REASON_PCIE_LINK_DOWN_EP_DETECT;
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+				copy_hang_info_linkdown(dhd_pub);
+#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
+				dhd_os_send_hang_message(dhd_pub);
 			}
 #endif /* BCMPCIE */
 		}
@@ -4519,13 +4559,14 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		 * between blazar and legacy firmware, I will
 		 * check only that datalen is bigger than 0.
 		 */
-		if (datalen > 0) {
-			const cca_chan_qual_event_t *cca_event =
+		if (datalen >= sizeof(cca_chan_qual_event_t)) {
+			cca_chan_qual_event_t *cca_event =
 				(cca_chan_qual_event_t *)event_data;
 			if ((cca_event->id == WL_CHAN_QUAL_FULLPM_CCA) ||
-			    (cca_event->id == WL_CHAN_QUAL_FULLPM_CCA_OFDM_DESENSE)) {
-				const cca_only_chan_qual_event_t *cca_only_event =
-					(const cca_only_chan_qual_event_t *)cca_event;
+			    (cca_event->id == WL_CHAN_QUAL_FULLPM_CCA_OFDM_DESENSE) ||
+			    (cca_event->id == WL_CHAN_QUAL_FULLPM_CCA_ALL_DESENSE)) {
+				cca_only_chan_qual_event_t *cca_only_event =
+					(cca_only_chan_qual_event_t *)cca_event;
 				BCM_REFERENCE(cca_only_event);
 				DHD_EVENT((
 					"MACEVENT: %s %d, MAC %s, status %d, reason %d, auth %d,"
@@ -4553,26 +4594,31 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 					cca_only_event->cca_busy_pm.congest_obss,
 					cca_only_event->cca_busy_pm.interference));
 				if (cca_event->id == WL_CHAN_QUAL_FULLPM_CCA_OFDM_DESENSE) {
-					const cca_only_chan_qual_event_v2_t *cca_only_event_v2 =
-						(const cca_only_chan_qual_event_v2_t *)
+					cca_only_chan_qual_event_v2_t *cca_event_v2 =
+						(cca_only_chan_qual_event_v2_t *)
 						cca_only_event;
-					if (cca_event->len >
-						(OFFSETOF(
-						cca_only_chan_qual_event_v2_t, ofdm_desense) +
-						sizeof(cca_only_event_v2->ofdm_desense)) -
-						(OFFSETOF(cca_only_chan_qual_event_v2_t, len) +
-						sizeof(cca_only_event_v2->len))) {
-						const wl_phy_rxdesense_t *phy_desense =
-							(const wl_phy_rxdesense_t *)
-							&cca_only_event_v2->ofdm_desense;
+					if (cca_event->len >=
+						(STRUCT_SIZE_THROUGH(cca_event_v2, ofdm_desense) -
+						STRUCT_SIZE_THROUGH(cca_event_v2, len))) {
+						DHD_EVENT(("\t OFDM desense %d\n",
+							cca_event_v2->ofdm_desense));
+					} else {
+						DHD_EVENT(("\t OFDM desense: missing data\n"));
+					}
+				} else if (cca_event->id == WL_CHAN_QUAL_FULLPM_CCA_ALL_DESENSE) {
+					cca_only_chan_qual_event_v3_t *cca_event_v3 =
+						(cca_only_chan_qual_event_v3_t *)
+						cca_only_event;
+					if (cca_event->len >=
+						(STRUCT_SIZE_THROUGH(cca_event_v3, desense) -
+						STRUCT_SIZE_THROUGH(cca_event_v3, len))) {
 						DHD_EVENT(("\t OFDM desense %d BPHY desense %d"
 							" reason 0x%x)\n",
-							phy_desense->ofdm_desense,
-							phy_desense->bphy_desense,
-							phy_desense->reason));
+							cca_event_v3->desense.ofdm_desense,
+							cca_event_v3->desense.bphy_desense,
+							cca_event_v3->desense.reason));
 					} else {
-						DHD_EVENT(("\t OFDM desense %d\n",
-							cca_only_event_v2->ofdm_desense));
+						DHD_EVENT(("\t  PHY desense: missing data\n"));
 					}
 				}
 			} else if (cca_event->id == WL_CHAN_QUAL_FULL_CCA) {
@@ -4952,6 +4998,7 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 	uint16 type = ntoh16_ua((void *)&dngl_event->event_type);
 	uint16 datalen = ntoh16_ua((void *)&dngl_event->datalen);
 	uint16 version = ntoh16_ua((void *)&dngl_event->version);
+	bool ignore_hc = FALSE;
 
 	DHD_EVENT(("VERSION:%d, EVENT TYPE:%d, DATALEN:%d\n", version, type, datalen));
 	if (datalen > (pktlen - sizeof(bcm_dngl_event_t) + ETHER_TYPE_LEN)) {
@@ -5054,6 +5101,22 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 						BCM_REFERENCE(wl_hc);
 						DHD_EVENT(("WL SW HC type %d len %d\n",
 						ltoh16(wl_hc->id), ltoh16(wl_hc->len)));
+#ifdef DHD_LB_STATS
+						if ((ltoh16(wl_hc->id) == WL_HC_DD_RX_DMA_STALL) &&
+							(dhdp->lb_rxp_stop_thr_hitcnt >
+							dhdp->lb_rxp_strt_thr_hitcnt)) {
+							ignore_hc = TRUE;
+							dhdp->rx_dma_stall_hc_ignore_cnt++;
+							DHD_ERROR(("%s:lb_rxp_stop_thr_hitcnt(%llu)"
+								" > lb_rxp_strt_thr_hitcnt(%llu)"
+								" rx_dma_stall_hc_ignore_cnt(%llu)"
+								"\n",
+								__FUNCTION__,
+								dhdp->lb_rxp_stop_thr_hitcnt,
+								dhdp->lb_rxp_strt_thr_hitcnt,
+								dhdp->rx_dma_stall_hc_ignore_cnt));
+						}
+#endif /* DHD_LB_STATS */
 
 #ifdef PARSE_DONGLE_HOST_EVENT
 						dhd_parse_hck_common_sw_event(wl_hc);
@@ -5091,20 +5154,24 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 		}
 		break;
 	}
+
+	/* Skip socram collection if ignore_hc is set */
+	if (!ignore_hc) {
 #ifdef DHD_FW_COREDUMP
-	if (dhdp->memdump_enabled) {
-		dhdp->memdump_type = DUMP_TYPE_DONGLE_HOST_EVENT;
-		if (
+		if (dhdp->memdump_enabled) {
+			dhdp->memdump_type = DUMP_TYPE_DONGLE_HOST_EVENT;
+			if (
 #ifdef GDB_PROXY
-			!dhdp->gdb_proxy_active &&
+				!dhdp->gdb_proxy_active &&
 #endif /* GDB_PROXY */
-			dhd_schedule_socram_dump(dhdp)) {
-				DHD_ERROR(("%s: socram dump failed\n", __FUNCTION__));
+				dhd_schedule_socram_dump(dhdp)) {
+					DHD_ERROR(("%s: socram dump failed\n", __FUNCTION__));
+			}
 		}
-	}
 #else
-	dhd_dbg_send_urgent_evt(dhdp, p, datalen);
+		dhd_dbg_send_urgent_evt(dhdp, p, datalen);
 #endif /* DHD_FW_COREDUMP */
+	}
 
 }
 
@@ -7443,32 +7510,65 @@ int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t com
 {
 	int ret = BCME_ERROR;
 	const struct firmware *fw = NULL;
+#ifdef SUPPORT_OTA_UPDATE
+	uint8 *buf = NULL;
+	int len = 0;
+	ota_update_info_t *ota_info = &dhd->ota_update_info;
+#endif /* SUPPORT_OTA_UPDATE */
 
-	if (file_path) {
-		ret = dhd_os_get_img_fwreq(&fw, file_path);
-		if (ret < 0) {
-			DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n", ret));
-			goto err;
-		} else {
-			DHD_ERROR(("dhd_os_get_img(Request Firmware API) success\n"));
-			if ((fw->size <= 0 || fw->size > *length)) {
+#ifdef SUPPORT_OTA_UPDATE
+	if (component == CLM_BLOB) {
+		if (ota_info->clm_len) {
+			DHD_ERROR(("Using OTA CLM_BLOB\n"));
+			buf = ota_info->clm_buf;
+			len = ota_info->clm_len;
+		}
+	}
+	else if (component == NVRAM) {
+		if (ota_info->nvram_len) {
+			DHD_ERROR(("Using OTA NVRAM.\n"));
+			buf = ota_info->nvram_buf;
+			len = ota_info->nvram_len;
+		}
+	}
+#endif /* SUPPORT_OTA_UPDATE */
+
+#ifdef SUPPORT_OTA_UPDATE
+	if (len) {
+		*buffer = (char *)buf;
+		*length = len;
+	}
+	else
+#endif /* SUPPORT_OTA_UPDATE */
+	{
+		if (file_path) {
+			ret = dhd_os_get_img_fwreq(&fw, file_path);
+			if (ret < 0) {
+				DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
+					ret));
+				goto err;
+			} else {
+				DHD_ERROR(("dhd_os_get_img(Request Firmware API) success\n"));
+				if ((fw->size <= 0 || fw->size > *length)) {
+					*length = fw->size;
+					goto err;
+				}
+				*buffer = VMALLOCZ(dhd->osh, fw->size);
+				if (*buffer == NULL) {
+					DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
+						__FUNCTION__, (int)fw->size));
+					ret = BCME_NOMEM;
+					goto err;
+				}
 				*length = fw->size;
-				goto err;
+				ret = memcpy_s(*buffer, fw->size, fw->data, fw->size);
+				if (ret != BCME_OK) {
+					DHD_ERROR(("%s: memcpy_s failed, err : %d\n",
+							__FUNCTION__, ret));
+					goto err;
+				}
+				ret = BCME_OK;
 			}
-			*buffer = VMALLOCZ(dhd->osh, fw->size);
-			if (*buffer == NULL) {
-				DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
-					__FUNCTION__, (int)fw->size));
-				ret = BCME_NOMEM;
-				goto err;
-			}
-			*length = fw->size;
-			ret = memcpy_s(*buffer, fw->size, fw->data, fw->size);
-			if (ret != BCME_OK) {
-				DHD_ERROR(("%s: memcpy_s failed, err : %d\n", __FUNCTION__, ret));
-				goto err;
-			}
-			ret = BCME_OK;
 		}
 	}
 err:
@@ -7948,6 +8048,9 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 	int err = BCME_OK;
 	char iovbuf[WLC_IOCTL_SMLEN];
 	int status = FALSE;
+#ifdef SUPPORT_OTA_UPDATE
+	ota_update_info_t *ota_info = &dhd->ota_update_info;
+#endif /* SUPPORT_OTA_UPDATE */
 
 	if (clm_path[0] != '\0') {
 		if (strlen(clm_path) > MOD_PARAM_PATHLEN) {
@@ -8063,11 +8166,20 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 exit:
 
 	if (memblock) {
+#ifdef SUPPORT_OTA_UPDATE
+		if (ota_info->clm_len) {
+			MFREE(dhd->osh, ota_info->clm_buf, ota_info->clm_len);
+			ota_info->clm_len = 0;
+		}
+		else
+#endif /* SUPPORT_OTA_UPDATE */
+		{
 #if (defined(LINUX) || defined(linux)) && !defined(DHD_LINUX_STD_FW_API)
-		dhd_os_close_image1(dhd, memblock);
+			dhd_os_close_image1(dhd, memblock);
 #else
-		dhd_free_download_buffer(dhd, memblock, memblock_len);
+			dhd_free_download_buffer(dhd, memblock, memblock_len);
 #endif /* LINUX || linux */
+		}
 	}
 
 	return err;
@@ -8176,7 +8288,6 @@ dhd_cmd_timeout(void *ctx)
 			DHD_ERROR(("%s: dhd_stop_cmd_timer() failed\n", __FUNCTION__));
 			ASSERT(0);
 		}
-		dhd_wakeup_ioctl_event(pub, IOCTL_RETURN_ON_ERROR);
 		if (!dhd_query_bus_erros(pub))
 			dhd_send_trap_to_fw_for_timeout(pub, DHD_REASON_COMMAND_TO);
 	} else {
@@ -10438,6 +10549,33 @@ fail:
 	return rc;
 }
 #ifdef DHD_LOG_DUMP
+
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+static dhd_debug_dump_ring_entry_t dhd_debug_dump_ring_map[] = {
+	{LOG_DUMP_SECTION_TIMESTAMP, DEBUG_DUMP_RING1_ID},
+	{LOG_DUMP_SECTION_ECNTRS, DEBUG_DUMP_RING2_ID},
+	{LOG_DUMP_SECTION_STATUS, DEBUG_DUMP_RING1_ID},
+	{LOG_DUMP_SECTION_RTT, DEBUG_DUMP_RING2_ID},
+	{LOG_DUMP_SECTION_DHD_DUMP, DEBUG_DUMP_RING1_ID},
+	{LOG_DUMP_SECTION_EXT_TRAP, DEBUG_DUMP_RING1_ID},
+	{LOG_DUMP_SECTION_HEALTH_CHK, DEBUG_DUMP_RING1_ID},
+	{LOG_DUMP_SECTION_COOKIE, DEBUG_DUMP_RING1_ID},
+	{LOG_DUMP_SECTION_RING, DEBUG_DUMP_RING1_ID},
+};
+
+int dhd_debug_dump_get_ring_num(int sec_type)
+{
+	int idx = 0;
+	for (idx = 0; idx < ARRAYSIZE(dhd_debug_dump_ring_map); idx++) {
+		if (dhd_debug_dump_ring_map[idx].type == sec_type) {
+			idx = dhd_debug_dump_ring_map[idx].debug_dump_ring;
+			return idx;
+		}
+	}
+	return idx;
+}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
+
 int
 dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 		log_dump_section_hdr_t *sec_hdr,
@@ -10449,12 +10587,38 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	unsigned long flags = 0;
 	int ret = 0;
 	dhd_dbg_ring_t *ring = (dhd_dbg_ring_t *)ring_ptr;
+#ifndef DHD_DEBUGABILITY_DEBUG_DUMP
 	int pos = 0;
+#endif
 	int fpos_sechdr = 0;
+	int tot_len = 0;
+	char *tmp_buf = NULL;
+	int idx;
+	int ring_num = 0;
 
+	BCM_REFERENCE(idx);
+	BCM_REFERENCE(tot_len);
+	BCM_REFERENCE(fpos_sechdr);
+	BCM_REFERENCE(data_len);
+	BCM_REFERENCE(tmp_buf);
+	BCM_REFERENCE(ring_num);
+
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+	if (!dhdp || !ring || !sec_hdr || !text_hdr) {
+		return BCME_BADARG;
+	}
+
+	tmp_buf = (char *)VMALLOCZ(dhdp->osh, ring->ring_size);
+	if (!tmp_buf) {
+		DHD_ERROR(("%s: VMALLOC Fail id:%d size:%u\n",
+			__func__, ring->id, ring->ring_size));
+		return BCME_NOMEM;
+	}
+#else
 	if (!dhdp || !ring || !user_buf || !sec_hdr || !text_hdr) {
 		return BCME_BADARG;
 	}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 	/* do not allow further writes to the ring
 	 * till we flush it
 	 */
@@ -10462,6 +10626,28 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	ring->state = RING_SUSPEND;
 	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+	ring_num = dhd_debug_dump_get_ring_num(sec_type);
+	dhd_export_debug_data(text_hdr, NULL, NULL, strlen(text_hdr), &ring_num);
+
+	data = tmp_buf;
+	do {
+		rlen = dhd_dbg_ring_pull_single(ring, data, ring->ring_size, TRUE);
+		if (rlen > 0) {
+			tot_len += rlen;
+			data += rlen;
+		}
+	} while ((rlen > 0));
+
+	sec_hdr->type = sec_type;
+	sec_hdr->length = tot_len;
+	DHD_ERROR(("%s: DUMP id:%d type:%u tot_len:%d\n", __func__, ring->id, sec_type, tot_len));
+
+	dhd_export_debug_data((char *)sec_hdr, NULL, NULL, sizeof(*sec_hdr), &ring_num);
+	dhd_export_debug_data(tmp_buf, NULL, NULL, tot_len, &ring_num);
+
+	VMFREE(dhdp->osh, tmp_buf, ring->ring_size);
+#else
 	if (dhdp->concise_dbg_buf) {
 		/* re-use concise debug buffer temporarily
 		 * to pull ring data, to write
@@ -10495,6 +10681,8 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	} else {
 		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
 	}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
+
 	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_ACTIVE;
 	/* Resetting both read and write pointer,
@@ -10876,7 +11064,11 @@ dhd_log_dump_cookie_to_file(dhd_pub_t *dhdp, void *fp, const void *user_buf, uns
 	int ret = BCME_ERROR;
 	uint32 buf_size = MAX_LOGUDMP_COOKIE_CNT * LOGDUMP_COOKIE_STR_LEN;
 
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+	if (!dhdp || !dhdp->logdump_cookie) {
+#else
 	if (!dhdp || !dhdp->logdump_cookie || (!fp && !user_buf) || !f_pos) {
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 		DHD_ERROR(("%s At least one ptr is NULL "
 			"dhdp = %p cookie %p fp = %p f_pos = %p\n",
 			__FUNCTION__, dhdp, dhdp?dhdp->logdump_cookie:NULL, fp, f_pos));
@@ -11485,6 +11677,54 @@ bool dhd_validate_chipid(dhd_pub_t *dhdp)
 }
 #endif /* CUSTOMER_HW4_DEBUG */
 
+#ifdef DHD_LOGLEVEL
+void dhd_loglevel_get(dhd_loglevel_data_t *level_data)
+{
+	level_data->dhd_print_lv = dhd_msg_level;
+	level_data->dhd_log_lv = dhd_log_level;
+	level_data->wl_print_lv = wl_cfg80211_get_print_level();
+	level_data->wl_log_lv = wl_cfg80211_get_log_level();
+}
+
+void dhd_loglevel_set(dhd_loglevel_data_t *level_data)
+{
+	if (level_data->type == DHD_LOGLEVEL_TYPE_ALL) {
+#ifdef WL_CFG80211
+		if (level_data->component == DHD_LOGLEVEL_COMP_WL) {
+			wl_cfg80211_enable_trace(TRUE, level_data->wl_print_lv);
+			wl_cfg80211_enable_log_trace(TRUE, level_data->wl_log_lv);
+		} else
+#endif /* WL_CFG80211 */
+		{
+			dhd_msg_level = level_data->dhd_print_lv;
+			dhd_log_level = level_data->dhd_log_lv;
+		}
+	} else if (level_data->type == DHD_LOGLEVEL_TYPE_PRINT) {
+#ifdef WL_CFG80211
+		if (level_data->component == DHD_LOGLEVEL_COMP_WL) {
+			wl_cfg80211_enable_trace(TRUE, level_data->wl_print_lv);
+		} else
+#endif /* WL_CFG80211 */
+		{
+			dhd_msg_level = level_data->dhd_print_lv;
+		}
+	} else if (level_data->type == DHD_LOGLEVEL_TYPE_LOG) {
+#ifdef WL_CFG80211
+		if (level_data->component == DHD_LOGLEVEL_COMP_WL) {
+			wl_cfg80211_enable_log_trace(TRUE, level_data->wl_log_lv);
+		} else
+#endif /* WL_CFG80211 */
+		{
+			dhd_log_level = level_data->dhd_log_lv;
+		}
+	}
+	DHD_ERROR(("%s: type:%u dhd_msg_level:0x%x dhd_log_level:0x%x\n",
+		__func__, level_data->type, dhd_msg_level, dhd_log_level));
+	DHD_ERROR(("%s: type:%u wl_dbg_level:0x%x wl_log_level:0x%x\n",
+		__func__, level_data->type, wl_dbg_level, wl_log_level));
+}
+#endif /* DHD_LOGLEVEL */
+
 #if defined(DHD_WAKE_STATUS_PRINT) && defined(DHD_WAKE_RX_STATUS) && \
 	defined(DHD_WAKE_STATUS)
 #ifdef BCMPCIE
@@ -11513,3 +11753,20 @@ dhd_dump_wake_status(dhd_pub_t *dhdp, wake_counts_t *wcp, struct ether_header *e
 	return;
 }
 #endif /* DHD_WAKE_STATUS_PRINT && DHD_WAKE_RX_STATUS && DHD_WAKE_STATUS */
+#ifdef SUPPORT_OTA_UPDATE
+void
+dhd_ota_buf_clean(dhd_pub_t *dhdp)
+{
+	ota_update_info_t *ota_info = &dhdp->ota_update_info;
+
+	if (ota_info->clm_buf) {
+		MFREE(dhdp->osh, ota_info->clm_buf, ota_info->clm_len);
+	}
+	if (ota_info->nvram_buf) {
+		MFREE(dhdp->osh, ota_info->nvram_buf, ota_info->nvram_len);
+	}
+	ota_info->nvram_len = 0;
+	ota_info->clm_len = 0;
+	return;
+}
+#endif /* SUPPORT_OTA_UPDATE */

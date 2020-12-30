@@ -171,7 +171,7 @@ getintvar_internal(char *vars, const char *name)
 	if ((val = getvar_internal(vars, name)) == NULL)
 		return (0);
 
-	return (bcm_strtoul(val, NULL, 0));
+	return (int)(bcm_strtoul(val, NULL, 0));
 }
 
 int
@@ -283,7 +283,7 @@ getintvararray_slicespecific(osl_t *osh, char *vars, char *vars_table_accessor,
 
 	/* load the destination array with the nvram array values */
 	for (i = 0; i < array_size; i++) {
-		val = getintvararray(vars, new_name, i);
+		val = getintvararray(vars, new_name, (int)i);
 		if (dest_array1) {
 			dest_array1[i] = (uint8)val;
 		} else if (dest_array2) {
@@ -351,6 +351,7 @@ end:
 }
 #endif /* WL_FWSIGN */
 
+#if defined(BCMNVRAMR) || defined(BCMNVRAMW)
 /* Search for token in comma separated token-string */
 static int
 findmatch(const char *string, const char *name)
@@ -404,6 +405,7 @@ getgpiopin(char *vars, char *pin_name, uint def_pin)
 	}
 	return def_pin;
 }
+#endif /* BCMNVRAMR || BCMNVRAMW */
 #endif /* !BCMDONGLEHOST */
 
 /* return total length of buffer chain. In case of CSO, submsdu may have extra tsohdr and if
@@ -2046,7 +2048,7 @@ bcm_mwbmap_audit(struct bcm_mwbmap * mwbmap_hdl)
 		bitmap_p = &mwbmap_p->wd_bitmap[wordix];
 
 		for (bitix = 0U; bitix < BCM_MWBMAP_BITS_WORD; bitix++) {
-			if ((*bitmap_p) & (1 << bitix)) {
+			if ((*bitmap_p) & (1u << bitix)) {
 				idmap_ix = BCM_MWBMAP_MULOP(wordix) + bitix;
 #if defined(BCM_MWBMAP_USE_CNTSETBITS)
 				count = bcm_cntsetbits(mwbmap_p->id_bitmap[idmap_ix]);
@@ -2482,7 +2484,7 @@ BCMPOSTTRAPFN(bcm_bprintf)(struct bcmstrbuf *b, const char *fmt, ...)
 	if ((r == -1) || (r >= (int)b->size)) {
 		b->size = 0;
 	} else {
-		b->size -= r;
+		b->size -= (uint)r;
 		b->buf += r;
 	}
 
@@ -3039,7 +3041,7 @@ bcmstrtok(char **string, const char *delimiters, char *tokdelim)
 
 	/* Set bits in delimiter table */
 	do {
-		map[*delimiters >> 5] |= (1 << (*delimiters & 31));
+		map[*delimiters >> 5] |= (1UL << (*delimiters & 31));
 	}
 	while (*delimiters++);
 
@@ -3049,7 +3051,7 @@ bcmstrtok(char **string, const char *delimiters, char *tokdelim)
 	 * there is no token iff this loop sets str to point to the terminal
 	 * null (*str == '\0')
 	 */
-	while (((map[*str >> 5] & (1 << (*str & 31))) && *str) || (*str == ' ')) {
+	while (((map[*str >> 5] & (1UL << (*str & 31))) && *str) || (*str == ' ')) {
 		str++;
 	}
 
@@ -3059,7 +3061,7 @@ bcmstrtok(char **string, const char *delimiters, char *tokdelim)
 	 * put a null there.
 	 */
 	for (; *str; str++) {
-		if (map[*str >> 5] & (1 << (*str & 31))) {
+		if (map[*str >> 5] & (1UL << (*str & 31))) {
 			if (tokdelim != NULL) {
 				*tokdelim = *str;
 			}
@@ -4448,7 +4450,7 @@ bcm_format_field(const bcm_bit_desc_ex_t *bd, uint32 flags, char* buf, uint len)
 	for (i = 0;  (name = bd->bitfield[i].name) != NULL; i++) {
 		bit = bd->bitfield[i].bit;
 		if ((flags & mask) == bit) {
-			slen = (int)strlen(name);
+			slen = strlen(name);
 			if (memcpy_s(buf, len, name, slen + 1) != BCME_OK) {
 				slen = 0;
 			}
@@ -4488,7 +4490,7 @@ bcm_format_flags(const bcm_bit_desc_t *bd, uint32 flags, char* buf, uint len)
 		flags &= ~bit;
 
 		/* Print named bit. */
-		p += strlcpy(p, name, (end - p));
+		p += strlcpy(p, name, (size_t)(end - p));
 		if (p == end) {
 			/* Truncation error. */
 			err = TRUE;
@@ -4497,7 +4499,7 @@ bcm_format_flags(const bcm_bit_desc_t *bd, uint32 flags, char* buf, uint len)
 
 		/* Add space delimiter if there are more bits. */
 		if (flags != 0) {
-			p += strlcpy(p, " ", (end - p));
+			p += strlcpy(p, " ", (size_t)(end - p));
 			if (p == end) {
 				/* Truncation error. */
 				err = TRUE;
@@ -4538,7 +4540,7 @@ bcm_format_octets(const bcm_bit_desc_t *bd, uint bdsz,
 		bit = bd[i].bit;
 		name = bd[i].name;
 		if (isset(addr, bit)) {
-			nlen = (int)strlen(name);
+			nlen = strlen(name);
 			slen += nlen;
 			/* need SPACE - for simplicity */
 			slen += 1;
@@ -5408,9 +5410,9 @@ uint32 sqrt_int(uint32 value)
 
 	/* Compute integer nearest to square root of input integer value */
 	for (shift = 0; shift < 32; shift += 2) {
-		if (((0x40000000 >> shift) + root) <= value) {
-			value -= ((0x40000000 >> shift) + root);
-			root = (root >> 1) | (0x40000000 >> shift);
+		if (((0x40000000u >> shift) + root) <= value) {
+			value -= ((0x40000000u >> shift) + root);
+			root = (root >> 1) | (0x40000000u >> shift);
 		}
 		else {
 			root = root >> 1;
@@ -5853,20 +5855,21 @@ replace_nvram_variable(char *varbuf, unsigned int buflen, const char *variable,
 	unsigned int *datalen)
 {
 	char *p;
-	int variable_heading_len, record_len, variable_record_len = (int)strlen(variable) + 1;
+	uint variable_heading_len, record_len, variable_record_len = strlen(variable) + 1;
 	char *buf_end = varbuf + buflen;
 	p = strchr(variable, '=');
 	if (!p) {
 		return FALSE;
 	}
 	/* Length of given variable name, followed by '=' */
-	variable_heading_len = (int)((const char *)(p + 1) - variable);
+	variable_heading_len = (uint)((const char *)(p + 1) - variable);
 	/* Scanning NVRAM, record by record up to trailing 0 */
 	for (p = varbuf; *p; p += strlen(p) + 1) {
 		/* If given variable found - remove it */
 		if (!strncmp(p, variable, variable_heading_len)) {
-			record_len = (int)strlen(p) + 1;
-			memmove_s(p, buf_end - p, p + record_len, buf_end - (p + record_len));
+			record_len = strlen(p) + 1;
+			memmove_s(p, (size_t)(buf_end - p), p + record_len,
+				(size_t)(buf_end - (p + record_len)));
 		}
 	}
 	/* If buffer does not have space for given variable - return FALSE */
@@ -5874,7 +5877,7 @@ replace_nvram_variable(char *varbuf, unsigned int buflen, const char *variable,
 		return FALSE;
 	}
 	/* Copy given variable to end of buffer */
-	memmove_s(p, buf_end - p, variable, variable_record_len);
+	memmove_s(p, (size_t)(buf_end - p), variable, variable_record_len);
 	/* Adding trailing 0 */
 	p[variable_record_len] = 0;
 	/* Setting optional output parameter - length of data in buffer */
@@ -5950,7 +5953,7 @@ varbuf_append(varbuf_t *b, const char *fmt, ...)
 		for (s = b->base; s < b->buf;) {
 			if ((memcmp(s, b->buf, len) == 0) && s[len] == '=') {
 				len = strlen(s) + 1;
-				memmove(s, (s + len), ((b->buf + r + 1) - (s + len)));
+				memmove(s, (s + len), (size_t)((b->buf + r + 1) - (s + len)));
 				b->buf -= len;
 				b->size += (unsigned int)len;
 				break;

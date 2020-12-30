@@ -1561,7 +1561,7 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
  */
 #define DOT11_SC_TCLAS_PROCESSING_TERMINATED_POLICY_CONFLICT	129u
 
-/* FIXME: Use these temp. IDs until ANA assigns IDs */
+/* Draft P802.11be D0.1 - TBD */
 #define DOT11_SC_NSEP_DENIED_UNAUTHORIZED 130u	/* NSEP priority access denied because
 						 * the non-AP STA is not authorized
 						 * to use the service.
@@ -1810,7 +1810,7 @@ enum dot11_tag_ids {
 #define EXT_MNG_LOS_LIKELIHOOD_ID		105u	/* LOS Likelihood */
 #define DOT11_MNG_LOS_LIKELIHOOD_ID		(DOT11_MNG_ID_EXT_ID + EXT_MNG_LOS_LIKELIHOOD_ID)
 
-/* FIXME: Use these temp. IDs until ANA assigns IDs */
+/* Draft P802.11be D0.1 - TBD */
 #define EXT_MNG_NON_INH_ID			110u	/* Non-inheritance */
 #define DOT11_MNG_NON_INH_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_NON_INH_ID)
 #define EXT_MNG_EHT_OP_ID			111u	/* EHT Operation */
@@ -1881,43 +1881,46 @@ enum dot11_tag_ids {
  * in the supported rates list with the Basic rate bit set.
  * Constants below include the basic bit.
  */
-#define DOT11_BSS_MEMBERSHIP_HT         0xFF  /* Basic 0x80 + 127, HT Required to join */
-#define DOT11_BSS_MEMBERSHIP_VHT        0xFE  /* Basic 0x80 + 126, VHT Required to join */
-#define DOT11_BSS_MEMBERSHIP_HE         0xFD  /* Basic 0x80 + 125, HE Required to join */
+#define DOT11_BSS_MEMBERSHIP_HT		0xFF	/* Basic 0x80 + 127, HT Required to join */
+#define DOT11_BSS_MEMBERSHIP_VHT	0xFE	/* Basic 0x80 + 126, VHT Required to join */
+#define DOT11_BSS_MEMBERSHIP_HE		0xFD	/* Basic 0x80 + 125, HE Required to join */
+/* Draft P802.11be D0.1 - TBD */
+#define DOT11_BSS_MEMBERSHIP_EHT	0xFC	/* Basic 0x80 + 124, EHT Required to join */
 #define DOT11_BSS_SAE_HASH_TO_ELEMENT	123u	/* SAE Hash-to-element Required to join */
 
-/* ERP info element bit values */
-#define DOT11_MNG_ERP_LEN			1	/* ERP is currently 1 byte long */
-#define DOT11_MNG_NONERP_PRESENT		0x01	/* NonERP (802.11b) STAs are present
-							 *in the BSS
-							 */
-#define DOT11_MNG_USE_PROTECTION		0x02	/* Use protection mechanisms for
-							 *ERP-OFDM frames
-							 */
-#define DOT11_MNG_BARKER_PREAMBLE		0x04	/* Short Preambles: 0 == allowed,
-							 * 1 == not allowed
-							 */
 /* TS Delay element offset & size */
 #define DOT11_MGN_TS_DELAY_LEN		4	/* length of TS DELAY IE */
-#define TS_DELAY_FIELD_SIZE			4	/* TS DELAY field size */
+#define TS_DELAY_FIELD_SIZE		4	/* TS DELAY field size */
 
+/* ERP info element bit values */
+#define DOT11_MNG_ERP_LEN		1	/* ERP is currently 1 byte long */
+#define DOT11_MNG_NONERP_PRESENT	0x01	/* NonERP (802.11b) STAs are present
+						 *in the BSS
+						 */
+#define DOT11_MNG_USE_PROTECTION	0x02	/* Use protection mechanisms for
+						 *ERP-OFDM frames
+						 */
+#define DOT11_MNG_BARKER_PREAMBLE	0x04	/* Short Preambles: 0 == allowed,
+						 * 1 == not allowed
+						 */
 /* Capability Information Field */
-#define DOT11_CAP_ESS				0x0001	/* d11 cap. ESS */
-#define DOT11_CAP_IBSS				0x0002	/* d11 cap. IBSS */
-#define DOT11_CAP_POLLABLE			0x0004	/* d11 cap. pollable */
-#define DOT11_CAP_POLL_RQ			0x0008	/* d11 cap. poll request */
-#define DOT11_CAP_PRIVACY			0x0010	/* d11 cap. privacy */
-#define DOT11_CAP_SHORT				0x0020	/* d11 cap. short */
-#define DOT11_CAP_PBCC				0x0040	/* d11 cap. PBCC */
-#define DOT11_CAP_AGILITY			0x0080	/* d11 cap. agility */
-#define DOT11_CAP_SPECTRUM			0x0100	/* d11 cap. spectrum */
-#define DOT11_CAP_QOS				0x0200	/* d11 cap. qos */
-#define DOT11_CAP_SHORTSLOT			0x0400	/* d11 cap. shortslot */
-#define DOT11_CAP_APSD				0x0800	/* d11 cap. apsd */
-#define DOT11_CAP_RRM				0x1000	/* d11 cap. 11k radio measurement */
-#define DOT11_CAP_CCK_OFDM			0x2000	/* d11 cap. CCK/OFDM */
-#define DOT11_CAP_DELAY_BA			0x4000	/* d11 cap. delayed block ack */
-#define DOT11_CAP_IMMEDIATE_BA			0x8000	/* d11 cap. immediate block ack */
+#define DOT11_CAP_ESS			0x0001	/* ESS */
+#define DOT11_CAP_IBSS			0x0002	/* IBSS */
+#define DOT11_CAP_POLLABLE		0x0004	/* pollable */
+#define DOT11_CAP_POLL_RQ		0x0008	/* poll request */
+#define DOT11_CAP_PRIVACY		0x0010	/* privacy */
+#define DOT11_CAP_SHORT			0x0020	/* short preamble */
+#define DOT11_CAP_PBCC			0x0040	/* reserved (IEEE Std 802.11-2016) */
+#define DOT11_CAP_CRITICAL_UPD		0x0040	/* critical update (Draft P802.11be D0.2) */
+#define DOT11_CAP_AGILITY		0x0080	/* reserved (IEEE Std 802.11-2016) */
+#define DOT11_CAP_SPECTRUM		0x0100	/* spectrum management */
+#define DOT11_CAP_QOS			0x0200	/* qos */
+#define DOT11_CAP_SHORTSLOT		0x0400	/* short slot time */
+#define DOT11_CAP_APSD			0x0800	/* apsd */
+#define DOT11_CAP_RRM			0x1000	/* radio measurement */
+#define DOT11_CAP_CCK_OFDM		0x2000	/* reserved (IEEE Std 802.11-2016) */
+#define DOT11_CAP_DELAY_BA		0x4000	/* delayed block ack */
+#define DOT11_CAP_IMMEDIATE_BA		0x8000	/* immediate block ack */
 
 /* Extended capabilities IE bitfields */
 /* 20/40 BSS Coexistence Management support bit position */
@@ -2174,6 +2177,8 @@ typedef struct dot11_oper_mode_notif_ie dot11_oper_mode_notif_ie_t;
 /* HE Action frames - Draft P802.11ax D7.0 Table 9-53 Category values */
 #define DOT11_ACTION_CAT_HE		30	/* HE action frame */
 #define DOT11_ACTION_CAT_HEP		31	/* Protected HE action frame */
+/* Protected Fine Timing action frame - Draft P802.11az/D2.5 Table 9-51 Category values */
+#define DOT11_ACTION_CAT_PFT		34u	/* Protected Fine Timing action frame */
 #define DOT11_ACTION_CAT_VSP		126	/* protected vendor specific */
 #define DOT11_ACTION_CAT_VS		127	/* category Vendor Specific */
 
@@ -2292,6 +2297,12 @@ typedef struct dot11_oper_mode_notif_ie dot11_oper_mode_notif_ie_t;
 
 /* FILS category action types - 802.11ai D11.0 - 9.6.8.1 */
 #define DOT11_FILS_ACTION_DISCOVERY		34	/* FILS Discovery */
+
+/* Protected Fine Timing frame action field values - 802.11az/D2.5 - Table 9.353 */
+#define DOT11_PFT_ACTION_RESERVED0	0u /* Reserved */
+#define DOT11_PFT_ACTION_FTM_REQ	1u /* Protected Fine Timing Measurement Request */
+#define DOT11_PFT_ACTION_FTM		2u /* Protected Fine Timing Measurement */
+#define DOT11_PFT_ACTION_LMR		3u /* Protected Location Measurement Report */
 
 /** DLS Request frame header */
 BWL_PRE_PACKED_STRUCT struct dot11_dls_req {
@@ -4318,7 +4329,7 @@ BWL_PRE_PACKED_STRUCT struct brcm_ie {
 	uint8	flags;		/* misc flags */
 	uint8	flags1;		/* misc flags */
 	uint16	amsdu_mtu_pref;	/* preferred A-MSDU MTU */
-	uint8	flags2;		/* Bit 0: DTPC TX cap, Bit 1: DTPC Recv Cap */
+	uint8	flags2;		/* DTPC Cap flags */
 } BWL_POST_PACKED_STRUCT;
 typedef	struct brcm_ie brcm_ie_t;
 #define BRCM_IE_LEN		12u	/* BRCM IE length */
@@ -4356,6 +4367,7 @@ typedef	struct brcm_ie brcm_ie_t;
 #define BRF2_DTPC_TX		0x1u	/* DTPC: DTPC TX Cap */
 #define BRF2_DTPC_RX		0x2u	/* DTPC: DTPC RX Cap */
 #define BRF2_DTPC_TX_RX		0x3u	/* DTPC: Enable Both DTPC TX and RX Cap */
+#define BRF2_DTPC_NONBF		0x4u	/* DTPC: Enable DTPC for NON-TXBF */
 
 /** Vendor IE structure */
 BWL_PRE_PACKED_STRUCT struct vndr_ie {
@@ -5006,6 +5018,7 @@ typedef struct dot11_sae_pk_element dot11_sae_pk_element_t;
 #define RSN_AKM_OWE			18	/* RFC 8110  OWE */
 #define RSN_AKM_FBT_SHA384_PSK		19
 #define RSN_AKM_PSK_SHA384		20
+#define RSN_AKM_PASN			21u	/* Pre-Association Security Negotiation */
 /* OSEN authenticated key managment suite */
 #define OSEN_AKM_UNSPECIFIED	RSN_AKM_UNSPECIFIED	/* Over 802.1x */
 /* WFA DPP RSN authenticated key managment */

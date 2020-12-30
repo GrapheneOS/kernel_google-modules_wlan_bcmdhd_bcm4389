@@ -402,4 +402,26 @@ typedef struct dhd_tx_profile_protocol {
 #define DHD_MAX_PROFILES	(1u)	/* ucode only supports 1 profile atm */
 
 #endif /* defined(DHD_TX_PROFILE) */
+
+typedef struct dhd_loglevel_data {
+	uint32 type;
+	uint32 component;
+	uint32 dhd_print_lv;
+	uint32 dhd_log_lv;
+	uint32 wl_print_lv;
+	uint32 wl_log_lv;
+} dhd_loglevel_data_t;
+
+typedef enum dhd_loglevel_type {
+	DHD_LOGLEVEL_TYPE_ALL		= 0,
+	DHD_LOGLEVEL_TYPE_PRINT		= 1,
+	DHD_LOGLEVEL_TYPE_LOG		= 2,
+	DHD_LOGLEVEL_TYPE_INVALID	= 3
+} dhd_loglevel_type_t;
+
+typedef enum dhd_loglevel_comp {
+	DHD_LOGLEVEL_COMP_DHD           = 0,
+	DHD_LOGLEVEL_COMP_WL            = 1,
+	DHD_LOGLEVEL_COMP_INVALID	= 2
+} dhd_loglevel_comp_t;
 #endif /* _dhdioctl_h_ */

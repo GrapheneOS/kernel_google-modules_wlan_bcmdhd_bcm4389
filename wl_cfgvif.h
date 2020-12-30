@@ -240,4 +240,10 @@ extern bool wl_is_sta_connected(struct bcm_cfg80211 *cfg);
 extern void wl_cfgvif_dualsta_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_assoc_state_t state);
 #endif /* WL_DUAL_APSTA */
+#ifdef SUPPORT_AP_INIT_BWCONF
+extern uint32
+wl_get_configured_ap_bw(dhd_pub_t *dhdp);
+extern uint32
+wl_update_configured_bw(uint32 bw);
+#endif /* SUPPORT_AP_INIT_BWCONF */
 #endif /* _wl_cfgvif_h_ */

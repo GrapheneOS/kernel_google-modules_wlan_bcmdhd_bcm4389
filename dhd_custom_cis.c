@@ -459,7 +459,7 @@ dhd_find_naming_info_by_chip_rev(dhd_pub_t *dhdp, bool *is_murata_fem)
 }
 #endif /* USE_CID_CHECK */
 #ifdef USE_DIRECT_VID_TAG
-static int
+int
 concate_nvram_by_vid(dhd_pub_t *dhdp, char *nv_path, char *chipstr)
 {
 	unsigned char vid[MAX_VID_LEN];
@@ -1691,7 +1691,7 @@ dhd_get_cid_info(unsigned char *vid, int vid_length)
 		}
 	}
 
-	DHD_ERROR(("%s : Can't find the cid info, (%s)\n", __FUNCTION__, vid));
+	DHD_ERROR(("%s : Can't find the cid info\n", __FUNCTION__));
 	return NULL;
 }
 

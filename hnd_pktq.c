@@ -1352,7 +1352,7 @@ pktq_mlen(struct pktq *pq, uint prec_bmp)
 	len = 0;
 
 	for (prec = 0; prec <= pq->hi_prec; prec++)
-		if (prec_bmp & (1 << prec))
+		if (prec_bmp & (1u << prec))
 			len += pq->q[prec].n_pkts;
 
 	/* protect shared resource */
@@ -1380,7 +1380,7 @@ BCMPOSTTRAPFASTPATH(pktq_mpeek)(struct pktq *pq, uint prec_bmp, int *prec_out)
 	while ((prec = pq->hi_prec) > 0 && pq->q[prec].head == NULL)
 		pq->hi_prec--;
 
-	while ((prec_bmp & (1 << prec)) == 0 || pq->q[prec].head == NULL)
+	while ((prec_bmp & (1u << prec)) == 0 || pq->q[prec].head == NULL)
 		if (prec-- == 0)
 			goto done;
 
@@ -1417,7 +1417,7 @@ BCMPOSTTRAPFASTPATH(pktq_mdeq)(struct pktq *pq, uint prec_bmp, int *prec_out)
 	while ((prec = pq->hi_prec) > 0 && pq->q[prec].head == NULL)
 		pq->hi_prec--;
 
-	while ((pq->q[prec].head == NULL) || ((prec_bmp & (1 << prec)) == 0))
+	while ((pq->q[prec].head == NULL) || ((prec_bmp & (1u << prec)) == 0))
 		if (prec-- == 0)
 			goto done;
 

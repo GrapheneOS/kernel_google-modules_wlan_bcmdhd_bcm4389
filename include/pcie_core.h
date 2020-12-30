@@ -26,6 +26,7 @@
 #include <sbhnddma.h>
 #include <siutils.h>
 
+#define REV_GE_74(rev) (PCIECOREREV((rev)) >= 74)
 #define REV_GE_73(rev) (PCIECOREREV((rev)) >= 73)
 #define REV_GE_69(rev) (PCIECOREREV((rev)) >= 69)
 #define REV_GE_68(rev) (PCIECOREREV((rev)) >= 68)
@@ -427,6 +428,14 @@ typedef volatile struct sbpcieregs {
 /* 10th and 11th 4KB BAR0 windows */
 #define PCIE_TER_BAR0_WIN	0xc50
 #define PCIE_TER_BAR0_WRAPPER	0xc54
+
+#define PCIE_TER_BAR0_WIN_DAR	0xa78
+#define PCIE_TER_BAR0_WRAPPER_DAR	0xa7c
+
+#define PCIE_TER_BAR0_WIN_REG(rev) \
+		REV_GE_74(rev) ? PCIE_TER_BAR0_WIN_DAR : PCIE_TER_BAR0_WIN
+#define PCIE_TER_BAR0_WRAPPER_REG(rev) \
+		REV_GE_74(rev) ? PCIE_TER_BAR0_WRAPPER_DAR : PCIE_TER_BAR0_WRAPPER
 
 /* PCI control */
 #define PCIE_RST_OE	0x01	/* When set, drives PCI_RESET out to pin */
