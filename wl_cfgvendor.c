@@ -11404,7 +11404,7 @@ const struct nla_policy ota_update_attr_policy[OTA_UPDATE_ATTRIBUTE_MAX] = {
 	[OTA_DOWNLOAD_CLM_ATTR ] = { .type = NLA_BINARY },
 	[OTA_DOWNLOAD_NVRAM_LENGTH_ATTR ] = { .type = NLA_U32 },
 	[OTA_DOWNLOAD_NVRAM_ATTR ] = { .type = NLA_BINARY },
-	//[OTA_DOWNLOAD_VERSION_ATTR ] = { .type = NLA_U32 },
+	[OTA_SET_FORCE_REG_ON] = { .type = NLA_U32 },
 	[OTA_CUR_NVRAM_EXT_ATTR] = { .type = NLA_NUL_STRING },
 };
 #endif /* SUPPORT_OTA_UPDATE */
