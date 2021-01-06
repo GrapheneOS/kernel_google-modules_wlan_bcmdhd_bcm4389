@@ -1212,6 +1212,31 @@ dhd_sssr_print_filepath(dhd_pub_t *dhd, char *path)
 }
 #endif /* DHD_SSSR_DUMP */
 
+#ifdef DHD_COREDUMP
+int
+dhd_coredump_mempool_init(dhd_pub_t *dhd)
+{
+	dhd->coredump_mem = (uint8*) VMALLOCZ(dhd->osh, DHD_MEMDUMP_BUFFER_SIZE);
+	if (dhd->coredump_mem == NULL) {
+		DHD_ERROR(("%s: VMALLOCZ of coredump_mem failed\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	dhd->coredump_len = DHD_MEMDUMP_BUFFER_SIZE;
+	return BCME_OK;
+}
+
+void
+dhd_coredump_mempool_deinit(dhd_pub_t *dhd)
+{
+	if (dhd->coredump_mem) {
+		VMFREE(dhd->osh, dhd->coredump_mem, DHD_MEMDUMP_BUFFER_SIZE);
+		dhd->coredump_mem = NULL;
+		dhd->coredump_len = 0;
+	}
+}
+#endif /* DHD_COREDUMP */
+
 #ifdef DHD_SDTC_ETB_DUMP
 /*
  * sdtc: system debug trace controller

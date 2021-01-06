@@ -1524,6 +1524,8 @@ typedef struct dhd_pub {
 	uint32 soc_ram_length;
 	uint32 memdump_type;
 #ifdef DHD_COREDUMP
+	uint8 *coredump_mem;
+	uint32 coredump_len;
 	char memdump_str[DHD_MEMDUMP_LONGSTR_LEN];
 #endif /* DHD_COREDUMP */
 #ifdef DHD_FW_COREDUMP
@@ -3818,6 +3820,18 @@ extern uint dhd_sssr_mac_xmtdata(dhd_pub_t *dhdp, uint8 core_idx);
 #define DHD_SSSR_REG_INFO_INIT(dhdp)		do { /* noop */ } while (0)
 #define DHD_SSSR_REG_INFO_DEINIT(dhdp)		do { /* noop */ } while (0)
 #endif /* DHD_SSSR_DUMP */
+
+#ifdef DHD_COREDUMP
+#define WLAN_DHD_MEMDUMP_SIZE	(3u * 1024u * 1024u)
+#define DHD_MEMDUMP_BUFFER_SIZE	(WLAN_DHD_MEMDUMP_SIZE + DHD_SSSR_MEMPOOL_SIZE)
+extern int dhd_coredump_mempool_init(dhd_pub_t *dhd);
+extern void dhd_coredump_mempool_deinit(dhd_pub_t *dhd);
+#define DHD_COREDUMP_MEMPOOL_INIT(dhdp)		dhd_coredump_mempool_init(dhdp)
+#define DHD_COREDUMP_MEMPOOL_DEINIT(dhdp)	dhd_coredump_mempool_deinit(dhdp)
+#else
+#define DHD_COREDUMP_MEMPOOL_INIT(dhdp)		do { /* noop */ } while (0)
+#define DHD_COREDUMP_MEMPOOL_DEINIT(dhdp)	do { /* noop */ } while (0)
+#endif /* DHD_COREDUMP */
 
 #ifdef BCMPCIE
 extern int dhd_prot_debug_info_print(dhd_pub_t *dhd);

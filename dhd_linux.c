@@ -10573,6 +10573,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	INIT_DELAYED_WORK(&dhd->edl_dispatcher_work, dhd_edl_process_work);
 #endif
 
+	DHD_COREDUMP_MEMPOOL_INIT(&dhd->pub);
 	DHD_SSSR_MEMPOOL_INIT(&dhd->pub);
 	DHD_SSSR_REG_INFO_INIT(&dhd->pub);
 
@@ -15354,6 +15355,7 @@ void dhd_detach(dhd_pub_t *dhdp)
 
 	DHD_SSSR_REG_INFO_DEINIT(&dhd->pub);
 	DHD_SSSR_MEMPOOL_DEINIT(&dhd->pub);
+	DHD_COREDUMP_MEMPOOL_DEINIT(&dhd->pub);
 
 #ifdef DHD_SDTC_ETB_DUMP
 	dhd_sdtc_etb_mempool_deinit(&dhd->pub);
@@ -20429,7 +20431,161 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #endif
 #ifdef DHD_COREDUMP
 char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
+
+#define DHD_COREDUMP_MAGIC 0xDDCEDACF
+#define TLV_TYPE_LENGTH_SIZE	(8u)
+/* coredump is composed as following TLV format.
+ * Type(32bit) | Length(32bit) | Value(x bit)
+ * e.g) socram type | length | socram dump
+ *      sssr core1 type | length | sssr core1 dump
+ *      ...
+ */
+enum coredump_types {
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE = 0,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER,
+	DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE,
+	DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER,
+	DHD_COREDUMP_TYPE_SOCRAMDUMP
+};
+
+#ifdef DHD_SSSR_DUMP
+struct dhd_coredump {
+	uint32 type;
+	uint32 length;
+	void *bufptr;
+};
+
+static struct dhd_coredump dhd_coredump_types[] = {
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SOCRAMDUMP, 0, NULL}
+};
+
+static int dhd_append_sssr_tlv(uint8 *buf_dst, int type_idx, int buf_remain)
+{
+	uint32 type_val, length_val;
+	uint32 *type, *length;
+	void *buf_src;
+	int total_size = 0, ret = 0;
+
+	/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_[BEFORE|AFTER] */
+	type_val = dhd_coredump_types[type_idx].type;
+	length_val = dhd_coredump_types[type_idx].length;
+
+	if (length_val == 0) {
+		return 0;
+	}
+
+	type = (uint32*)buf_dst;
+	*type = type_val;
+	length = (uint32*)(buf_dst + sizeof(*type));
+	*length = length_val;
+
+	buf_dst += TLV_TYPE_LENGTH_SIZE;
+	total_size += TLV_TYPE_LENGTH_SIZE;
+
+	buf_src = dhd_coredump_types[type_idx].bufptr;
+	ret = memcpy_s(buf_dst, buf_remain, buf_src, *length);
+
+	if (ret) {
+		DHD_ERROR(("Failed to memcpy_s() for coredump.\n"));
+		return BCME_ERROR;
+	}
+
+	DHD_INFO(("%s: type: %u, length: %u\n",	__FUNCTION__, *type, *length));
+
+	total_size += *length;
+	return total_size;
+}
+
+/* reconstruct dump memory with socram and sssr dump as TLV format */
+static int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
+{
+	uint8 *buf_ptr = dhdp->coredump_mem;
+	int buf_len = dhdp->coredump_len;
+	uint8 *socram_mem = dump->buf;
+	int socram_len = dump->bufsize;
+	int ret = 0, i = 0;
+	int total_size = 0;
+	uint32 *magic, *type, *length;
+	uint8 num_d11cores = 0, offset = 0;
+
+	/* SOCRAM dump start with magic code */
+	magic = (uint32*)buf_ptr;
+	*magic = DHD_COREDUMP_MAGIC;
+
+	/* DHD_COREDUMP_TYPE_SOCRAMDUMP */
+	type = (uint32*)(buf_ptr + sizeof(*magic));
+	*type = dhd_coredump_types[DHD_COREDUMP_TYPE_SOCRAMDUMP].type;
+	length = (uint32*)(buf_ptr + sizeof(*magic) + sizeof(*type));
+	*length = socram_len;
+
+	offset = sizeof(*magic) + sizeof(*type) + sizeof(*length);
+	ret = memcpy_s(buf_ptr + offset, buf_len - offset,
+		socram_mem, socram_len);
+
+	if (ret) {
+		DHD_ERROR(("Failed to memmove_s() for coredump.\n"));
+		return BCME_ERROR;
+	}
+	total_size = offset + socram_len;
+	buf_ptr += total_size;
+
+	DHD_INFO(("%s: type: %u, length: %u\n",	__FUNCTION__, *type, *length));
+
+	/* SSSR dump */
+	if (!sssr_enab || !dhdp->collect_sssr) {
+		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
+		return BCME_ERROR;
+	}
+
+	num_d11cores = dhd_d11_slices_num_get(dhdp);
+	for (i = 0; i < num_d11cores + 1; i++) {
+		int written_bytes = 0;
+		int type_idx = i * 2;
+		if ((i < num_d11cores) && (!dhdp->sssr_d11_outofreset[i])) {
+			continue;
+		}
+
+#ifdef DHD_SSSR_DUMP_BEFORE_SR
+		/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_BEFORE */
+		written_bytes = dhd_append_sssr_tlv(buf_ptr, type_idx,
+			buf_len - total_size);
+		if (written_bytes == BCME_ERROR) {
+			return BCME_ERROR;
+		}
+		buf_ptr += written_bytes;
+		total_size += written_bytes;
+#endif /* DHD_SSSR_DUMP_BEFORE_SR */
+
+		/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_AFTER */
+		written_bytes = dhd_append_sssr_tlv(buf_ptr, type_idx + 1,
+			buf_len - total_size);
+		if (written_bytes == BCME_ERROR) {
+			return BCME_ERROR;
+		}
+		buf_ptr += written_bytes;
+		total_size += written_bytes;
+	}
+
+	dump->buf = dhdp->coredump_mem;
+	dump->bufsize = total_size;
+
+	return BCME_OK;
+}
+#endif /* DHD_SSSR_DUMP */
 #endif /* DHD_COREDUMP */
+
 static void
 dhd_mem_dump(void *handle, void *event_info, u8 event)
 {
@@ -20442,9 +20598,10 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #endif /* DHD_FILE_DUMP_EVENT || DHD_DEBUGABILITY_DEBUG_DUMP */
 #endif /* WL_CFG80211 && DHD_LOG_DUMP */
 
-#if defined(WL_CFG80211) && defined(DHD_FILE_DUMP_EVENT)
+#if (defined(WL_CFG80211) && defined(DHD_FILE_DUMP_EVENT)) || (defined(DHD_SSSR_DUMP) \
+	&& defined(DHD_COREDUMP))
 	int ret = 0;
-#endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT */
+#endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT || DHD_SSSR_DUMP && DHD_COREDUMP */
 	dhd_dump_t *dump = NULL;
 #ifdef DHD_COREDUMP
 	char pc_fn[DHD_FUNC_STR_LEN] = "\0";
@@ -20505,7 +20662,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 			dhdpcie_sssr_dump_get_before_after_len(dhdp, arr_len);
 		}
 	}
-	dhdp->collect_sssr = FALSE;
 #endif /* DHD_SSSR_DUMP */
 
 #ifdef DHD_SDTC_ETB_DUMP
@@ -20559,6 +20715,15 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 				pc_fn, lr_fn);
 	}
 	DHD_ERROR(("%s: dump reason: %s\n", __FUNCTION__, dhdp->memdump_str));
+
+#ifdef DHD_SSSR_DUMP
+	ret = dhd_collect_coredump(dhdp, dump);
+	if (ret) {
+		DHD_ERROR(("%s: dhd_collect_coredump() failed.\n", __FUNCTION__));
+		goto exit;
+	}
+#endif /* DHD_SSSR_DUMP */
+
 	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize, dhdp->memdump_str)) {
 		DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
 #ifdef DHD_DEBUG_UART
@@ -21329,24 +21494,37 @@ dhdpcie_sssr_dump_get_before_after_len(dhd_pub_t *dhd, uint32 *arr_len)
 #ifdef DHD_SSSR_DUMP_BEFORE_SR
 	if (dhd->sssr_d11_before[i] && dhd->sssr_d11_outofreset[i] &&
 		(dhd->sssr_dump_mode == SSSR_DUMP_MODE_SSSR)) {
-
-		arr_len[SSSR_C0_D11_BEFORE]  = dhd_sssr_mac_buf_size(dhd, i);
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE].length =
+#endif /* DHD_COREDUMP */
+			arr_len[SSSR_C0_D11_BEFORE] = dhd_sssr_mac_buf_size(dhd, i);
 		DHD_ERROR(("%s: arr_len[SSSR_C0_D11_BEFORE] : %d\n", __FUNCTION__,
 			arr_len[SSSR_C0_D11_BEFORE]));
 #ifdef DHD_LOG_DUMP
 		dhd_print_buf_addr(dhd, "SSSR_C0_D11_BEFORE",
 			dhd->sssr_d11_before[i], arr_len[SSSR_C0_D11_BEFORE]);
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE].bufptr =
+			dhd->sssr_d11_before[i];
+#endif /* DHD_COREDUMP */
 	}
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 	if (dhd->sssr_d11_after[i] && dhd->sssr_d11_outofreset[i]) {
-		arr_len[SSSR_C0_D11_AFTER]  = dhd_sssr_mac_buf_size(dhd, i);
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER].length =
+#endif /* DHD_COREDUMP */
+			arr_len[SSSR_C0_D11_AFTER] = dhd_sssr_mac_buf_size(dhd, i);
 		DHD_ERROR(("%s: arr_len[SSSR_C0_D11_AFTER] : %d\n", __FUNCTION__,
 			arr_len[SSSR_C0_D11_AFTER]));
 #ifdef DHD_LOG_DUMP
 		dhd_print_buf_addr(dhd, "SSSR_C0_D11_AFTER",
 			dhd->sssr_d11_after[i], arr_len[SSSR_C0_D11_AFTER]);
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER].bufptr =
+			dhd->sssr_d11_after[i];
+#endif /* DHD_COREDUMP */
 	}
 
 	/* core 1 */
@@ -21354,23 +21532,37 @@ dhdpcie_sssr_dump_get_before_after_len(dhd_pub_t *dhd, uint32 *arr_len)
 #ifdef DHD_SSSR_DUMP_BEFORE_SR
 	if (dhd->sssr_d11_before[i] && dhd->sssr_d11_outofreset[i] &&
 		(dhd->sssr_dump_mode == SSSR_DUMP_MODE_SSSR)) {
-		arr_len[SSSR_C1_D11_BEFORE]  = dhd_sssr_mac_buf_size(dhd, i);
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE].length =
+#endif /* DHD_COREDUMP */
+			arr_len[SSSR_C1_D11_BEFORE] = dhd_sssr_mac_buf_size(dhd, i);
 		DHD_ERROR(("%s: arr_len[SSSR_C1_D11_BEFORE] : %d\n", __FUNCTION__,
 			arr_len[SSSR_C1_D11_BEFORE]));
 #ifdef DHD_LOG_DUMP
 		dhd_print_buf_addr(dhd, "SSSR_C1_D11_BEFORE",
 			dhd->sssr_d11_before[i], arr_len[SSSR_C1_D11_BEFORE]);
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE].bufptr =
+			dhd->sssr_d11_before[i];
+#endif /* DHD_COREDUMP */
 	}
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 	if (dhd->sssr_d11_after[i] && dhd->sssr_d11_outofreset[i]) {
-		arr_len[SSSR_C1_D11_AFTER]  = dhd_sssr_mac_buf_size(dhd, i);
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER].length =
+#endif /* DHD_COREDUMP */
+			arr_len[SSSR_C1_D11_AFTER] = dhd_sssr_mac_buf_size(dhd, i);
 		DHD_ERROR(("%s: arr_len[SSSR_C1_D11_AFTER] : %d\n", __FUNCTION__,
 			arr_len[SSSR_C1_D11_AFTER]));
 #ifdef DHD_LOG_DUMP
 		dhd_print_buf_addr(dhd, "SSSR_C1_D11_AFTER",
 			dhd->sssr_d11_after[i], arr_len[SSSR_C1_D11_AFTER]);
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER].bufptr =
+			dhd->sssr_d11_after[i];
+#endif /* DHD_COREDUMP */
 	}
 
 	/* core 2 scan core */
@@ -21379,41 +21571,65 @@ dhdpcie_sssr_dump_get_before_after_len(dhd_pub_t *dhd, uint32 *arr_len)
 #ifdef DHD_SSSR_DUMP_BEFORE_SR
 		if (dhd->sssr_d11_before[i] && dhd->sssr_d11_outofreset[i] &&
 			(dhd->sssr_dump_mode == SSSR_DUMP_MODE_SSSR)) {
-			arr_len[SSSR_C2_D11_BEFORE]  = dhd_sssr_mac_buf_size(dhd, i);
+#ifdef DHD_COREDUMP
+			dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE].length =
+#endif /* DHD_COREDUMP */
+				arr_len[SSSR_C2_D11_BEFORE] = dhd_sssr_mac_buf_size(dhd, i);
 			DHD_ERROR(("%s: arr_len[SSSR_C2_D11_BEFORE] : %d\n", __FUNCTION__,
 				arr_len[SSSR_C2_D11_BEFORE]));
 #ifdef DHD_LOG_DUMP
 			dhd_print_buf_addr(dhd, "SSSR_C2_D11_BEFORE",
 				dhd->sssr_d11_before[i], arr_len[SSSR_C2_D11_BEFORE]);
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+		dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE].bufptr =
+			dhd->sssr_d11_before[i];
+#endif /* DHD_COREDUMP */
 		}
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 		if (dhd->sssr_d11_after[i] && dhd->sssr_d11_outofreset[i]) {
-			arr_len[SSSR_C2_D11_AFTER]  = dhd_sssr_mac_buf_size(dhd, i);
+#ifdef DHD_COREDUMP
+			dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER].length =
+#endif /* DHD_COREDUMP */
+				arr_len[SSSR_C2_D11_AFTER]  = dhd_sssr_mac_buf_size(dhd, i);
 			DHD_ERROR(("%s: arr_len[SSSR_C2_D11_AFTER] : %d\n", __FUNCTION__,
 				arr_len[SSSR_C2_D11_AFTER]));
 #ifdef DHD_LOG_DUMP
 			dhd_print_buf_addr(dhd, "SSSR_C2_D11_AFTER",
 				dhd->sssr_d11_after[i], arr_len[SSSR_C2_D11_AFTER]);
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+			dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER].bufptr =
+				dhd->sssr_d11_after[i];
+#endif /* DHD_COREDUMP */
 		}
 	}
 
 	/* DIG core or VASIP */
 	dig_buf_size = dhd_sssr_dig_buf_size(dhd);
 #ifdef DHD_SSSR_DUMP_BEFORE_SR
-	arr_len[SSSR_DIG_BEFORE] = (dhd->sssr_dig_buf_before) ? dig_buf_size : 0;
+#ifdef DHD_COREDUMP
+	dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE].length =
+#endif /* DHD_COREDUMP */
+		arr_len[SSSR_DIG_BEFORE] = (dhd->sssr_dig_buf_before) ? dig_buf_size : 0;
 	DHD_ERROR(("%s: arr_len[SSSR_DIG_BEFORE] : %d\n", __FUNCTION__,
 		arr_len[SSSR_DIG_BEFORE]));
 #ifdef DHD_LOG_DUMP
-		if (dhd->sssr_dig_buf_before) {
-			dhd_print_buf_addr(dhd, "SSSR_DIG_BEFORE",
-				dhd->sssr_dig_buf_before, arr_len[SSSR_DIG_BEFORE]);
-		}
+	if (dhd->sssr_dig_buf_before) {
+		dhd_print_buf_addr(dhd, "SSSR_DIG_BEFORE",
+			dhd->sssr_dig_buf_before, arr_len[SSSR_DIG_BEFORE]);
+	}
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+	dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE].bufptr =
+		dhd->sssr_dig_buf_before;
+#endif /* DHD_COREDUMP */
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 
-	arr_len[SSSR_DIG_AFTER] = (dhd->sssr_dig_buf_after) ? dig_buf_size : 0;
+#ifdef DHD_COREDUMP
+	dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER].length =
+#endif /* DHD_COREDUMP */
+		arr_len[SSSR_DIG_AFTER] = (dhd->sssr_dig_buf_after) ? dig_buf_size : 0;
 	DHD_ERROR(("%s: arr_len[SSSR_DIG_AFTER] : %d\n", __FUNCTION__,
 		arr_len[SSSR_DIG_AFTER]));
 #ifdef DHD_LOG_DUMP
@@ -21422,6 +21638,10 @@ dhdpcie_sssr_dump_get_before_after_len(dhd_pub_t *dhd, uint32 *arr_len)
 			dhd->sssr_dig_buf_after, arr_len[SSSR_DIG_AFTER]);
 	}
 #endif /* DHD_LOG_DUMP */
+#ifdef DHD_COREDUMP
+	dhd_coredump_types[DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER].bufptr =
+		dhd->sssr_dig_buf_after;
+#endif /* DHD_COREDUMP */
 
 	return BCME_OK;
 }
