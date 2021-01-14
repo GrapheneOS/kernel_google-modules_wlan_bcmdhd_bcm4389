@@ -1098,19 +1098,21 @@ dhd_pktlog_get_item_length(dhd_pktlog_ring_info_t *report_ptr)
 	}
 #ifdef DHD_PKT_LOGGING_DBGRING
 	frame_len = (uint32)min(frame_len, DHD_PKT_LOGGING_DBGRING_MAX_SIZE);
-#endif /* DHD_PKT_LOGGING_DBGRING */
+	bytes_user_data = sprintf(buf, "%s:%s:%02d\n", DHD_PKTLOG_FATE_INFO_FORMAT,
+		(report_ptr->tx_fate ? "Failure" : "Succeed"), report_ptr->tx_fate);
+#else
 	bytes_user_data = snprintf(buf, sizeof(buf), "%s:%s:%02d:%s:%d.%d s\n",
-			DHD_PKTLOG_FATE_INFO_FORMAT,
-			(report_ptr->tx_fate ? "Failure" : "Succeed"), report_ptr->tx_fate,
-			(report_ptr->info.direction == PKT_TX) ? "TX" : "RX",
-			report_ptr->info.tx_status_ts_sec, report_ptr->info.tx_status_ts_usec);
+		DHD_PKTLOG_FATE_INFO_FORMAT,
+		(report_ptr->tx_fate ? "Failure" : "Succeed"), report_ptr->tx_fate,
+		(report_ptr->info.direction == PKT_TX) ? "TX" : "RX",
+		report_ptr->info.tx_status_ts_sec, report_ptr->info.tx_status_ts_usec);
+#endif /* DHD_PKT_LOGGING_DBGRING */
 	write_frame_len = frame_len + bytes_user_data;
 
 	/* pcap pkt head has incl_len and orig_len */
 	len += (uint32)sizeof(write_frame_len);
 	len += (uint32)sizeof(write_frame_len);
-	len += frame_len;
-	len += bytes_user_data;
+	len += write_frame_len;
 
 	return len;
 }
