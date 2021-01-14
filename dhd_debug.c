@@ -200,6 +200,42 @@ dhd_dbg_urgent_pull(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 }
 #endif /* DHD_PKT_LOGGING_DBGRING */
 
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+int
+dhd_debug_dump_ring_push(dhd_pub_t *dhdp, int ring_id, uint32 len, void *data)
+{
+	dhd_dbg_ring_t *ring;
+	int ret = 0;
+	uint32 remain_len = 0;
+	char *cur_buf;
+	dhd_dbg_ring_entry_t msg_hdr;
+
+	if (!dhdp || !dhdp->dbg) {
+		return BCME_BADADDR;
+	}
+
+	if (!VALID_RING(ring_id)) {
+		DHD_ERROR(("%s : invalid ring_id : %d\n", __FUNCTION__, ring_id));
+		return BCME_RANGE;
+	}
+
+	ring = &dhdp->dbg->dbg_rings[ring_id];
+
+	remain_len = len;
+	cur_buf = data;
+
+	memset(&msg_hdr, 0, sizeof(msg_hdr));
+	while (remain_len > 0) {
+		msg_hdr.type = DBG_RING_ENTRY_DATA_TYPE;
+		msg_hdr.len = MIN(remain_len, DHD_DEBUG_DUMP_NETLINK_MAX);
+		ret = dhd_dbg_ring_push(ring, &msg_hdr, cur_buf);
+		cur_buf += msg_hdr.len;
+		remain_len -= msg_hdr.len;
+	}
+	return ret;
+}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
+
 int
 dhd_dbg_push_to_ring(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_entry_t *hdr, void *data)
 {
@@ -1076,7 +1112,7 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 		DHD_ERROR(("%s logset: %d max: %d out of range queried: %d\n",
 			__FUNCTION__, logset, event_log_max_sets, event_log_max_sets_queried));
 #ifdef DHD_FW_COREDUMP
-		if (event_log_max_sets_queried) {
+		if (event_log_max_sets_queried && !dhd_memdump_is_scheduled(dhdp)) {
 			DHD_ERROR(("%s: collect socram for DUMP_TYPE_LOGSET_BEYOND_RANGE\n",
 				__FUNCTION__));
 			dhdp->memdump_type = DUMP_TYPE_LOGSET_BEYOND_RANGE;
@@ -2535,6 +2571,7 @@ void pr_roam_btm_rep_v2(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_bcn_req_v3(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_bcn_rep_v3(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_btm_rep_v3(prcd_event_log_hdr_t *plog_hdr);
+void pr_roam_6g_novlp_rep_v3(prcd_event_log_hdr_t *plog_hdr);
 
 static const pr_roam_tbl_t roam_log_print_tbl[] =
 {
@@ -2563,9 +2600,9 @@ static const pr_roam_tbl_t roam_log_print_tbl[] =
 	{ROAM_LOG_VER_3, ROAM_LOG_BCN_REQ, pr_roam_bcn_req_v3},
 	{ROAM_LOG_VER_3, ROAM_LOG_BCN_REP, pr_roam_bcn_rep_v3},
 	{ROAM_LOG_VER_3, ROAM_LOG_BTM_REP, pr_roam_btm_rep_v3},
+	{ROAM_LOG_VER_3, ROAM_LOG_6G_NOVLP_REP, pr_roam_6g_novlp_rep_v3},
 
 	{0, PRSV_PERIODIC_ID_MAX, NULL}
-
 };
 
 void pr_roam_scan_start_v1(prcd_event_log_hdr_t *plog_hdr)
@@ -2815,6 +2852,19 @@ void pr_roam_btm_rep_v3(prcd_event_log_hdr_t *plog_hdr)
 }
 
 void
+pr_roam_6g_novlp_rep_v3(prcd_event_log_hdr_t *plog_hdr)
+{
+	roam_log_6g_novlp_v3_t *log = (roam_log_6g_novlp_v3_t *)plog_hdr->log_ptr;
+	char chanspec_buf[CHANSPEC_STR_LEN];
+
+	DHD_ERROR_ROAM(("ROAM_LOG_6G_NoVPL_Filtered: time:%d version:%d "
+		"CH:%s(0x%04x) BSSID:" MACDBG "\n",
+		plog_hdr->armcycle, log->hdr.version,
+		wf_chspec_ntoa_ex(log->chanspec, chanspec_buf),
+		log->chanspec, MAC2STRDBG((uint8 *)&log->bssid)));
+}
+
+void
 print_roam_enhanced_log(prcd_event_log_hdr_t *plog_hdr)
 {
 	prsv_periodic_log_hdr_t *hdr = (prsv_periodic_log_hdr_t *)plog_hdr->log_ptr;
@@ -2912,6 +2962,27 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	if (ret)
 		goto error;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
+
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+	/*
+	 * delayed memory allocation. memory will be allocated when debug_dump is invoked
+	 * To prepare the ringbuffer in legacy HAL, we should initialize ring at this time
+	 */
+	ret = dhd_dbg_ring_init(dhdp, &dbg->dbg_rings[DEBUG_DUMP_RING1_ID], DEBUG_DUMP_RING1_ID,
+		(uint8 *)DEBUG_DUMP_RING1_NAME, DEBUG_DUMP_RING1_SIZE, NULL, FALSE);
+	if (ret) {
+		DHD_ERROR(("%s: Failed to init debug ring1\n", __func__));
+		goto error;
+	}
+
+	ret = dhd_dbg_ring_init(dhdp, &dbg->dbg_rings[DEBUG_DUMP_RING2_ID], DEBUG_DUMP_RING2_ID,
+		(uint8 *)DEBUG_DUMP_RING2_NAME, DEBUG_DUMP_RING2_SIZE, NULL, FALSE);
+	if (ret) {
+		DHD_ERROR(("%s: Failed to init debug ring2\n", __func__));
+		goto error;
+	}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
+
 #ifdef BTLOG
 	buf = MALLOCZ(dhdp->osh, BT_LOG_RING_SIZE);
 	if (!buf)
@@ -2998,6 +3069,12 @@ dhd_dbg_detach(dhd_pub_t *dhdp)
 			ring = &dbg->dbg_rings[ring_id];
 			dhd_dbg_ring_deinit(dhdp, ring);
 			if (ring->ring_buf) {
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+				if (ring_id == DEBUG_DUMP_RING1_ID ||
+					ring_id == DEBUG_DUMP_RING2_ID) {
+					VMFREE(dhdp->osh, ring->ring_buf, ring->ring_size);
+				}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 #ifdef DHD_PKT_LOGGING_DBGRING
 				if (ring_id != PACKET_LOG_RING_ID)
 #endif /* DHD_PKT_LOGGING_DBGRING */
@@ -3010,6 +3087,9 @@ dhd_dbg_detach(dhd_pub_t *dhdp)
 		}
 	}
 	MFREE(dhdp->osh, dhdp->dbg, sizeof(dhd_dbg_t));
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+	g_ring_buf.dhd_pub = NULL;
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 }
 
 uint32
@@ -3031,7 +3111,6 @@ dhd_dbg_set_fwverbose(dhd_pub_t *dhdp, uint32 new_val)
 }
 
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-extern struct dhd_dbg_ring_buf g_ring_buf;
 void
 dhd_dbg_ring_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...)
@@ -3071,4 +3150,168 @@ dhd_dbg_ring_write(int type, char *binary_data,
 	}
 	return;
 }
+
+#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+void dhd_debug_dump_get_section_len(dhd_pub_t *dhdp, uint32 sec_len[])
+{
+	sec_len[LOG_DUMP_SECTION_TIMESTAMP] = dhd_get_time_str_len();
+#ifdef EWP_ECNTRS_LOGGING
+	sec_len[LOG_DUMP_SECTION_ECNTRS] = dhd_get_ecntrs_len(NULL, dhdp);
+#endif /* EWP_ECNTRS_LOGGING */
+	sec_len[LOG_DUMP_SECTION_DHD_DUMP] = dhd_get_dhd_dump_len(NULL, dhdp);
+#if defined(BCMPCIE)
+	sec_len[LOG_DUMP_SECTION_EXT_TRAP] = dhd_get_ext_trap_len(NULL, dhdp);
+#endif /* BCMPCIE */
+
+#if defined(DHD_FW_COREDUMP) && defined(DNGL_EVENT_SUPPORT)
+	sec_len[LOG_DUMP_SECTION_HEALTH_CHK] = dhd_get_health_chk_len(NULL, dhdp);
+#endif
+	sec_len[LOG_DUMP_SECTION_COOKIE] = dhd_get_cookie_log_len(NULL, dhdp);
+#ifdef DHD_DUMP_PCIE_RINGS
+	sec_len[LOG_DUMP_SECTION_RING] = dhd_get_flowring_len(NULL, dhdp);
+#endif
+#ifdef DHD_STATUS_LOGGING
+	sec_len[LOG_DUMP_SECTION_STATUS] = dhd_get_status_log_len(NULL, dhdp);
+#endif /* DHD_STATUS_LOGGING */
+#ifdef EWP_RTT_LOGGING
+	sec_len[LOG_DUMP_SECTION_RTT] = dhd_get_rtt_len(NULL, dhdp);
+#endif /* EWP_RTT_LOGGING */
+
+	DHD_ERROR(("%s: TS:%d ECNTRS:%d DHD_DUMP:%d ETRAP:%d"
+		" HCK:%d CKI:%d FLOW:%d STATUS:%d RTT:%d\n",
+		__func__, sec_len[LOG_DUMP_SECTION_TIMESTAMP], sec_len[LOG_DUMP_SECTION_ECNTRS],
+		sec_len[LOG_DUMP_SECTION_DHD_DUMP], sec_len[LOG_DUMP_SECTION_EXT_TRAP],
+		sec_len[LOG_DUMP_SECTION_HEALTH_CHK], sec_len[LOG_DUMP_SECTION_COOKIE],
+		sec_len[LOG_DUMP_SECTION_RING], sec_len[LOG_DUMP_SECTION_STATUS],
+		sec_len[LOG_DUMP_SECTION_RTT]));
+	return;
+}
+
+int dhd_debug_dump_buf_alloc(dhd_pub_t *dhdp, int id, char* name, int size)
+{
+	dhd_dbg_t *dbg = dhdp->dbg;
+	dhd_dbg_ring_t *ring = &dbg->dbg_rings[id];
+	char *buf = NULL;
+
+	if (!ring->ring_buf) {
+		buf = VMALLOCZ(dhdp->osh, size);
+		if (!buf) {
+			DHD_ERROR(("%s: Failed to alloc id:%d, size:%d\n", __func__, id, size));
+			return BCME_NOMEM;
+		}
+		dhd_dbg_ring_set_buf(dhdp, &dbg->dbg_rings[id], buf);
+		DHD_ERROR(("%s: success to allocate ring id:%d name:%s\n", __func__, id, name));
+	} else {
+		DHD_ERROR(("%s: already allocated id:%d name:%s\n", __func__, id, name));
+	}
+
+	return BCME_OK;
+}
+
+int dhd_debug_dump_to_ring(dhd_pub_t *dhdp)
+{
+	dhd_dbg_t *dbg = dhdp->dbg;
+	dhd_dbg_ring_t *dbg_ring;
+	int ret = BCME_OK;
+	int ring_num, id;
+	uint32 sec_len[LOG_DUMP_SECTION_MAX] = {0};
+	dhd_dbg_ring_status_t ring_status;
+	uint32 sync_retry;
+	unsigned long flags = 0;
+
+	ret = dhd_debug_dump_buf_alloc(dhdp, DEBUG_DUMP_RING1_ID,
+		DEBUG_DUMP_RING1_NAME, DEBUG_DUMP_RING1_SIZE);
+	if (ret) {
+		return ret;
+	}
+
+	ret = dhd_debug_dump_buf_alloc(dhdp, DEBUG_DUMP_RING2_ID,
+		DEBUG_DUMP_RING2_NAME, DEBUG_DUMP_RING2_SIZE);
+	if (ret) {
+		return ret;
+	}
+
+	dhd_debug_dump_get_section_len(dhdp, sec_len);
+
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_TIMESTAMP);
+	if (dhd_print_time_str(NULL, NULL, sec_len[LOG_DUMP_SECTION_TIMESTAMP], &ring_num)) {
+		DHD_ERROR(("Error section: dhd_print_time_str\n"));
+	}
+#ifdef EWP_ECNTRS_LOGGING
+	if (dhd_print_ecntrs_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_ECNTRS], NULL)) {
+		DHD_ERROR(("Error section: ECNTRS\n"));
+	}
+#endif /* EWP_ECNTRS_LOGGING */
+
+#ifdef DHD_STATUS_LOGGING
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_STATUS);
+	if (dhd_print_status_log_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_STATUS], &ring_num)) {
+		DHD_ERROR(("Error section: STATUS_LOG\n"));
+	}
+#endif /* DHD_STATUS_LOGGING */
+#ifdef EWP_RTT_LOGGING
+	if (dhd_print_rtt_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_RTT], NULL)) {
+		DHD_ERROR(("Error section: RTT_LOG\n"));
+	}
+#endif /* EWP_RTT_LOGGING */
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_DHD_DUMP);
+	if (dhd_print_dump_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_DHD_DUMP], &ring_num)) {
+		DHD_ERROR(("Error section: DHD_DUMP\n"));
+	}
+#if defined(BCMPCIE)
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_EXT_TRAP);
+	if (dhd_print_ext_trap_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_EXT_TRAP], &ring_num)) {
+		DHD_ERROR(("Error section: EXT TRAP\n"));
+	}
+#endif /* BCMPCIE */
+#if defined(DHD_FW_COREDUMP) && defined(DNGL_EVENT_SUPPORT)
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_HEALTH_CHK);
+	if (dhd_print_health_chk_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_HEALTH_CHK], &ring_num)) {
+		DHD_ERROR(("Error section: HEALTH CHECK\n"));
+	}
+#endif
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_COOKIE);
+	if (dhd_print_cookie_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_COOKIE], &ring_num)) {
+		DHD_ERROR(("Error section: COOKIE DATA\n"));
+	}
+#ifdef DHD_DUMP_PCIE_RINGS
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_RING);
+	if (dhd_print_flowring_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_RING], &ring_num)) {
+		DHD_ERROR(("Error section: FLOWRING_DUMP\n"));
+	}
+#endif
+	for (id = DEBUG_RING_ID_INVALID + 1; id < DEBUG_RING_ID_MAX; id++) {
+		dbg_ring = &dbg->dbg_rings[id];
+		if (VALID_RING(dbg_ring->id)) {
+			/* To sync up with the ringbuffer in legacy HAL */
+			dhd_os_trigger_get_ring_data(dhdp, dbg_ring->name);
+
+			sync_retry = 0;
+			while (sync_retry < DHD_DEBUG_DUMP_MAX_SYNC_CNT) {
+				DHD_DBG_RING_LOCK(dbg_ring->lock, flags);
+				__dhd_dbg_get_ring_status(dbg_ring, &ring_status);
+				DHD_DBG_RING_UNLOCK(dbg_ring->lock, flags);
+				if (ring_status.written_bytes == ring_status.read_bytes) {
+					break;
+				} else {
+					OSL_SLEEP(50);
+				}
+				sync_retry++;
+			}
+			DHD_ERROR(("%s: ring sync up name:%s w/r bytes(%u/%u) retry:%d\n",
+				__func__, dbg_ring->name, ring_status.written_bytes,
+				ring_status.read_bytes, sync_retry));
+		}
+	}
+	return ret;
+}
+#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */

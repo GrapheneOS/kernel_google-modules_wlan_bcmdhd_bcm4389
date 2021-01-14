@@ -1883,12 +1883,17 @@ set_wl_debug_level(struct dhd_info *dhd, const char *buf, size_t count)
 				for (i = 0; i < ARRAYSIZE(sublogname_map); i++) {
 					if (!strncmp(sublog, sublogname_map[i].sublogname,
 						strlen(sublogname_map[i].sublogname))) {
-						if (log_on)
+						if (log_on) {
 							wl_dbg_level |=
 							(sublogname_map[i].log_level);
-						else
+							wl_log_level |=
+							(sublogname_map[i].log_level);
+						} else {
 							wl_dbg_level &=
 							~(sublogname_map[i].log_level);
+							wl_log_level &=
+							~(sublogname_map[i].log_level);
+						}
 					}
 				}
 		} else

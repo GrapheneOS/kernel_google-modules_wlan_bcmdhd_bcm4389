@@ -214,7 +214,6 @@ BCMFASTPATH(dhd_flow_queue_dequeue)(dhd_pub_t *dhdp, flow_queue_t *queue)
 	pkt = queue->head; /* from head */
 
 	if (pkt == NULL) {
-		ASSERT((queue->len == 0) && (queue->tail == NULL));
 		goto done;
 	}
 
@@ -664,7 +663,8 @@ dhd_flowid_find(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 		}
 	} else {
 
-		if (ETHER_ISMULTI(da)) {
+		if (ETHER_ISMULTI(da) &&
+			TRUE) {
 			ismcast = TRUE;
 			hash = 0;
 		} else {
@@ -800,7 +800,9 @@ dhd_flowid_alloc(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 	} else {
 
 		/* For bcast/mcast assign first slot in in interface */
-		hash = ETHER_ISMULTI(da) ? 0 : DHD_FLOWRING_HASHINDEX(da, prio);
+		hash = (ETHER_ISMULTI(da) &&
+			TRUE) ?  0 : DHD_FLOWRING_HASHINDEX(da, prio);
+
 		cur = if_flow_lkup[ifindex].fl_hash[hash];
 		if (cur) {
 			while (cur->next) {

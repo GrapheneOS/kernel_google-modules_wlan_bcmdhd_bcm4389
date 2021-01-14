@@ -1508,12 +1508,23 @@ typedef struct wl_event_dynsar {
 	uint8  fs_reason;	/* failsafe reason */
 } wl_event_dynsar_t;
 
-/* status when WLC_E_AP_BCN_MUTE event is sent */
+/* Reason code when WLC_E_AP_BCN_MUTE event is sent */
 #define BCN_MUTE_MITI_ACTIVE	1u	/* Mitigation is activated when probe response received
 					 * but Beacon is not received
 					 */
 #define BCN_MUTE_MITI_END	2u	/* Sent when beacon is received */
 #define BCN_MUTE_MITI_TIMEOUT	3u	/* Mitigation period is reached */
+
+/* Status code for sending event */
+#define BCN_MUTE_MITI_UNKNOWN		0u	/* Mitigation status unknown */
+#define BCN_MUTE_MITI_ASSOC_COMP	1u	/* Mitigation during Assoc phase */
+#define BCN_MUTE_MITI_BCN_LOST		2u	/* Mitigation due to beacon lost */
+#define BCN_MUTE_MITI_BCN_RECV		3u	/* Mitigation end due to bcn reception */
+#define BCN_MUTE_MITI_ROAM		4u	/* Mitigation end due to Roam */
+#define BCN_MUTE_MITI_LINK_DOWN		5u	/* Mitigation end due to link down */
+#define BCN_MUTE_MITI_RX_DEAUTH		6u	/* Mitigation end due to AP deauth */
+#define BCN_MUTE_MITI_RX_DISASSOC	7u	/* Mitigation end due to AP disassoc */
+#define BCN_MUTE_MITI_LOW_RSSI		8u	/* Mitigation end due to Low RSSI */
 
 /* bcn_mute_miti event data */
 #define WLC_BCN_MUTE_MITI_EVENT_DATA_VER_1	1u
@@ -1523,6 +1534,15 @@ typedef struct wlc_bcn_mute_miti_event_data_v1 {
 	uint16	uatbtt_count;	/* Number of UATBTT during mitigation */
 	uint8	PAD[2];		/* Pad to fit to 32 bit alignment */
 } wlc_bcn_mute_miti_event_data_v1_t;
+
+#define WLC_BCN_MUTE_MITI_EVENT_DATA_VER_2	2u
+typedef struct wlc_bcn_mute_miti_event_data_v2 {
+	uint16	version;	/* Structure version number */
+	uint16	length;		/* Length of the whole struct */
+	uint16	uatbtt_count;	/* Number of UATBTT during mitigation */
+	int8	rssi;		/* Mitigation Probe response RSSI */
+	uint8	PAD[1];		/* Pad to fit to 32 bit alignment */
+} wlc_bcn_mute_miti_event_data_v2_t;
 
 /* bcn_drift event data */
 #define WLC_BCN_DRIFT_EVENT_DATA_VER_1	(1u)

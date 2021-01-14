@@ -3286,7 +3286,7 @@ dhd_rtt_convert_results_to_host_v1(rtt_result_t *rtt_result, const uint8 *p_data
 	struct timespec64 ts;
 #endif /* LINUX_VER >= 2.6.39 */
 	uint32 ratespec;
-	uint32 avg_dist;
+	int32 avg_dist;
 	const wl_proxd_rtt_result_v1_t *p_data_info = NULL;
 	const wl_proxd_rtt_sample_v1_t *p_sample_avg = NULL;
 	const wl_proxd_rtt_sample_v1_t *p_sample = NULL;
@@ -4956,19 +4956,13 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 	DHD_RTT_MEM(("dhd_rtt_deinit: ENTER\n"));
 
 #ifdef WL_NAN
-	if (delayed_work_pending(&rtt_status->rtt_retry_timer)) {
-		cancel_delayed_work_sync(&rtt_status->rtt_retry_timer);
-	}
+	cancel_delayed_work_sync(&rtt_status->rtt_retry_timer);
 #endif /* WL_NAN */
 
-	if (work_pending(&rtt_status->work)) {
-		cancel_work_sync(&rtt_status->work);
-		rtt_status->rtt_sched = FALSE;
-	}
+	cancel_work_sync(&rtt_status->work);
+	rtt_status->rtt_sched = FALSE;
 
-	if (delayed_work_pending(&rtt_status->proxd_timeout)) {
-		cancel_delayed_work_sync(&rtt_status->proxd_timeout);
-	}
+	cancel_delayed_work_sync(&rtt_status->proxd_timeout);
 
 	/*
 	 * Cleanup attempt is required,

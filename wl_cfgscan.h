@@ -175,9 +175,23 @@ typedef enum {
 	WIFI_BAND_24GHZ_5GHZ_WITH_DFS_6GHZ = 15
 } wifi_band;
 
+#define MAX_AP_IFACES 2
+typedef struct ap_iface_data {
+	chanspec_t chspec;
+	struct net_device *ndev;
+} wl_ap_iface_data_t;
+
+typedef struct ap_oper_data {
+	u8 count;
+	wl_ap_iface_data_t iface[MAX_AP_IFACES];
+} wl_ap_oper_data_t;
+
 extern bool wl_cfgscan_is_dfs_set(wifi_band band);
 extern s32 wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg,
 		struct wireless_dev *wdev, int band, uint32 *list, uint32 *num_channels);
 #endif /* DHD_GET_VALID_CHANNELS */
 extern int wl_android_get_sta_channel(struct bcm_cfg80211 *cfg);
+#ifdef WL_SCHED_SCAN
+extern void wl_cfgscan_sched_scan_stop_work(struct work_struct *work);
+#endif /* WL_SCHED_SCAN */
 #endif /* _wl_cfgscan_h_ */

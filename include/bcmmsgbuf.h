@@ -992,6 +992,14 @@ typedef union rxbuf_submit_item {
 	unsigned char		check[H2DRING_RXPOST_ITEMSIZE];
 } rxbuf_submit_item_t;
 
+/* marker */
+#define BCMPCIE_RX_PKT_RSSI_MASK		0xFFu
+#define BCMPCIE_RX_PKT_RSSI_SHIFT		0u
+#define BCMPCIE_RX_PKT_DUR0_MASK		0xFFFF00u
+#define BCMPCIE_RX_PKT_DUR0_SHIFT		8u
+#define BCMPCIE_RX_PKT_BAND_MASK		0x1000000u
+#define BCMPCIE_RX_PKT_BAND_SHIFT		24u
+
 /* D2H Rxcompletion ring work items for IPC rev7 */
 typedef struct host_rxbuf_cmpl {
 	/** common message header */

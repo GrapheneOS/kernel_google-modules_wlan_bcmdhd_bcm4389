@@ -290,6 +290,10 @@ static struct pci_driver dhdpcie_driver = {
 
 int dhdpcie_init_succeeded = FALSE;
 
+#if defined(CUSTOMER_HW4_DEBUG)
+char dhd_suspend_resume_time_str[DEBUG_DUMP_TIME_BUF_LEN];
+#endif /* CUSTOMER_HW4_DEBUG */
+
 #ifdef USE_SMMU_ARCH_MSM
 static int dhdpcie_smmu_init(struct pci_dev *pdev, void *smmu_cxt)
 {
@@ -778,7 +782,8 @@ static int dhdpcie_pci_suspend(struct pci_dev * pdev, pm_message_t state)
 	dhdpcie_info_t *pch = pci_get_drvdata(pdev);
 	dhd_bus_t *bus = NULL;
 	unsigned long flags;
-	uint32 i = 0;
+	int timeleft = 0;
+	uint bitmask = 0xFFFFFFFF;
 
 	if (pch) {
 		bus = pch->bus;
@@ -791,36 +796,22 @@ static int dhdpcie_pci_suspend(struct pci_dev * pdev, pm_message_t state)
 
 	DHD_GENERAL_LOCK(bus->dhd, flags);
 	if (!DHD_BUS_BUSY_CHECK_IDLE(bus->dhd)) {
-		DHD_ERROR(("%s: Bus not IDLE!! dhd_bus_busy_state = 0x%x\n",
-			__FUNCTION__, bus->dhd->dhd_bus_busy_state));
-
+		DHD_BUS_BUSY_SET_SUSPEND_IN_PROGRESS(bus->dhd);
 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
-		OSL_DELAY(1000);
-		/* retry till the transaction is complete */
-		while (i < 100) {
-			OSL_DELAY(1000);
-			i++;
-
-			DHD_GENERAL_LOCK(bus->dhd, flags);
-			if (DHD_BUS_BUSY_CHECK_IDLE(bus->dhd)) {
-				DHD_ERROR(("%s: Bus enter IDLE!! after %d ms\n",
-					__FUNCTION__, i));
-				break;
-			}
-			if (i != 100) {
-				DHD_GENERAL_UNLOCK(bus->dhd, flags);
-			}
-		}
-		if (!DHD_BUS_BUSY_CHECK_IDLE(bus->dhd)) {
-			DHD_GENERAL_UNLOCK(bus->dhd, flags);
-			DHD_ERROR(("%s: Bus not IDLE!! Failed after %d ms, "
-				"dhd_bus_busy_state = 0x%x\n",
-				__FUNCTION__, i, bus->dhd->dhd_bus_busy_state));
+		DHD_ERROR(("%s: wait to clear dhd_bus_busy_state: 0x%x\n",
+			__FUNCTION__, bus->dhd->dhd_bus_busy_state));
+		timeleft = dhd_os_busbusy_wait_bitmask(bus->dhd,
+				&bus->dhd->dhd_bus_busy_state, bitmask,
+				DHD_BUS_BUSY_SUSPEND_IN_PROGRESS);
+		if ((timeleft == 0) || (timeleft == 1)) {
+			DHD_ERROR(("%s: Timed out dhd_bus_busy_state=0x%x\n",
+				__FUNCTION__, bus->dhd->dhd_bus_busy_state));
 			return -EBUSY;
 		}
+	} else {
+		DHD_BUS_BUSY_SET_SUSPEND_IN_PROGRESS(bus->dhd);
+		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 	}
-	DHD_BUS_BUSY_SET_SUSPEND_IN_PROGRESS(bus->dhd);
-	DHD_GENERAL_UNLOCK(bus->dhd, flags);
 
 #ifdef DHD_CFG80211_SUSPEND_RESUME
 	dhd_cfg80211_suspend(bus->dhd);
@@ -1064,7 +1055,13 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 		return BCME_ERROR;
 	}
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
+#if defined(CUSTOMER_HW4_DEBUG)
+	clear_debug_dump_time(dhd_suspend_resume_time_str);
+	get_debug_dump_time(dhd_suspend_resume_time_str);
+	DHD_ERROR(("%s: Enter: TS(%s)\n", __FUNCTION__, dhd_suspend_resume_time_str));
+#else
 	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+#endif /* CUSTOMER_HW4_DEBUG */
 #if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
 	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
 	defined(CONFIG_SOC_EXYNOS1000)
@@ -1133,7 +1130,13 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
 	pci_load_and_free_saved_state(dev, &pch->state);
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
+#if defined(CUSTOMER_HW4_DEBUG)
+	clear_debug_dump_time(dhd_suspend_resume_time_str);
+	get_debug_dump_time(dhd_suspend_resume_time_str);
+	DHD_ERROR(("%s: Enter: TS(%s)\n", __FUNCTION__, dhd_suspend_resume_time_str));
+#else
 	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+#endif /* CUSTOMER_HW4_DEBUG */
 	dev->state_saved = TRUE;
 	pci_restore_state(dev);
 
@@ -1975,6 +1978,12 @@ int dhdpcie_init(struct pci_dev *pdev)
 			break;
 		}
 #endif /* USE_SMMU_ARCH_MSM */
+        // Override dma mask to 36 bits
+        if (pci_set_dma_mask(pdev, DMA_BIT_MASK(36)) ||
+		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(36))) {
+		DHD_ERROR(("%s: AA: DMA set 36bit mask failed.\n", __FUNCTION__));
+		return -EINVAL;
+	}
 
 #ifdef DHD_WAKE_STATUS
 		/* Initialize pkt_wake_lock */

@@ -99,6 +99,9 @@
 
 #define DHD_REGISTRATION_TIMEOUT  12000  /* msec : allowed time to finished dhd registration */
 
+/* FW initialised value for ocl_rssi_threshold */
+#define FW_OCL_RSSI_THRESH_INITVAL -75
+
 #if defined(DHD_TRACE_WAKE_LOCK)
 typedef enum dhd_wklock_type {
 	DHD_WAKE_LOCK,

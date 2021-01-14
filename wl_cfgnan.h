@@ -793,6 +793,7 @@ int wl_cfgnan_sec_info_handler(struct bcm_cfg80211 *cfg,
 /* ranging quest and response iovar handler */
 #endif /* WL_NAN_DISC_CACHE */
 bool wl_cfgnan_is_dp_active(struct net_device *ndev);
+bool wl_cfgnan_is_nan_active(struct net_device *ndev);
 bool wl_cfgnan_data_dp_exists_with_peer(struct bcm_cfg80211 *cfg,
 	struct ether_addr *peer_addr);
 s32 wl_cfgnan_delete_ndp(struct bcm_cfg80211 *cfg, struct net_device *nan_ndev);

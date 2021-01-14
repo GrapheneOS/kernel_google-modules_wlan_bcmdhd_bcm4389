@@ -27,6 +27,7 @@
 
 struct bcm_cfg80211;
 extern u32 wl_dbg_level;
+extern u32 wl_log_level;
 
 typedef struct wifi_p2p_ie wifi_wfd_ie_t;
 /* Enumeration of the usages of the BSSCFGs used by the P2P Library.  Do not
@@ -125,9 +126,6 @@ enum wl_cfgp2p_status {
 #define p2p_scan(cfg) ((cfg)->p2p->scan)
 #define p2p_is_on(cfg) ((cfg)->p2p && (cfg)->p2p->on)
 
-/* dword align allocation */
-#define WLC_IOCTL_MAXLEN 8192
-
 #if defined(CUSTOMER_DBG_PREFIX_ENABLE)
 #define USER_PREFIX_CFGP2P		"[cfgp2p][wlan] "
 #define CFGP2P_ERROR_TEXT		USER_PREFIX_CFGP2P
@@ -146,35 +144,41 @@ enum wl_cfgp2p_status {
 #endif /* defined(CUSTOMER_DBG_PREFIX_ENABLE) */
 
 #ifdef DHD_LOG_DUMP
-#define CFGP2P_ERR(args)									\
-	do {										\
-		if (wl_dbg_level & WL_DBG_ERR) {				\
-			WL_DBG_PRINT_SYSTEM_TIME;				\
+#define CFGP2P_ERR(args)						\
+	do {								\
+		if (wl_dbg_level & WL_DBG_ERR) {			\
+			WL_DBG_PRINT_SYSTEM_TIME;			\
 			pr_cont(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
 			pr_cont args;					\
-			DHD_LOG_DUMP_WRITE_TS_FN;	\
-			DHD_LOG_DUMP_WRITE args;	\
-		}									\
+		}							\
+		if (wl_log_level & WL_DBG_ERR) {			\
+			DHD_LOG_DUMP_WRITE_TS_FN;			\
+			DHD_LOG_DUMP_WRITE args;			\
+		}							\
 	} while (0)
-#define	CFGP2P_INFO(args)									\
-	do {										\
-		if (wl_dbg_level & WL_DBG_INFO) {				\
-			WL_DBG_PRINT_SYSTEM_TIME;				\
+#define CFGP2P_INFO(args)						\
+	do {								\
+		if (wl_dbg_level & WL_DBG_INFO) {			\
+			WL_DBG_PRINT_SYSTEM_TIME;			\
 			pr_cont(CFGP2P_INFO_TEXT "%s : ", __func__);	\
 			pr_cont args;					\
-			DHD_LOG_DUMP_WRITE_TS_FN;	\
-			DHD_LOG_DUMP_WRITE args;	\
-		}									\
+		}							\
+		if (wl_log_level & WL_DBG_INFO) {			\
+			DHD_LOG_DUMP_WRITE_TS_FN;			\
+			DHD_LOG_DUMP_WRITE args;			\
+		}							\
 	} while (0)
-#define	CFGP2P_ACTION(args)								\
-	do {									\
+#define CFGP2P_ACTION(args)						\
+	do {								\
 		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
-			WL_DBG_PRINT_SYSTEM_TIME;				\
+			WL_DBG_PRINT_SYSTEM_TIME;			\
 			pr_cont(CFGP2P_ACTION_TEXT "%s :", __func__);	\
 			pr_cont args;					\
-			DHD_LOG_DUMP_WRITE_TS_FN;	\
-			DHD_LOG_DUMP_WRITE args;	\
-		}									\
+		}							\
+		if (wl_log_level & WL_DBG_P2P_ACTION) {			\
+			DHD_LOG_DUMP_WRITE_TS_FN;			\
+			DHD_LOG_DUMP_WRITE args;			\
+		}							\
 	} while (0)
 #else
 #define CFGP2P_ERR(args)									\

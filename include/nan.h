@@ -1145,9 +1145,9 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_ndp_attr_s {
 #define NAN_NDP_RESPONSE(_ndp)	(((_ndp)->type_status & NAN_NDP_TYPE_MASK) == NAN_NDP_TYPE_RESPONSE)
 #define NAN_NDP_CONFIRM(_ndp)	(((_ndp)->type_status & NAN_NDP_TYPE_MASK) == NAN_NDP_TYPE_CONFIRM)
 #define NAN_NDP_SECURITY_INST(_ndp)	(((_ndp)->type_status & NAN_NDP_TYPE_MASK) == \
-									NAN_NDP_TYPE_SECURITY)
+						NAN_NDP_TYPE_SECURITY)
 #define NAN_NDP_TERMINATE(_ndp) (((_ndp)->type_status & NAN_NDP_TYPE_MASK) == \
-									NAN_NDP_TYPE_TERMINATE)
+						NAN_NDP_TYPE_TERMINATE)
 #define NAN_NDP_STATUS_SHIFT	4
 #define NAN_NDP_STATUS_MASK	0xF0
 #define NAN_NDP_STATUS_CONT	(0 << NAN_NDP_STATUS_SHIFT)

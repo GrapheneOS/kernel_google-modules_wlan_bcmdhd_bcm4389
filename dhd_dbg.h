@@ -202,7 +202,7 @@ do {	\
 } while (0)
 #define DHD_LOG_MEM(args) \
 do {	\
-	if (dhd_msg_level & DHD_ERROR_VAL) {	\
+	if (dhd_log_level & DHD_ERROR_VAL) {	\
 		DHD_LOG_DUMP_WRITE_TS;		\
 		DHD_LOG_DUMP_WRITE args;	\
 	}	\

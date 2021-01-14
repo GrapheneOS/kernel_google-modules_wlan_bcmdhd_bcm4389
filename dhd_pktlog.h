@@ -58,6 +58,8 @@ typedef struct dhd_dbg_pktlog_info {
 	uint32 driver_ts_usec;
 	uint32 firmware_ts;
 	uint32 pkt_hash;
+	uint32 tx_status_ts_sec;
+	uint32 tx_status_ts_usec;
 	bool direction;
 	void *pkt;
 } dhd_dbg_pktlog_info_t;

@@ -1826,6 +1826,10 @@ wl_cfgnan_set_if_addr(struct bcm_cfg80211 *cfg)
 		WL_ERR(("Failed to copy nmi addr\n"));
 		goto fail;
 	}
+#ifdef WL_NMI_IF
+	/* copy new nmi addr to dedicated NMI interface */
+	eacopy(if_addr.octet, cfg->nmi_ndev->dev_addr);
+#endif /* WL_NMI_IF */
 	return ret;
 fail:
 	if (!rand_mac) {
@@ -6790,8 +6794,14 @@ wl_cfgnan_data_path_request_handler(struct net_device *ndev,
 	/* cancel any ongoing RTT session with peer
 	* as we donot support DP and RNG to same peer
 	*/
-	wl_cfgnan_handle_dp_ranging_concurrency(cfg, &cmd_data->mac_addr,
+	ret = wl_cfgnan_handle_dp_ranging_concurrency(cfg, &cmd_data->mac_addr,
 		RTT_GEO_SUSPN_HOST_NDP_TRIGGER);
+	if (ret != BCME_OK) {
+		WL_ERR(("%s: failed to handler dp ranging concurrency, "
+			"peer_addr: " MACDBG ", err = %d\n", __func__,
+			ret, MAC2STRDBG(&cmd_data->mac_addr)));
+		goto fail;
+	}
 #endif /* RTT_SUPPORT */
 
 	nan_buf = MALLOCZ(cfg->osh, data_size);
@@ -7137,8 +7147,14 @@ wl_cfgnan_data_path_response_handler(struct net_device *ndev,
 		/* cancel any ongoing RTT session with peer
 		* as we donot support DP and RNG to same peer
 		*/
-		wl_cfgnan_handle_dp_ranging_concurrency(cfg, &cmd_data->mac_addr,
+		ret = wl_cfgnan_handle_dp_ranging_concurrency(cfg, &cmd_data->mac_addr,
 			RTT_GEO_SUSPN_HOST_NDP_TRIGGER);
+		if (ret != BCME_OK) {
+			WL_ERR(("%s: failed to handler dp ranging concurrency, "
+				"peer_addr: " MACDBG ", err = %d\n", __func__,
+				ret, MAC2STRDBG(&cmd_data->mac_addr)));
+			goto fail;
+		}
 #endif /* RTT_SUPPORT */
 		/* Retrieve mac from given iface name */
 		wdev = wl_cfg80211_get_wdev_from_ifname(cfg,
@@ -7526,7 +7542,28 @@ wl_cfgnan_clear_peer_ranging(struct bcm_cfg80211 *cfg,
 		err = wl_cfgnan_cancel_ranging(ndev, cfg,
 			&rng_inst->range_id,
 			NAN_RNG_TERM_FLAG_IMMEDIATE, &status);
-		wl_cfgnan_reset_remove_ranging_instance(cfg, rng_inst);
+		if (unlikely(err) || unlikely(status)) {
+			WL_ERR(("%s:nan range cancel failed, rng_id = %d ret = %d status = %d\n",
+				__FUNCTION__, rng_inst->range_id, err, status));
+			WL_ERR(("%s:nan range cancel failed, rng_id = %d "
+				"ret = %d status = %d, peer addr: " MACDBG "\n",
+				__FUNCTION__, rng_inst->range_id, err, status,
+				MAC2STRDBG(&rng_inst->peer_addr)));
+			if (err == BCME_NOTFOUND) {
+				dhd_rtt_update_geofence_sessions_cnt(dhdp, FALSE,
+					&rng_inst->peer_addr);
+				/* Remove ranging instance and clean any corresponding target */
+				wl_cfgnan_remove_ranging_instance(cfg, rng_inst);
+				err = BCME_OK;
+			}
+		} else {
+			WL_DBG(("%s: Range cancelled, range_id = %d\n",
+				__func__, rng_inst->range_id));
+			dhd_rtt_update_geofence_sessions_cnt(dhdp, FALSE,
+					&rng_inst->peer_addr);
+			/* Remove ranging instance and clean any corresponding target */
+			wl_cfgnan_remove_ranging_instance(cfg, rng_inst);
+		}
 	}
 
 	if (err) {
@@ -7673,15 +7710,21 @@ wl_nan_dp_cmn_event_data(struct bcm_cfg80211 *cfg, void *event_data,
 				goto fail;
 			}
 #endif /* WL_NAN_DISC_CACHE */
-			/* Add peer to data ndp peer list */
-			wl_cfgnan_data_add_peer(cfg, &ev_dp->peer_nmi);
 #ifdef RTT_SUPPORT
 			/* cancel any ongoing RTT session with peer
 			 * as we donot support DP and RNG to same peer
 			 */
-			wl_cfgnan_handle_dp_ranging_concurrency(cfg, &ev_dp->peer_nmi,
-					RTT_GEO_SUSPN_PEER_NDP_TRIGGER);
+			ret = wl_cfgnan_handle_dp_ranging_concurrency(cfg, &ev_dp->peer_nmi,
+				RTT_GEO_SUSPN_PEER_NDP_TRIGGER);
+			if (ret != BCME_OK) {
+				WL_ERR(("%s: failed to handler dp ranging concurrency,"
+				" peer addr: " MACDBG ", err = %d\n", __func__,
+				MAC2STRDBG(&ev_dp->peer_nmi), ret));
+				goto fail;
+			}
 #endif /* RTT_SUPPORT */
+			/* Add peer to data ndp peer list */
+			wl_cfgnan_data_add_peer(cfg, &ev_dp->peer_nmi);
 		} else if (event_num == WL_NAN_EVENT_DATAPATH_ESTB) {
 			*hal_event_id = GOOGLE_NAN_EVENT_DATA_CONFIRMATION;
 			if (ev_dp->role == NAN_DP_ROLE_INITIATOR) {
@@ -8676,7 +8719,7 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				entry_idx++;
 			}
 		}
-		break;
+		goto exit;
 	}
 #ifdef RTT_SUPPORT
 	case WL_NAN_EVENT_RNG_REQ_IND: {
@@ -9248,6 +9291,20 @@ wl_cfgnan_update_dp_info(struct bcm_cfg80211 *cfg, bool add,
 }
 
 bool
+wl_cfgnan_is_nan_active(struct net_device *ndev)
+{
+	struct bcm_cfg80211 *cfg;
+
+	if (!ndev || !ndev->ieee80211_ptr) {
+		WL_ERR(("ndev/wdev null\n"));
+		return false;
+	}
+
+	cfg =  wiphy_priv(ndev->ieee80211_ptr->wiphy);
+	return cfg->nancfg->nan_enable;
+}
+
+bool
 wl_cfgnan_is_dp_active(struct net_device *ndev)
 {
 	struct bcm_cfg80211 *cfg;
@@ -9567,6 +9624,147 @@ fail:
 	return ret;
 }
 
+#ifdef WL_NMI_IF
+/* AWARE NMI interface name */
+#define NMI_IFNAME		"aware_nmi0"
+
+static int
+wl_cfgnan_nmi_if_dummy_open(struct net_device *net)
+{
+	WL_DBG(("(%s) NMI aware iface open \n", __FUNCTION__));
+	return 0;
+}
+
+static int
+wl_cfgnan_nmi_if_dummy_close(struct net_device *net)
+{
+	WL_DBG(("(%s) NMI aware iface close \n", __FUNCTION__));
+	return 0;
+}
+
+static netdev_tx_t
+wl_cfgnan_nmi_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+{
+
+	if (skb)
+	{
+		WL_DBG(("(%s) is not used for data operations.Droping the packet.\n",
+			ndev->name));
+		dev_kfree_skb_any(skb);
+	}
+
+	return 0;
+}
+
+static int
+wl_cfgnan_nmi_if_dummy_do_ioctl(struct net_device *net, struct ifreq *ifr, int cmd)
+{
+	WL_DBG(("(%s) NMI aware iface do_ioctl cmd %d \n", __FUNCTION__, cmd));
+	return 0;
+}
+
+static const struct net_device_ops wl_cfgnan_nmi_if_ops = {
+	.ndo_open       = wl_cfgnan_nmi_if_dummy_open,
+	.ndo_stop       = wl_cfgnan_nmi_if_dummy_close,
+	.ndo_do_ioctl   = wl_cfgnan_nmi_if_dummy_do_ioctl,
+	.ndo_start_xmit = wl_cfgnan_nmi_start_xmit,
+};
+
+s32
+wl_cfgnan_register_nmi_ndev(struct bcm_cfg80211 *cfg)
+{
+	int ret = 0;
+	struct net_device* ndev = NULL;
+	struct wireless_dev *wdev = NULL;
+	uint8 temp_addr[ETHER_ADDR_LEN] = { 0x00, 0x90, 0x4c, 0x33, 0x22, 0x11 };
+	struct bcm_cfg80211 **priv;
+
+	if (cfg->nmi_ndev) {
+		WL_ERR(("nmi_ndev defined already.\n"));
+		return -EINVAL;
+	}
+
+	/* Allocate etherdev, including space for private structure */
+	if (!(ndev = alloc_etherdev(sizeof(struct bcm_cfg80211 *)))) {
+		WL_ERR(("%s: OOM - alloc_etherdev\n", __FUNCTION__));
+		return -ENODEV;
+	}
+
+	wdev = (struct wireless_dev *)MALLOCZ(cfg->osh, sizeof(*wdev));
+	if (unlikely(!wdev)) {
+		WL_ERR(("Could not allocate wireless device\n"));
+		free_netdev(ndev);
+		return -ENOMEM;
+	}
+
+	strlcpy(ndev->name, NMI_IFNAME, sizeof(ndev->name));
+
+	/* Copy the reference to bcm_cfg80211 */
+	priv = (struct bcm_cfg80211 **)netdev_priv(ndev);
+	*priv = cfg;
+
+	ASSERT(!ndev->netdev_ops);
+	ndev->netdev_ops = &wl_cfgnan_nmi_if_ops;
+
+	/* Register with a dummy MAC addr */
+	eacopy(temp_addr, ndev->dev_addr);
+
+	ndev->ieee80211_ptr = wdev;
+	wdev->netdev = ndev;
+	wdev->wiphy = bcmcfg_to_wiphy(cfg);
+	wdev->iftype = NL80211_IFTYPE_STATION;
+
+	ret = register_netdev(ndev);
+	if (ret) {
+		WL_ERR((" NMI register_netdevice failed (%d)\n", ret));
+		goto fail;
+	}
+
+	/* store nmi ndev ptr for further reference. Note that iflist won't have this
+	 * entry as there corresponding firmware interface is a "Hidden" interface.
+	 */
+	cfg->nmi_wdev = wdev;
+	cfg->nmi_ndev = ndev;
+
+	WL_INFORM_MEM(("%s: NMI Interface Registered\n", ndev->name));
+	return ret;
+fail:
+	free_netdev(ndev);
+	MFREE(cfg->osh, wdev, sizeof(*wdev));
+	return -ENODEV;
+}
+
+static s32
+wl_cfgnan_unregister_nmi_ndev(struct bcm_cfg80211 *cfg)
+{
+	struct wireless_dev *wdev;
+
+	if (!cfg) {
+		WL_ERR(("NMI IF unreg, invalid cfg \n"));
+		return -EINVAL;
+	}
+	if (!cfg->nmi_ndev) {
+		WL_ERR(("NMI IF unreg, invalid nmi_ndev \n"));
+		goto free_wdev;
+	}
+
+	unregister_netdev(cfg->nmi_ndev);
+	free_netdev(cfg->nmi_ndev);
+
+	cfg->nmi_ndev = NULL;
+
+free_wdev:
+	wdev = cfg->nmi_wdev;
+	if (!wdev) {
+		WL_ERR(("NMI IF unreg, invalid NMI Iface wdev ptr \n"));
+		return -EINVAL;
+	}
+	MFREE(cfg->osh, wdev, sizeof(*wdev));
+	cfg->nmi_wdev = NULL;
+	return BCME_OK;
+}
+#endif /* WL_NMI_IF */
+
 int
 wl_cfgnan_attach(struct bcm_cfg80211 *cfg)
 {
@@ -9586,6 +9784,12 @@ wl_cfgnan_attach(struct bcm_cfg80211 *cfg)
 	}
 
 	nancfg = cfg->nancfg;
+#ifdef WL_NMI_IF
+	if (wl_cfgnan_register_nmi_ndev(cfg) < 0) {
+		WL_ERR(("NAN NMI ndev reg failed in attach \n"));
+		return -ENODEV;
+	}
+#endif /* WL_NMI_IF */
 	mutex_init(&nancfg->nan_sync);
 	init_waitqueue_head(&nancfg->nan_event_wait);
 	INIT_DELAYED_WORK(&nancfg->nan_disable, wl_cfgnan_delayed_disable);
@@ -9611,6 +9815,12 @@ wl_cfgnan_detach(struct bcm_cfg80211 *cfg)
 			WL_DBG(("Cancel nan_nmi_rand workq\n"));
 			cancel_delayed_work_sync(&cfg->nancfg->nan_nmi_rand);
 		}
+
+#ifdef WL_NMI_IF
+		/* Unregister NMI ndev */
+		wl_cfgnan_unregister_nmi_ndev(cfg);
+#endif /* WL_NMI_IF */
+
 		MFREE(cfg->osh, cfg->nancfg, sizeof(wl_nancfg_t));
 		cfg->nancfg = NULL;
 	}

@@ -304,6 +304,7 @@ naming_info_t bcm4389_naming_table[] = {
 	{ {"usi_es13"}, {"_ES13"}, {""} },
 	{ {"usi_es15"}, {"_ES15"}, {""} },
 	{ {"usi_es17"}, {"_ES17"}, {""} },
+	{ {"usi_es19"}, {"_ES19"}, {""} },
 };
 
 /* select the NVRAM/FW tag naming table */
@@ -459,7 +460,7 @@ dhd_find_naming_info_by_chip_rev(dhd_pub_t *dhdp, bool *is_murata_fem)
 }
 #endif /* USE_CID_CHECK */
 #ifdef USE_DIRECT_VID_TAG
-static int
+int
 concate_nvram_by_vid(dhd_pub_t *dhdp, char *nv_path, char *chipstr)
 {
 	unsigned char vid[MAX_VID_LEN];
@@ -1668,6 +1669,7 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x13, 0x99, }, { "USI_WM_usi_es13" } },
 	{ 3, { 0x15, 0x99, }, { "USI_WM_usi_es15" } },
 	{ 3, { 0x17, 0x99, }, { "USI_WM_usi_es17" } },
+	{ 3, { 0x19, 0x99, }, { "USI_WM_usi_es19" } },
 #endif /* SUPPORT_MIXED_MODULES */
 };
 #else
@@ -1691,7 +1693,7 @@ dhd_get_cid_info(unsigned char *vid, int vid_length)
 		}
 	}
 
-	DHD_ERROR(("%s : Can't find the cid info, (%s)\n", __FUNCTION__, vid));
+	DHD_ERROR(("%s : Can't find the cid info\n", __FUNCTION__));
 	return NULL;
 }
 
