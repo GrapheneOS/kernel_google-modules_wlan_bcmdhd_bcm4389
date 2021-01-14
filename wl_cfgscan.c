@@ -6395,7 +6395,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	}
 #endif /* WL_5G_SOFTAP_ONLY_ON_DEF_CHAN */
 
-	ret = wl_handle_acs_concurrency_cases(cfg, parameter, qty, pList);
+	ret = wl_handle_acs_concurrency_cases(cfg, parameter, freq_list_len, chspeclist);
 	if (ret) {
 		WL_ERR(("Failed to handle the acs concurrency cases!\n"));
 		goto exit;
@@ -6408,6 +6408,10 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 			/* Skip non 6g && non PSC channels if 6G band is set */
 			WL_DBG(("Skipping non 6G/PSC channel\n"));
 
+		}
+		if ((parameter->freq_bands & CHSPEC_TO_WLC_BAND(chspeclist[i])) == 0) {
+			WL_DBG(("Skipping no matched band channel(0x%x).\n", chspeclist[i]));
+		     continue;
 		}
 
 		WL_INFORM_MEM(("ACS chanspec:0x%x\n", chspeclist[i]));
