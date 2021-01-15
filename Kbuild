@@ -858,10 +858,10 @@ ifneq ($(filter y, $(CONFIG_BCM4389)),)
 endif
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_LINUX_STD_FW_API
-	DHDCFLAGS += -DDHD_FW_NAME="\"fw_bcm$(BCM_WLAN_CHIP_SUFFIX).bin\""
-	DHDCFLAGS += -DDHD_NVRAM_NAME="\"bcmdhd_$(BCM_WLAN_CHIP_SUFFIX).cal\""
-	DHDCFLAGS += -DDHD_CLM_NAME="\"bcmdhd_clm_$(BCM_WLAN_CHIP_SUFFIX).blob\""
-	DHDCFLAGS += -DDHD_MAP_NAME="\"fw_bcm$(BCM_WLAN_CHIP_SUFFIX).map\""
+	DHDCFLAGS += -DDHD_FW_NAME="\"fw_bcmdhd.bin\""
+	DHDCFLAGS += -DDHD_NVRAM_NAME="\"bcmdhd.cal\""
+	DHDCFLAGS += -DDHD_CLM_NAME="\"bcmdhd_clm.blob\""
+	DHDCFLAGS += -DDHD_MAP_NAME="\"fw_bcmdhd.map\""
 endif
 
 else ifneq ($(CONFIG_ARCH_HISI),)

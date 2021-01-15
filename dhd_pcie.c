@@ -3406,10 +3406,17 @@ dhd_check_multiple_nvram(dhd_bus_t *bus)
 	int i;
 	bool nvram_file_exists;
 
+#ifdef DHD_LINUX_STD_FW_API
+	snprintf(pnv_path[0], sizeof(pnv_path[0]),
+		"%s_%s", DHD_NVRAM_NAME, val_revision);
+	strlcpy(pnv_path[1], DHD_NVRAM_NAME, MAX_FILE_LEN);
+	strlcpy(pnv_path[2], bus->nv_path, MAX_FILE_LEN);
+#else
 	snprintf(pnv_path[0], sizeof(pnv_path[0]),
 		"%s_%s", CONFIG_BCMDHD_NVRAM_PATH, val_revision);
 	strlcpy(pnv_path[1], CONFIG_BCMDHD_NVRAM_PATH, MAX_FILE_LEN);
 	strlcpy(pnv_path[2], bus->nv_path, MAX_FILE_LEN);
+#endif /* DHD_LINUX_STD_FW_API */
 
 	nvram_file_exists = ((pnv_path[0] != NULL) && (pnv_path[0][0] != '\0'));
 	if (nvram_file_exists) {
