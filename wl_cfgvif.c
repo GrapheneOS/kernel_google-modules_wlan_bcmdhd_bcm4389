@@ -6666,3 +6666,45 @@ wl_update_configured_bw(uint32 bw)
 	return configured_bw;
 }
 #endif /* SUPPORT_AP_INIT_BWCONF */
+
+uint32
+wl_cfgvif_get_iftype_count(struct bcm_cfg80211 *cfg, wl_iftype_t iftype)
+{
+	struct net_info *iter, *next;
+	u32 count = 0;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	for_each_ndev(cfg, iter, next) {
+		GCC_DIAGNOSTIC_POP();
+		/* Check against wl_iftype_t type */
+		if ((iter->wdev) && (iter->iftype == iftype)) {
+			struct net_device *ndev = iter->wdev->netdev;
+
+			switch (iftype) {
+				case WL_IF_TYPE_STA:
+				case WL_IF_TYPE_AP:
+					if (ndev && wl_get_drv_status(cfg, CONNECTED, ndev)) {
+						/* If interface is in connected state, mark it */
+						count++;
+					}
+					break;
+				/* P2P, NAN interfaces are dynamically created when required
+				 * and removed after use. so presence of interface indicates
+				 * that role is active.
+				 */
+				case WL_IF_TYPE_P2P_GO:
+				case WL_IF_TYPE_P2P_GC:
+				case WL_IF_TYPE_P2P_DISC:
+				case WL_IF_TYPE_NAN:
+				case WL_IF_TYPE_NAN_NMI:
+				case WL_IF_TYPE_MONITOR:
+				case WL_IF_TYPE_IBSS:
+					count++;
+					break;
+				default:
+					WL_DBG(("Ignore iftype:%d\n", iftype));
+			}
+		}
+	}
+	return count;
+}

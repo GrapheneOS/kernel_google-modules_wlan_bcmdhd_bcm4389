@@ -507,7 +507,10 @@ dhd_os_dbg_urgent_pullreq(void *os_priv, int ring_id)
 
 	ring_info = &((linux_dbgring_info_t *)os_priv)[ring_id];
 	cancel_delayed_work(&ring_info->work);
-	return dbg_ring_poll_worker(&ring_info->work.work);
+	dbg_ring_poll_worker(&ring_info->work.work);
+	schedule_delayed_work(&ring_info->work, ring_info->interval);
+
+	return;
 }
 #endif /* DHD_PKT_LOGGING_DBGRING */
 

@@ -23179,7 +23179,7 @@ wl_cfg80211_get_sta_chanspec(struct bcm_cfg80211 *cfg)
 	chanspec_t *sta_chanspec = NULL;
 
 #ifdef WL_DUAL_APSTA
-	if (wl_get_drv_status_all(cfg, CONNECTED) >= 2) {
+	if (wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_STA) >= 2) {
 		/* If both STA interfaces are connected return failure */
 		return 0;
 	} else {
