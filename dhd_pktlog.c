@@ -1254,6 +1254,10 @@ dhd_pktlog_dump_write(dhd_pub_t *dhdp, void *file, const void *user_buf, uint32 
 			DHD_ERROR(("overflowed pkt logs are dropped\n"));
 			break;
 		}
+		if (!report_ptr->info.pkt) {
+			DHD_ERROR(("pkt/skb is null. try to recover"));
+			break;
+		}
 
 #ifdef DHD_PKT_LOGGING_DBGRING
 		ret = memcpy_s((void*)(user_buf + len), size - len,

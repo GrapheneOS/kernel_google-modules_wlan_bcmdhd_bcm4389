@@ -191,8 +191,8 @@ dhd_dbg_urgent_pull(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 	if (pending_len >= (ring->threshold * 6u / 5u)) {
 		/* Flow control is required */
 		dhd_txflowcontrol(dhdp, ALL_INTERFACES, ON);
-		dhd_os_dbg_urgent_pullreq(dhdp->dbg->private, ring->id);
 		DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), flags);
+		dhd_os_dbg_urgent_pullreq(dhdp->dbg->private, ring->id);
 		return 0;
 	}
 	DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), flags);
