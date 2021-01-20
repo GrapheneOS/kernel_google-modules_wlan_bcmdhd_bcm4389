@@ -108,7 +108,7 @@ dbg_ring_poll_worker(struct work_struct *work)
 	void *buf;
 	dhd_dbg_ring_entry_t *hdr;
 	uint32 buflen, rlen;
-	unsigned long flags;
+	unsigned long flags, lock;
 
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	ring_info = container_of(d_work, linux_dbgring_info_t, work);
@@ -116,6 +116,8 @@ dbg_ring_poll_worker(struct work_struct *work)
 
 	dhdp = ring_info->dhdp;
 	ringid = ring_info->ring_id;
+
+	DHD_PKT_LOG_LOCK(dhd_os_get_pktlog_lock(dhdp), lock);
 
 	ring = &dhdp->dbg->dbg_rings[ringid];
 	DHD_DBG_RING_LOCK(ring->lock, flags);
@@ -206,6 +208,8 @@ exit:
 			schedule_delayed_work(d_work, ring_info->interval);
 		}
 	}
+	DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), lock);
+
 	return;
 }
 

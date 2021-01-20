@@ -6295,13 +6295,15 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 		bool scc_case = false;
 		u32 sta_band = CHSPEC_TO_WLC_BAND(chspec);
 		if (sta_band == WLC_BAND_2G) {
-			if (!(parameter->freq_bands & (WLC_BAND_5G | WLC_BAND_6G))) {
-				if (!(parameter->freq_bands & WLC_BAND_2G)) {
-					WL_ERR(("STA connected in 2G,"
-						" but no 2G channel available. Fail ACS\n"));
-					return -EINVAL;
-				}
+			if (parameter->freq_bands & (WLC_BAND_5G | WLC_BAND_6G)) {
+				/* Remove the 2g band from incoming ACS bands */
+				parameter->freq_bands &= ~WLC_BAND_2G;
+			} else if (parameter->freq_bands & WLC_BAND_2G) {
 				scc_case = TRUE;
+			} else {
+				WL_ERR(("STA connected in 2G,"
+					" but no 2G channel available. Fail ACS\n"));
+				return -EINVAL;
 			}
 		} else if (sta_band == WLC_BAND_5G) {
 			if (is_chanspec_dfs(cfg, chspec)) {
@@ -6313,11 +6315,24 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 				}
 				/* Remove the 5g/6g band from incoming ACS bands */
 				parameter->freq_bands &= ~(WLC_BAND_5G | WLC_BAND_6G);
-			} else if (parameter->freq_bands == WLC_BAND_5G) {
+			} else if (parameter->freq_bands & WLC_BAND_5G) {
 				scc_case = TRUE;
+			} else if (parameter->freq_bands & WLC_BAND_2G) {
+				parameter->freq_bands = WLC_BAND_2G;
+			} else {
+				WL_ERR(("STA connected in 5G %x, but no channel available "
+					"for ACS %x\n", chspec, parameter->freq_bands));
+				return -EINVAL;
 			}
-		} else if ((sta_band = WLC_BAND_6G) && (parameter->freq_bands & WLC_BAND_6G)) {
-			scc_case = TRUE;
+		} else if (sta_band == WLC_BAND_6G) {
+			if (parameter->freq_bands & WLC_BAND_6G) {
+				scc_case = TRUE;
+			} else if (parameter->freq_bands & WLC_BAND_2G) {
+				parameter->freq_bands = WLC_BAND_2G;
+			} else {
+				 WL_ERR(("STA connected in 6G %x, but no channel available "
+				"for ACS %x\n", chspec, parameter->freq_bands));
+			}
 		} else {
 			WL_ERR(("Invalid sta band. Fail ACS\n"));
 			return -EINVAL;
@@ -6327,6 +6342,9 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 			/* Check whether STA chanspec is present in the incoming freq list */
 			if (wl_find_matching_chanspec(chspec, qty, pList) == true) {
 				parameter->scc_chspec = chspec;
+				parameter->freq_bands = CHSPEC_TO_WLC_BAND(chspec);
+				WL_INFORM_MEM(("SCC case, ACS pick up STA chanspec:0x%x\n",
+					chspec));
 			} else {
 				WL_ERR(("STA chanspec is not present in the freq list."
 					" Fail ACS\n"));
@@ -6347,7 +6365,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		u32 *pElem_freq, u32 freq_list_len, u32 *req_len,
 		u32 *pList, drv_acs_params_t *parameter, int qty)
 {
-	int i;
+	int i, j;
 	u32 list_size;
 	s32 ret = BCME_OK;
 	u32 *chspeclist = NULL;
@@ -6364,13 +6382,23 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < freq_list_len; i++) {
-		chspeclist[i] = wl_freq_to_chanspec(pElem_freq[i]);
+	for (i = 0, j = 0; i < freq_list_len; i++) {
+		chspeclist[j] = wl_freq_to_chanspec(pElem_freq[i]);
+		if (CHSPEC_IS6G(chspeclist[j]) && !CHSPEC_IS_6G_PSC(chspeclist[j])) {
+			/* Skip non PSC channels */
+			WL_DBG(("Skipping 6G non PSC channel\n"));
+			continue;
+		}
+
 		/* mark all the bands found */
-		parameter->freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chspeclist[i]));
+		parameter->freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chspeclist[j]));
 		WL_DBG(("%s: list[%d]=%d => chspec=0x%x\n", __FUNCTION__, i,
-				pElem_freq[i], chspeclist[i]));
+				pElem_freq[i], chspeclist[j]));
+		j++;
 	}
+
+	/* Overried freq list len with the new value */
+	freq_list_len = j;
 
 	WL_DBG(("** freq_bands=0x%x\n", parameter->freq_bands));
 #ifdef WL_5G_SOFTAP_ONLY_ON_DEF_CHAN
@@ -6402,16 +6430,9 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	}
 
 	for (i = 0; i < freq_list_len; i++) {
-
-		if (((parameter->freq_bands & WLC_BAND_6G)) &&
-			!CHSPEC_IS_6G_PSC(chspeclist[i])) {
-			/* Skip non 6g && non PSC channels if 6G band is set */
-			WL_DBG(("Skipping non 6G/PSC channel\n"));
-
-		}
 		if ((parameter->freq_bands & CHSPEC_TO_WLC_BAND(chspeclist[i])) == 0) {
 			WL_DBG(("Skipping no matched band channel(0x%x).\n", chspeclist[i]));
-		     continue;
+			continue;
 		}
 
 		WL_INFORM_MEM(("ACS chanspec:0x%x\n", chspeclist[i]));
