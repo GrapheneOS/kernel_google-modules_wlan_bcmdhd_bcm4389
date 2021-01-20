@@ -5103,6 +5103,12 @@ int wl_chspec_chandef(chanspec_t chanspec,
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION (3, 8, 0))
 	cfg80211_chandef_create(chandef, chan, chan_type);
+	/* Above kernel API doesn't support BW80 case */
+	if (CHSPEC_BW(chanspec) == WL_CHANSPEC_BW_80) {
+		freq = wl_channel_to_frequency(CHSPEC_CHANNEL(chanspec), CHSPEC_BAND(chanspec));
+		chandef->width = NL80211_CHAN_WIDTH_80;
+		chandef->center_freq1 = freq;
+	}
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION (3, 5, 0) && (LINUX_VERSION_CODE <= (3, 7, \
 	0)))
 	chaninfo->freq = freq;
