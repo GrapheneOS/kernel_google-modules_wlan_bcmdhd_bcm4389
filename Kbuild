@@ -280,6 +280,8 @@ ifneq ($(CONFIG_FIB_RULES),)
 # HAL File dump is supported only for iptable builds(brcm_wlan_iptables_defconfig)
 ifneq ($(CONFIG_SOC_GS101),)
 DHDCFLAGS += -DDHD_DEBUGABILITY_DEBUG_DUMP
+# Pixel platform only, to support ring data flushing properly
+DHDCFLAGS += -DDHD_DUMP_START_COMMAND
 else
 DHDCFLAGS += -DDHD_FILE_DUMP_EVENT
 endif
