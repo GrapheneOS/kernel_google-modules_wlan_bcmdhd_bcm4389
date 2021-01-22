@@ -764,7 +764,9 @@ do {									\
 #define WLAN_AKM_SUITE_OWE                0X000FAC12
 #endif /* WPA_KEY_MGMT_OWE */
 #endif /* WL_OWE */
+#ifndef WLAN_AKM_SUITE_DPP
 #define WLAN_AKM_SUITE_DPP                0X506F9A02
+#endif /* WLAN_AKM_SUITE_DPP */
 
 /*
  * BRCM local.

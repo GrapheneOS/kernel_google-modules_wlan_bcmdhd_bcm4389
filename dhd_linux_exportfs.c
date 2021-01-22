@@ -1932,6 +1932,26 @@ __ATTR(dump_done, 0660, show_dhd_dump_done, NULL);
 #endif /* DHD_FILE_DUMP_EVENT */
 #endif /* WL_CFG80211 */
 
+#ifdef DHD_DUMP_START_COMMAND
+static ssize_t
+trigger_dhd_dump_start_command(struct dhd_info *dhd, char *buf)
+{
+	ssize_t ret = 0;
+	dhd_pub_t *dhdp;
+
+	dhdp = &dhd->pub;
+
+	DHD_ERROR(("%s: dump_start command delivered.\n", __FUNCTION__));
+	dhd_log_dump_trigger(dhdp, CMD_DEFAULT);
+
+	ret = scnprintf(buf, PAGE_SIZE -1, "%u\n", 0);
+	return ret;
+}
+
+static struct dhd_attr dhd_attr_dump_start_command =
+	__ATTR(dump_start, 0664, trigger_dhd_dump_start_command, NULL);
+#endif /* DHD_DUMP_START_COMMAND */
+
 /* Attribute object that gets registered with "wifi" kobject tree */
 static struct attribute *default_file_attrs[] = {
 #ifdef DHD_MAC_ADDR_EXPORT
@@ -2013,6 +2033,9 @@ static struct attribute *default_file_attrs[] = {
 	&dhd_attr_dump_done.attr,
 #endif /* DHD_FILE_DUMP_EVENT */
 #endif /* WL_CFG80211 */
+#ifdef DHD_DUMP_START_COMMAND
+	&dhd_attr_dump_start_command.attr,
+#endif /* DHD_DUMP_START_COMMAND */
 	&dhd_attr_dhd_debug_data.attr,
 #if defined(AGG_H2D_DB)
 	&dhd_attr_agg_h2d_db_enab.attr,
