@@ -186,8 +186,10 @@ dhd_wlan_init_mac_addr(void)
 #ifdef SUPPORT_MULTIPLE_NVRAM
 
 #define CMDLINE_REVISION_KEY "androidboot.revision="
+#define CMDLINE_SKU_KEY "androidboot.hardware.sku="
 
 char val_revision[MAX_HW_INFO_LEN] = {0};
+char val_sku[MAX_HW_INFO_LEN] = {0};
 
 int
 dhd_wlan_init_hardware_info(void)
@@ -196,6 +198,7 @@ dhd_wlan_init_hardware_info(void)
 	struct device_node *node;
 	char *cp;
 	const char *command_line = NULL;
+	char match_str[MAX_HW_INFO_LEN] = {0};
 	size_t len;
 
 	node = of_find_node_by_path("/chosen");
@@ -210,6 +213,26 @@ dhd_wlan_init_hardware_info(void)
 		cp = strnstr(command_line, CMDLINE_REVISION_KEY, len);
 		if (cp) {
 			sscanf(cp, CMDLINE_REVISION_KEY"%s", val_revision);
+		}
+
+		cp = strnstr(command_line, CMDLINE_SKU_KEY, len);
+		if (cp) {
+			sscanf(cp, CMDLINE_SKU_KEY"%s", match_str);
+			if (strcmp(match_str, "G9S9B") == 0 ||
+				strcmp(match_str, "G8V0U") == 0 ||
+				strcmp(match_str, "GFQM1") == 0) {
+				strcpy(val_sku, "MMW");
+			} else if (strcmp(match_str, "GR1YH") == 0 ||
+					   strcmp(match_str, "GF5KQ") == 0 ||
+					   strcmp(match_str, "GPQ72") == 0) {
+				strcpy(val_sku, "JPN");
+			} else if (strcmp(match_str, "GB7N6") == 0 ||
+					   strcmp(match_str, "GLU0G") == 0 ||
+					   strcmp(match_str, "GNA8F") == 0) {
+				strcpy(val_sku, "ROW");
+			} else {
+				strcpy(val_sku, "NA");
+			}
 		}
 	}
 

@@ -3408,14 +3408,22 @@ dhd_check_multiple_nvram(dhd_bus_t *bus)
 
 #ifdef DHD_LINUX_STD_FW_API
 	snprintf(pnv_path[0], sizeof(pnv_path[0]),
+		"%s_%s_%s", DHD_NVRAM_NAME, val_revision, val_sku);
+	snprintf(pnv_path[1], sizeof(pnv_path[1]),
+		"%s_%s", DHD_NVRAM_NAME, val_sku);
+	snprintf(pnv_path[2], sizeof(pnv_path[2]),
 		"%s_%s", DHD_NVRAM_NAME, val_revision);
-	strlcpy(pnv_path[1], DHD_NVRAM_NAME, MAX_FILE_LEN);
-	strlcpy(pnv_path[2], bus->nv_path, MAX_FILE_LEN);
+	strlcpy(pnv_path[3], DHD_NVRAM_NAME, MAX_FILE_LEN);
+	strlcpy(pnv_path[4], bus->nv_path, MAX_FILE_LEN);
 #else
 	snprintf(pnv_path[0], sizeof(pnv_path[0]),
+		"%s_%s_%s", CONFIG_BCMDHD_NVRAM_PATH, val_revision, val_sku);
+	snprintf(pnv_path[1], sizeof(pnv_path[1]),
+		"%s_%s", CONFIG_BCMDHD_NVRAM_PATH, val_sku);
+	snprintf(pnv_path[2], sizeof(pnv_path[2]),
 		"%s_%s", CONFIG_BCMDHD_NVRAM_PATH, val_revision);
-	strlcpy(pnv_path[1], CONFIG_BCMDHD_NVRAM_PATH, MAX_FILE_LEN);
-	strlcpy(pnv_path[2], bus->nv_path, MAX_FILE_LEN);
+	strlcpy(pnv_path[3], CONFIG_BCMDHD_NVRAM_PATH, MAX_FILE_LEN);
+	strlcpy(pnv_path[4], bus->nv_path, MAX_FILE_LEN);
 #endif /* DHD_LINUX_STD_FW_API */
 
 	nvram_file_exists = ((pnv_path[0] != NULL) && (pnv_path[0][0] != '\0'));
