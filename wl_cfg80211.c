@@ -8033,7 +8033,6 @@ wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 #ifdef RTT_SUPPORT
 	rtt_status_info_t *rtt_status;
 #endif /* RTT_SUPPORT */
-	int bcn_li_dtim = 0;
 	RETURN_EIO_IF_NOT_UP(cfg);
 
 	WL_DBG(("Enter\n"));
@@ -8090,31 +8089,9 @@ wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 		_net_info->ps_managed_start_ts = OSL_SYSUPTIME();
 	}
 
-	/* Set MAX bcn_li_dtim in suspend */
-	if (enabled) {
-		/* PM Enabled  */
-		dhd->max_dtim_enable = TRUE;
-		dhd->suspend_bcn_li_dtim = CUSTOM_SUSPEND_BCN_LI_DTIM;
-	} else {
-		/* PM Disabled  */
-		dhd->max_dtim_enable = FALSE;
-		dhd->suspend_bcn_li_dtim = NO_DTIM_SKIP;
-	}
-
-	/* Set bcn_li_dtim if suspend mode */
-	if (dhd->early_suspended) {
-		/* LCD off */
-#if defined(BCMPCIE)
-		int dtim_period = 0;
-		int bcn_interval = 0;
-		bcn_li_dtim = dhd_get_suspend_bcn_li_dtim(dhd, &dtim_period, &bcn_interval);
-#else
-		bcn_li_dtim = dhd_get_suspend_bcn_li_dtim(dhd);
-#endif /* OEM_ANDROID && BCMPCIE */
-		err = wldev_iovar_setint(dev, "bcn_li_dtim", bcn_li_dtim);
-		if (unlikely(err)) {
-			WL_ERR(("error (%d)\n", err));
-		}
+	if (dhd->in_suspend) {
+		/* Enable/Disable bcn_li_dtim if suspend mode */
+		dhd_set_suspend_bcn_li_dtim(dhd, enabled);
 	}
 
 	return err;

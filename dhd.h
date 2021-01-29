@@ -2657,6 +2657,7 @@ extern int dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd, int *dtim_period, int *bc
 #else
 extern int dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd);
 #endif /* OEM_ANDROID && BCMPCIE */
+extern int dhd_set_suspend_bcn_li_dtim(dhd_pub_t *dhd, bool set_suspend);
 
 extern bool dhd_support_sta_mode(dhd_pub_t *dhd);
 extern int write_to_file(dhd_pub_t *dhd, uint8 *buf, int size);
@@ -3202,9 +3203,10 @@ extern char fw_path2[MOD_PARAM_PATHLEN];
 
 #ifdef SUPPORT_MULTIPLE_NVRAM
 #define MAX_HW_INFO_LEN   10u
-#define MAX_FILE_COUNT    3u
+#define MAX_FILE_COUNT    5u
 #define MAX_FILE_LEN      90u
 extern char val_revision[MAX_HW_INFO_LEN];
+extern char val_sku[MAX_HW_INFO_LEN];
 #endif /* SUPPORT_MULTIPLE_NVRAM */
 
 #define VENDOR_PATH ""
