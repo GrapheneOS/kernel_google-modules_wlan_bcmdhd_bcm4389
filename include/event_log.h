@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -559,6 +559,11 @@ extern int event_log_init(osl_t *osh);
 extern int event_log_set_init(osl_t *osh, int set_num, int size);
 extern int event_log_set_expand(osl_t *osh, int set_num, int size);
 extern int event_log_set_shrink(osl_t *osh, int set_num, int size);
+
+#ifdef BOOTMEM_ALLOCATOR
+int event_log_set_init_bootmem(osl_t *osh, int set_num, uint bootmem_id);
+void event_log_set_deinit_bootmem(osl_t *osh, int set_num, uint bootmem_id);
+#endif /* BOOTMEM_ALLOCATOR */
 
 extern int event_log_tag_start(int tag, int set_num, int flags);
 extern int event_log_tag_set_retrieve(int tag);

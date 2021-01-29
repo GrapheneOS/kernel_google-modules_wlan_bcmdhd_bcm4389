@@ -1,7 +1,7 @@
 /*
  * Fundamental types and constants relating to WPA
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -185,12 +185,14 @@ typedef BWL_PRE_PACKED_STRUCT struct
 			(akm) == RSN_AKM_FILS_SHA384 || \
 			(akm) == RSN_AKM_OWE || \
 			(akm) == RSN_AKM_SUITEB_SHA256_1X || \
-			(akm) == RSN_AKM_SUITEB_SHA384_1X)
+			(akm) == RSN_AKM_SUITEB_SHA384_1X || \
+			(akm) == RSN_AKM_PASN)
 
 #define IS_VALID_BIP_CIPHER(cipher) ((cipher) == WPA_CIPHER_BIP || \
 					(cipher) == WPA_CIPHER_BIP_GMAC_128 || \
 					(cipher) == WPA_CIPHER_BIP_GMAC_256 || \
-					(cipher) == WPA_CIPHER_BIP_CMAC_256)
+					(cipher) == WPA_CIPHER_BIP_CMAC_256 || \
+					(cipher) == WPA_CIPHER_TPK)
 
 #define WPA_IS_FT_AKM(akm)	((akm) == RSN_AKM_FBT_SHA256 || \
 			(akm) == RSN_AKM_FBT_SHA384)

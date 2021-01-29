@@ -6,7 +6,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -3830,6 +3830,29 @@ typedef struct dvfs_status_v2 {
 #define DVFS_STATUS_VER_3_LEN			(sizeof(dvfs_status_v2_t))
 #define DVFS_STATUS_VER_2_LEN			(DVFS_STATUS_VER_3_LEN - (sizeof(uint16)))
 
+#define DVFS_STATUS_VERSION_4			4
+typedef struct dvfs_status_v4 {
+	uint16  version;			/* version of dvfs_status */
+	uint16  len;				/* total length including all fixed fields */
+	uint8   info;				/* current dvfs state request and status */
+	uint8   voltage;			/* voltage (multiple of 10mV) */
+	uint16  freq;				/* arm clock frequency (in MHz) */
+	uint32  state_change_count;		/* total state (LDV/NDV) transition count */
+	uint32  ldv_duration;			/* total time (ms) in LDV */
+	uint32  ndv_duration;			/* total time (ms) in NDV */
+	uint16	status;				/* status bits */
+	uint16	raw_request;			/* raw request bits */
+	uint16	active_request;			/* active request bits */
+	/* DVFS_STATUS_VERSION_3 for pmurev >= 40 */
+	uint16	valid_cores;			/* bitmap to indicate valid cores status */
+	/* DVFS_STATUS_VERSION_4 for pmurev >= 43 */
+	uint32  state_change_count_hw_ldv;	/* total state (LDV/NDV) transition count by HW */
+	uint32  state_change_count_hw_ndv;	/* total state (LDV/NDV) transition count by HW */
+	uint32  ldv_duration_hw;		/* total time (ms) in LDV reported by HW */
+	uint32  ndv_duration_hw;		/* total time (ms) in NDV reported by HW */
+} dvfs_status_v4_t;
+#define DVFS_STATUS_VER_4_LEN			(sizeof(dvfs_status_v4_t))
+
 /* DVFS_SUBCMD_HIST */
 #define DVFS_HIST_CMD_VERSION_1 1
 typedef struct dvfs_hist_cmd_v1 {
@@ -4160,6 +4183,7 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_GE40_UCODE_V1 = 0x400,	/**< corerev >= 40 UCODE MACSTAT */
 	WL_CNT_XTLV_GE64_UCODEX_V1 = 0x800,	/* corerev >= 64 UCODEX MACSTAT */
 	WL_CNT_XTLV_GE80_UCODE_V1 = 0x900,	/* corerev >= 80 UCODEX MACSTAT */
+	WL_CNT_XTLV_GE80_RXERR_UCODE_V1 = 0x901,	/* corerev >= 80 UCODE RXERR mac stat */
 	WL_CNT_XTLV_GE80_TXFUNFL_UCODE_V1 = 0x1000	/* corerev >= 80 UCODEX MACSTAT */
 };
 
@@ -4428,6 +4452,7 @@ typedef struct bcnsim_status_v1 {
 #define WL_CNT_REV80_MCST_TXFUNFl_STRUCT_SZ(fcnt) \
 	(WL_CNT_REV80_MCST_TXFUNFlW_STRUCT_FIXED_SZ + (fcnt * sizeof(uint32)))
 #define WL_CNT_REV80_MCST_TXFUNFlW_STRUCT_SZ (WL_CNT_REV80_MCST_TXFUNFl_STRUCT_SZ(NFIFO_EXT))
+#define WL_CNT_REV80_RXERR_MCST_STRUCT_SZ ((uint32)sizeof(wl_cnt_ge80_rxerr_mcst_v1_t))
 
 #define WL_CNT_MCXST_STRUCT_SZ ((uint32)sizeof(wl_cnt_ge64mcxst_v1_t))
 
@@ -4837,52 +4862,8 @@ typedef struct wl_he_cnt_wlc_v3 {
 	uint32 he_rxtrig_nfrp;
 	uint32 he_rxtrig_bqrp;
 	uint32 he_rxtrig_gcrmubar;
-} wl_he_cnt_wlc_v3_t;
-
-typedef struct wl_he_cnt_wlc_v3_1 {
-	uint16 version;
-	uint16 len;
-	uint32 he_rxtrig_myaid; /**< rxed valid trigger frame with myaid */
-	uint32 he_rxtrig_rand; /**< rxed valid trigger frame with random aid */
-	uint32 he_colormiss_cnt; /**< for bss color mismatch cases */
-	uint32 he_txmampdu; /**< for multi-TID AMPDU transmission */
-	uint32 he_txmtid_back; /**< for multi-TID BACK transmission */
-	uint32 he_rxmtid_back; /**< reception of multi-TID BACK */
-	uint32 he_rxmsta_back; /**< reception of multi-STA BACK */
-	uint32 he_txfrag; /**< transmission of Dynamic fragmented packets */
-	uint32 he_rxdefrag; /**< reception of dynamic fragmented packets */
-	uint32 he_txtrig; /**< transmission of trigger frames */
-	uint32 he_rxtrig_basic; /**< reception of basic trigger frame */
-	uint32 he_rxtrig_murts; /**< reception of MU-RTS trigger frame */
-	uint32 he_rxtrig_bsrp; /**< reception of BSR poll trigger frame */
-	uint32 he_rxhemuppdu_cnt; /**< rxing HE MU PPDU */
-	uint32 he_physu_rx; /**< reception of SU frame */
-	uint32 he_phyru_rx; /**< reception of RU frame */
-	uint32 he_txtbppdu; /**< increments on transmission of every TB PPDU */
-	uint32 he_null_tbppdu; /**< null TB PPDU's sent as a response to basic trigger frame */
-	uint32 he_rxhesuppdu_cnt; /**< rxing SU PPDU */
-	uint32 he_rxhesureppdu_cnt; /**< rxing Range Extension(RE) SU PPDU */
-	uint32 he_null_zero_agg; /**< null AMPDU's transmitted in response to basic trigger
-				 * because of zero aggregation
-				 */
-	uint32 he_null_bsrp_rsp; /**< null AMPDU's txed in response to BSR poll */
-	uint32 he_null_fifo_empty; /**< null AMPDU's in response to basic trigger
-				 * because of no frames in fifo's
-				 */
-	uint32 he_myAID_cnt;
-	uint32 he_rxtrig_bfm_cnt;
-	uint32 he_rxtrig_mubar;
-	uint32 rxheru[WL_RU_TYPE_MAX];		/**< HE of rx pkts */
-	uint32 txheru[WL_RU_TYPE_MAX];
-	uint32 he_mgmt_tbppdu;
-	uint32 he_cs_req_tx_cancel;
-	uint32 he_wrong_nss;
-	uint32 he_trig_unsupp_rate;
-	uint32 he_rxtrig_nfrp;
-	uint32 he_rxtrig_bqrp;
-	uint32 he_rxtrig_gcrmubar;
 	uint32 he_txtbppdu_cnt[AC_COUNT];
-} wl_he_cnt_wlc_v3_1_t;
+} wl_he_cnt_wlc_v3_t;
 
 /* he counters Version 4 */
 #define HE_COUNTERS_V4		(4)
@@ -4930,64 +4911,9 @@ typedef struct wl_he_cnt_wlc_v4 {
 	uint32 he_rxtrig_gcrmubar;
 	uint32 he_rxtrig_basic_htpack; /**< triggers received with HTP ack policy */
 	uint32 he_rxtrig_ed_cncl;	/**< count of cancelled packets
-					 * because of cs_req in trigger frame
+					 * becasue of cs_req in trigger frame
 					 */
-	uint32 he_rxtrig_suppr_null_tbppdu; /**<  count of null frame sent because of
-					 * suppression scenarios
-					 */
-	uint32 he_ulmu_disable;		/**< number of UL MU disable scenario's handled in ucode */
-	uint32 he_ulmu_data_disable;	/**<number of UL MU data disable scenarios
-					 * handled in ucode
-					 */
-} wl_he_cnt_wlc_v4_t;
-
-typedef struct wl_he_cnt_wlc_v4_1 {
-	uint16 version;
-	uint16 len;
-	uint32 he_rxtrig_myaid; /**< rxed valid trigger frame with myaid */
-	uint32 he_rxtrig_rand; /**< rxed valid trigger frame with random aid */
-	uint32 he_colormiss_cnt; /**< for bss color mismatch cases */
-	uint32 he_txmampdu; /**< for multi-TID AMPDU transmission */
-	uint32 he_txmtid_back; /**< for multi-TID BACK transmission */
-	uint32 he_rxmtid_back; /**< reception of multi-TID BACK */
-	uint32 he_rxmsta_back; /**< reception of multi-STA BACK */
-	uint32 he_txfrag; /**< transmission of Dynamic fragmented packets */
-	uint32 he_rxdefrag; /**< reception of dynamic fragmented packets */
-	uint32 he_txtrig; /**< transmission of trigger frames */
-	uint32 he_rxtrig_basic; /**< reception of basic trigger frame */
-	uint32 he_rxtrig_murts; /**< reception of MU-RTS trigger frame */
-	uint32 he_rxtrig_bsrp; /**< reception of BSR poll trigger frame */
-	uint32 he_rxtsrt_hemuppdu_cnt; /**< rxing HE MU PPDU */
-	uint32 he_physu_rx; /**< reception of SU frame */
-	uint32 he_phyru_rx; /**< reception of RU frame */
-	uint32 he_txtbppdu; /**< increments on transmission of every TB PPDU */
-	uint32 he_null_tbppdu; /**< null TB PPDU's sent as a response to basic trigger frame */
-	uint32 he_rxstrt_hesuppdu_cnt; /**< rxing SU PPDU */
-	uint32 he_rxstrt_hesureppdu_cnt; /**< rxing Range Extension(RE) SU PPDU */
-	uint32 he_null_zero_agg; /**< null AMPDU's transmitted in response to basic trigger
-				 * because of zero aggregation
-				 */
-	uint32 he_null_bsrp_rsp; /**< null AMPDU's txed in response to BSR poll */
-	uint32 he_null_fifo_empty; /**< null AMPDU's in response to basic trigger
-				 * because of no frames in fifo's
-				 */
-	uint32 he_myAID_cnt;
-	uint32 he_rxtrig_bfm_cnt;
-	uint32 he_rxtrig_mubar;
-	uint32 rxheru[WL_RU_TYPE_MAX];		/**< HE of rx pkts */
-	uint32 txheru[WL_RU_TYPE_MAX];
-	uint32 he_mgmt_tbppdu;
-	uint32 he_cs_req_tx_cancel;
-	uint32 he_wrong_nss;
-	uint32 he_trig_unsupp_rate;
-	uint32 he_rxtrig_nfrp;
-	uint32 he_rxtrig_bqrp;
-	uint32 he_rxtrig_gcrmubar;
-	uint32 he_rxtrig_basic_htpack; /**< triggers received with HTP ack policy */
-	uint32 he_rxtrig_ed_cncl;	/**< count of cancelled packets
-					 * because of cs_req in trigger frame
-					 */
-	uint32 he_rxtrig_suppr_null_tbppdu; /**<  count of null frame sent because of
+	uint32 he_rxtrig_suppr_null_tbppdu; /**<  count of null frame sent becasue of
 					 * suppression scenarios
 					 */
 	uint32 he_ulmu_disable;		/**< number of UL MU disable scenario's handled in ucode */
@@ -4995,7 +4921,7 @@ typedef struct wl_he_cnt_wlc_v4_1 {
 					 * handled in ucode
 					 */
 	uint32 he_txtbppdu_cnt[AC_COUNT];
-} wl_he_cnt_wlc_v4_1_t;
+} wl_he_cnt_wlc_v4_t;
 
 /* he counters Version 5 */
 #define HE_COUNTERS_V5		(5)
@@ -5043,61 +4969,7 @@ typedef struct wl_he_cnt_wlc_v5 {
 	uint32 he_rxtrig_bqrp;
 	uint32 he_rxtrig_gcrmubar;
 	uint32 he_rxtrig_basic_htpack;		/* triggers received with HTP ack policy */
-	uint32 he_rxtrig_suppr_null_tbppdu;	/*  count of null frame sent because of
-						 * suppression scenarios
-						 */
-	uint32 he_ulmu_disable;			/* number of ULMU dis scenario's handled in ucode */
-	uint32 he_ulmu_data_disable;		/* number of UL MU data disable scenarios
-						 * handled in ucode
-						 */
-	uint32 rxheru_2x996T;
-} wl_he_cnt_wlc_v5_t;
-
-typedef struct wl_he_cnt_wlc_v5_1 {
-	uint16 version;
-	uint16 len;
-	uint32 he_rxtrig_myaid;			/* rxed valid trigger frame with myaid */
-	uint32 he_rxtrig_rand;			/* rxed valid trigger frame with random aid */
-	uint32 he_colormiss_cnt;		/* for bss color mismatch cases */
-	uint32 he_txmampdu;			/* for multi-TID AMPDU transmission */
-	uint32 he_txmtid_back;			/* for multi-TID BACK transmission */
-	uint32 he_rxmtid_back;			/* reception of multi-TID BACK */
-	uint32 he_rxmsta_back;			/* reception of multi-STA BACK */
-	uint32 he_txfrag;			/* transmission of Dynamic fragmented packets */
-	uint32 he_rxdefrag;			/* reception of dynamic fragmented packets */
-	uint32 he_txtrig;			/* transmission of trigger frames */
-	uint32 he_rxtrig_basic;			/* reception of basic trigger frame */
-	uint32 he_rxtrig_murts;			/* reception of MU-RTS trigger frame */
-	uint32 he_rxtrig_bsrp;			/* reception of BSR poll trigger frame */
-	uint32 he_rxtsrt_hemuppdu_cnt;		/* rxing HE MU PPDU */
-	uint32 he_physu_rx;			/* reception of SU frame */
-	uint32 he_phyru_rx;			/* reception of RU frame */
-	uint32 he_txtbppdu;			/* increments on transmission of every TB PPDU */
-	uint32 he_null_tbppdu;			/* null TBPPDU's sent as a response to
-						 * basic trigger frame
-						 */
-	uint32 he_rxstrt_hesuppdu_cnt;		/* rxing SU PPDU */
-	uint32 he_rxstrt_hesureppdu_cnt;	/* rxing Range Extension(RE) SU PPDU */
-	uint32 he_null_zero_agg;		/* nullAMPDU's transmitted in response to
-						 * basic trigger because of zero aggregation
-						 */
-	uint32 he_null_bsrp_rsp;		/* null AMPDU's txed in response to BSR poll */
-	uint32 he_null_fifo_empty;		/* null AMPDU's in response to basic trigger
-						 * because of no frames in fifo's
-						 */
-	uint32 he_rxtrig_bfm_cnt;
-	uint32 he_rxtrig_mubar;
-	uint32 rxheru[WL_RU_TYPE_MAX];		/* HE of rx pkts */
-	uint32 txheru[WL_RU_TYPE_MAX];
-	uint32 he_mgmt_tbppdu;
-	uint32 he_cs_req_tx_cancel;
-	uint32 he_wrong_nss;
-	uint32 he_trig_unsupp_rate;
-	uint32 he_rxtrig_nfrp;
-	uint32 he_rxtrig_bqrp;
-	uint32 he_rxtrig_gcrmubar;
-	uint32 he_rxtrig_basic_htpack;		/* triggers received with HTP ack policy */
-	uint32 he_rxtrig_suppr_null_tbppdu;	/*  count of null frame sent because of
+	uint32 he_rxtrig_suppr_null_tbppdu;	/*  count of null frame sent becasue of
 						 * suppression scenarios
 						 */
 	uint32 he_ulmu_disable;			/* number of ULMU dis scenario's handled in ucode */
@@ -5106,7 +4978,7 @@ typedef struct wl_he_cnt_wlc_v5_1 {
 						 */
 	uint32 rxheru_2x996T;
 	uint32 he_txtbppdu_cnt[AC_COUNT];
-} wl_he_cnt_wlc_v5_1_t;
+} wl_he_cnt_wlc_v5_t;
 
 #ifndef HE_COUNTERS_VERSION_ENABLED
 #define HE_COUNTERS_VERSION	(HE_COUNTERS_V1)
@@ -5503,7 +5375,6 @@ typedef struct {
 	uint32	rxmtidback;
 	uint32	rxmstaback;
 	uint32	txfrag;
-	/* End of PSM2HOST stats block */
 	/* start of rxerror overflow counter(24) block which are modified/added in corerev 80 */
 	uint32	phyovfl;
 	uint32	rxf0ovfl;	/**< number of receive fifo 0 overflows */
@@ -5517,11 +5388,23 @@ typedef struct {
 	uint32	stsfifoerr;
 	uint32	PAD[6];
 	uint32	rxerr_stat;
-	uint32	ctx_fifo_full;
+	uint32	ctx_fifo_full;	/* Firmware not draining frames fast enough */
 	uint32	PAD0[9];
 	uint32	ctmode_ufc_cnt;
-	uint32	PAD1[28]; /* PAD added for counter elements to be added soon */
+	uint32	PAD1[28];	/* PAD added for counter elements to be added soon */
 } wl_cnt_ge80mcst_v1_t;
+
+/* RX error related counters in addition to RX counters in MAC stats above.
+ * Counters collected from noncontiguous SHM locations.
+ */
+typedef struct {
+	uint32 rx20s_cnt;		/* Increments if RXFrame does not include primary 20 */
+	uint32 m_pfifo_drop;		/* ucode is late processing RX frame */
+	uint32 new_rxin_plcp_wait_cnt;	/* invalid reception/ ucode late in processing rx/ something
+					 * wrong over MACPHY interface
+					 */
+	uint32 laterx_cnt;		/* ucode sees frame 30us late */
+} wl_cnt_ge80_rxerr_mcst_v1_t;
 
 typedef struct {
 	uint32 fifocount;
@@ -9028,7 +8911,8 @@ typedef BWL_PRE_PACKED_STRUCT struct wl_pwrstats {
 #define WLC_PMD_TX_IN_PROGRESS		0x10000u	/* Dongle awake due to packet TX */
 #define WLC_PMD_4WAYHS_IN_PROGRESS	0x20000u	/* Dongle awake due to 4 way handshake */
 #define WLC_PMD_PM_OVERRIDE		0x40000u	/* Dongle awake due to PM override */
-#define WLC_PMD_WAKE_OTHER		0x80000u
+#define WLC_PMD_PASN_IN_PROGRESS	0x80000u	/* Dongle awake due to PASN exchange */
+#define WLC_PMD_WAKE_OTHER		0x100000u
 
 typedef struct wlc_pm_debug {
 	uint32 timestamp;	     /**< timestamp in millisecond */
@@ -9313,6 +9197,19 @@ typedef struct bus_metrics {
 	uint32 suspend_dur;	/**< msecs in bus, usecs for user */
 	uint32 disconnect_dur;	/**< msecs in bus, usecs for user */
 } bus_metrics_t;
+
+#define BUS_DUMP_PARAM_VER_1		(1u)
+#define SUB_CMD_MAX			(32u)
+typedef struct bus_dump_param {
+	uint16	version;		/**< version */
+	uint16	len;			/**< length */
+	uint32	flags;			/**< flags */
+	uint32	value;			/**< value to set */
+	char	sub_cmd[SUB_CMD_MAX];	/**< sub command name */
+} bus_dump_param_t;
+
+#define BUS_DUMP_FLAGS_CLEAR		(1u << 0u)
+#define BUS_DUMP_FLAGS_SET		(1u << 1u)
 
 /** Bus interface info for USB/HSIC */
 #include <packed_section_start.h>
@@ -10133,6 +10030,14 @@ typedef struct wlc_btc_stats_v5 {
 	uint16 wldurn_ge21ms;		/* WL duration count between 21-30ms */
 	uint16 wldurn_ge30ms;		/* WL duration count between 30-65ms */
 	uint16 wldurn_ge65ms;		/* WL Duration greater than 65ms */
+	uint16 nan_idle_cnt;		/* Nan Idle Slot Count */
+	uint16 nan_pre_dw_cnt;		/* Nan Pre Dw Slot Count */
+	uint16 nan_pre_data_cnt;	/* Nan Pre Data Slot Count */
+	uint16 nan_post_dw_cnt;		/* Nan Post Dw Slot Count */
+	uint16 nan_dw_cnt;		/* Nan Dw Slot Count */
+	uint16 nan_data_p1_cnt;		/* Nan P1 Data Slot Count */
+	uint16 nan_data_p2_cnt;		/* Nan P2 Data Slot Count */
+	uint16 nan_pri_deny_cnt;	/* Nan Priority Slot Denial Count */
 } wlc_btc_stats_v5_t;
 
 #define BTCX_STATS_VER_4 4
@@ -10225,6 +10130,26 @@ typedef struct wlc_btc_stats_v2 {
 	uint16 bt_latency_cnt; /* #Time ucode high latency detected since WL up */
 	uint16 rsvd; /* pad to align struct to 32bit bndry	 */
 } wlc_btc_stats_v2_t;
+
+typedef struct phy_ecounter_v1 {
+	chanspec_t	chanspec;
+	uint8		slice;
+	uint8		PAD;
+	uint16		phy_wdg;	/* Count of times watchdog happened. */
+	uint16		noise_req;	/* Count of phy noise sample requests. */
+	uint16		noise_crsbit;	/* Count of CRS high during noisecal request. */
+	uint16		noise_apply;	/* Count of applying noisecal result to crsmin. */
+	uint16		cal_counter;	/* Count of performing single and multi phase cal. */
+} phy_ecounter_v1_t;
+
+#define PHY_ECOUNTERS_STATS_VER1	1u
+typedef struct phy_ecounter_stats_v1 {
+	uint16			version;
+	uint16			length;
+	uint8			num_channel;	/* Number of active channels. */
+	uint8			PAD;
+	phy_ecounter_v1_t	phy_counter[];
+} phy_ecounter_stats_v1_t;
 
 /* Durations for each bt task in millisecond */
 #define WL_BTCX_DURSTATS_VER_2 (2u)
@@ -12656,6 +12581,8 @@ typedef enum wl_nan_stats_tlv {
 	WL_NAN_XTLV_GEN_AVAIL_STATS_SCHED	= NAN_CMD(WL_NAN_CMD_GENERIC_COMP_ID, 0x06),
 	WL_NAN_XTLV_GEN_NDP_STATS               = NAN_CMD(WL_NAN_CMD_GENERIC_COMP_ID, 0x07),
 	WL_NAN_XTLV_GEN_PARSE_STATS		= NAN_CMD(WL_NAN_CMD_GENERIC_COMP_ID, 0x08),
+	WL_NAN_XTLV_GEN_BIP_STATS		= NAN_CMD(WL_NAN_CMD_GENERIC_COMP_ID, 0x09),
+	WL_NAN_XTLV_GEN_PEER_BIP_STATS		= NAN_CMD(WL_NAN_CMD_GENERIC_COMP_ID, 0x0A),
 
 	WL_NAN_XTLV_DAM_STATS			= NAN_CMD(WL_NAN_CMD_DAM_COMP_ID, 0x01),
 	WL_NAN_XTLV_DAM_AVAIL_STATS		= NAN_CMD(WL_NAN_CMD_DAM_COMP_ID, 0x02),
@@ -13157,7 +13084,9 @@ enum wl_nan_cfg_ctrl2_flags1 {
 	/* Control flag to enable/disable BIP_CMAC_128 */
 	WL_NAN_CTRL2_FLAG1_BIP_CMAC_128			    = 0x000020000,
 	/* Control flag to enable/disable BIP_GMAC_256 */
-	WL_NAN_CTRL2_FLAG1_BIP_GMAC_256			    = 0x000040000
+	WL_NAN_CTRL2_FLAG1_BIP_GMAC_256			    = 0x000040000,
+	/* Control flag to enable/disable Notifs to BTcoex */
+	WL_NAN_CTRL2_FLAG1_BTCX_NOTIF			    = 0x000080000
 };
 #define WL_NAN_CTRL2_FLAGS1_MASK	0x000FFFFF
 
@@ -14458,10 +14387,12 @@ typedef struct wl_nan_fw_cap_v2 {
 } wl_nan_fw_cap_v2_t;
 
 /* nan cipher suite support mask bits */
-#define WL_NAN_CIPHER_SUITE_SHARED_KEY_128_MASK  0x01
-#define WL_NAN_CIPHER_SUITE_SHARED_KEY_256_MASK  0x02
-#define WL_NAN_CIPHER_SUITE_PUBLIC_KEY_128_MASK  0x04
-#define WL_NAN_CIPHER_SUITE_PUBLIC_KEY_256_MASK  0x08
+#define WL_NAN_CIPHER_SUITE_SHARED_KEY_128_MASK		0x01
+#define WL_NAN_CIPHER_SUITE_SHARED_KEY_256_MASK		0x02
+#define WL_NAN_CIPHER_SUITE_PUBLIC_KEY_128_MASK		0x04
+#define WL_NAN_CIPHER_SUITE_PUBLIC_KEY_256_MASK		0x08
+#define WL_NAN_CIPHER_SUITE_BIP_KEY_128_MASK		0x40
+#define WL_NAN_CIPHER_SUITE_BIP_KEY_256_MASK		0x80
 
 /* NAN Save Restore */
 #define WL_NAN_NSR2_INFO_MAX_SIZE	2048 /* arbitrary */
@@ -16248,7 +16179,10 @@ typedef enum wl_gpaio_option {
 	GPAIO_LPBK_OUT,
 	GPAIO_ADC_LPBK_INN,
 	GPAIO_ADC_LPBK_INP,
-	GPAIO_ETSSI
+	GPAIO_ETSSI,
+	GPAIO_PAD5G_GM_BIAS_V,
+	GPAIO_PAD5G_GM_DRAIN_V,
+	GPAIO_PAD5G_CAS_BIAS_V
 } wl_gpaio_option_t;
 
 /** IO Var Operations - the Value of iov_op In wlc_ap_doiovar */
@@ -16585,15 +16519,15 @@ typedef enum wl_proxd_session_flags {
 #define WL_FTM_SESSION_FLAG_RTT_DETAIL		0x0000000000000020llu	/* rtt detail results */
 #define WL_FTM_SESSION_FLAG_SECURE		0x0000000000000040llu	/* session is secure */
 #define WL_FTM_SESSION_FLAG_AOA			0x0000000000000080llu	/* AOA along w/ RTT */
-#define WL_FTM_SESSION_FLAG_RX_AUTO_BURST       0x0000000000000100llu	/* see flags above */
-#define WL_FTM_SESSION_FLAG_TX_AUTO_BURST	0x0000000000000200llu	/* see  flags above */
+#define WL_FTM_SESSION_FLAG_SEC_LTF_SUPPORTED   0x0000000000000100llu	/* 11AZ sec LTF supported */
+#define WL_FTM_SESSION_FLAG_SEC_LTF_REQUIRED 	0x0000000000000200llu	/* 11AZ sec LTF required */
 #define WL_FTM_SESSION_FLAG_NAN_BSS		0x0000000000000400llu	/* NAN BSS */
 #define WL_FTM_SESSION_FLAG_ASAP_CAPABLE	0x0000000000000800llu	/* ASAP-capable */
 #define WL_FTM_SESSION_FLAG_RANDMAC		0x0000000000001000llu	/* use random mac */
 #define WL_FTM_SESSION_FLAG_REPORT_FAILURE	0x0000000000002000llu	/* failure to target */
 #define WL_FTM_SESSION_FLAG_INITIATOR_RPT	0x0000000000004000llu	/* distance to target */
-#define WL_FTM_SESSION_FLAG_NOCHANSWT		0x0000000000008000llu
-#define WL_FTM_SESSION_FLAG_SEC_REQ		0x0000000000010000llu	/* security required */
+#define WL_FTM_SESSION_FLAG_NOCHANSWT		0x0000000000008000llu   /* reserved in comp ? */
+#define WL_FTM_SESSION_FLAG_RSVD1		0x0000000000010000llu	/* reserved */
 #define WL_FTM_SESSION_FLAG_SEQ_EN		0x0000000000020000llu	/* Toast */
 #define WL_FTM_SESSION_FLAG_NO_PARAM_OVRD	0x0000000000040000llu	/* no override from tgt */
 #define WL_FTM_SESSION_FLAG_ASAP		0x0000000000080000llu	/* ASAP session */
@@ -16615,10 +16549,15 @@ typedef enum wl_proxd_session_flags {
 #define WL_FTM_SESSION_FLAG_I2R_IMMEDIATE_RPT	0x0000000800000000llu	/* immediate I2R feedback */
 #define WL_FTM_SESSION_FLAG_R2I_IMMEDIATE_RPT	0x0000001000000000llu	/* immediate R2R report */
 #define WL_FTM_SESSION_FLAG_DEV_CLASS_A		0x0000002000000000llu	/* class A device */
-#define WL_FTM_SESSION_FLAG_RX_ENABLED	        0x0000004000000000llu,  /* respond to requests */
-#define	WL_FTM_SESSION_FLAG_RSVD3               0x0000008000000000llu,  /* reserved */
-#define WL_FTM_SESSION_FLAG_TX_LCI		0x0000010000000000llu,  /**< tx lci, if known */
-#define	WL_FTM_SESSION_FLAG_TX_CIVIC		0x0000020000000000llu,  /**< tx civic, if known */
+#define WL_FTM_SESSION_FLAG_RX_ENABLED	        0x0000004000000000llu   /* respond to requests */
+#define WL_FTM_SESSION_FLAG_I2R_LMR_POLICY      0x0000008000000000llu   /* I2R LMR policy */
+#define WL_FTM_SESSION_FLAG_TX_LCI		0x0000010000000000llu   /* tx lci, if known */
+#define	WL_FTM_SESSION_FLAG_TX_CIVIC		0x0000020000000000llu   /* tx civic, if known */
+#define	WL_FTM_SESSION_FLAG_I2R_REQ_ACCEPT	0x0000040000000000llu   /* ISTA flag to honor
+									 * i2r request from RSTA
+									 * even when its LMR
+									 * feedback is false.
+									 */
 #define WL_FTM_SESSION_FLAG_ALL			0xffffffffffffffffllu
 
 /* alias */
@@ -16633,7 +16572,6 @@ typedef uint64 wl_ftm_session_mask_t;
  */
 #define FTM_COMMON_CONFIG_MASK \
 	(WL_FTM_SESSION_FLAG_INITIATOR \
-	| WL_FTM_SESSION_FLAG_INITIATOR_RPT \
 	| WL_FTM_SESSION_FLAG_TARGET \
 	| WL_FTM_SESSION_FLAG_SECURE \
 	| WL_FTM_SESSION_FLAG_CORE_ROTATE \
@@ -16648,6 +16586,7 @@ typedef uint64 wl_ftm_session_mask_t;
 /* flags relevant to MC sessions */
 #define FTM_MC_CONFIG_MASK \
 	(WL_FTM_SESSION_FLAG_AUTO_VHTACK \
+	| WL_FTM_SESSION_FLAG_INITIATOR_RPT \
 	| WL_FTM_SESSION_FLAG_MBURST_NODELAY \
 	| WL_FTM_SESSION_FLAG_ASAP_CAPABLE \
 	| WL_FTM_SESSION_FLAG_ASAP \
@@ -16662,10 +16601,13 @@ typedef uint64 wl_ftm_session_mask_t;
 
 /* flags relevant to NTB sessions */
 #define FTM_NTB_CONFIG_MASK \
-	(WL_FTM_SESSION_FLAG_R2I_TOA_PHASE_SHIFT \
+	(WL_FTM_SESSION_FLAG_INITIATOR_RPT \
+	| WL_FTM_SESSION_FLAG_R2I_TOA_PHASE_SHIFT \
 	| WL_FTM_SESSION_FLAG_I2R_TOA_PHASE_SHIFT \
 	| WL_FTM_SESSION_FLAG_I2R_IMMEDIATE_RPT \
-	| WL_FTM_SESSION_FLAG_R2I_IMMEDIATE_RPT)
+	| WL_FTM_SESSION_FLAG_R2I_IMMEDIATE_RPT \
+	| WL_FTM_SESSION_FLAG_I2R_LMR_POLICY) \
+	| WL_FTM_SESSION_FLAG_I2R_REQ_ACCEPT
 
 /* flags relevant to TB sessions. To be expanded */
 #define FTM_TB_CONFIG_MASK (FTM_NTB_CONFIG_MASK)
@@ -22480,6 +22422,9 @@ enum wl_ifstats_xtlv_id {
 	WL_IFSTATS_XTLV_SC_PERIODIC_STATE = 0x109,
 	WL_IFSTATS_XTLV_WBUS_PERIODIC_STATE = 0x10A,
 
+	/* PHY ecounters */
+	WL_STATS_XTLV_PHY_ECOUNTER = 0x10B,
+
 	/* Per-slice information
 	 * Per-interface reporting could also include slice specific data
 	 */
@@ -24220,7 +24165,8 @@ typedef struct wl_wsec_del_pmk {
 typedef enum wtc_band_list {
 	WTC_BAND_2G = 0,
 	WTC_BAND_5G = 1,
-	WTC_MAX_BAND = 2
+	WTC_BAND_6G = 2,
+	WTC_MAX_BAND = 3
 } wtc_band_list_e;
 
 typedef struct wlc_wtcroam {
@@ -25373,7 +25319,6 @@ typedef struct uwbcx_coex_bitmap {
 typedef struct uwbcx_test_params {
 	uint16 duration;	/* Duration of the UWB high signal in ms */
 	uint16 interval;	/* Period or Interval for making UWB high in ms */
-	uint16 pattern_bitmap;	/* 16 bit bitmap that repeats */
 	uint16 gpio;		/* GPIO for UWB signal out */
 } uwbcx_test_params_t;
 
@@ -25681,9 +25626,21 @@ enum {
 	/* get/set. uint32. PASN event mask. */
 	WL_PASN_CMD_EVENT_MASK		= 15,
 	/* get. List id of active sessions. */
-	WL_PASN_CMD_LIST_SESSIONS	= 16
+	WL_PASN_CMD_LIST_SESSIONS	= 16,
+	/* get/set. for testing purpose. */
+	WL_PASN_CMD_TEST		= 0xfffe
 };
 typedef uint16 wl_pasn_cmd_t;
+
+enum {
+	/* No test action */
+	WL_PASN_CMD_TEST_NONE		= 0,
+	/* DUT to send auth frame with invalid MIC */
+	WL_PASN_CMD_TEST_INVALID_MIC	= 1,
+	/* DUT to send deauth frame to peer */
+	WL_PASN_CMD_TEST_DEAUTH		= 2
+};
+typedef uint8 wl_pasn_cmd_test_id_t;
 
 typedef uint16 wl_pasn_session_id_t;
 /* Session id ranges are allocated to various users of PASN -
@@ -25802,8 +25759,12 @@ enum {
 typedef uint16 wl_pasn_flags_t;
 
 enum {
+	/* PASN exchange will use PMKSA to derive PTKSA */
 	WL_PASN_SESSION_FLAG_CACHED_PMK = 0x0001u,
-	WL_PASN_SESSION_FLAG_TUNNELED_AKM = 0x0002u
+	/* PASN exchange will setup PMKSA by tunneling protocol data */
+	WL_PASN_SESSION_FLAG_TUNNELED_AKM = 0x0002u,
+	/* PASN session will be deleted if error occurs */
+	WL_PASN_SESSION_FLAG_DELETE_ON_ERR = 0x0004u
 };
 typedef uint16 wl_pasn_session_flags_t;
 
@@ -25994,6 +25955,7 @@ enum wl_ptm_cmd_ids {
 	WL_PTM_SUBCMD_LAST_OFFSET =		5u,	/* PTM last offset in ns */
 	WL_PTM_SUBCMD_CURRENT_TIME =		6u,	/* PTM master and local time in ns */
 	WL_PTM_SUBCMD_FAIL_LIMIT =		7u,	/* PTM fail count limit */
+	WL_PTM_SUBCMD_RX_LATENCY_EN =		8u,	/* Enable RX PTM latency calculation */
 	WL_PTM_SUBCMD_LAST
 };
 
@@ -26079,4 +26041,43 @@ typedef struct wl_dtpc_cfg_headroom {
 	rate_headroom_t headrooms[];
 } wl_dtpc_cfg_headroom_t;
 
+/* Version for IOVAR 'cellavoid' */
+#define WL_CELL_AVOID_IOV_VERSION_1		1u
+/* Version for IOVAR 'cellavoid' subcmd */
+#define WL_CELL_AVOID_SUB_IOV_VERSION_1		1u
+/* Max chanspec number for IOVAR 'cellavoid' */
+#define WL_CELL_AVOID_MAX_NUM_CHANSPEC		128u
+
+/* IOVAR 'cellavoid' subcmd list */
+enum wl_cell_avoid_subcmd_ids {
+	WL_CELL_AVOID_SUBCMD_VER = 0u,		/* Get version */
+	WL_CELL_AVOID_SUBCMD_CH_INFO = 1u,	/* Set/Get/Remove cellular channel list */
+};
+
+typedef struct wl_cell_pwrcap_chanspec_v1 {
+	int8 pwrcap;			/* pwr cap applied to the cellular channel */
+	int8 padding;			/* padding */
+	chanspec_t chanspec;		/* chanspec for the clellular channel */
+} wl_cell_pwrcap_chanspec_v1_t;
+
+/* IOVAR 'cellavoid' subcmd structure
+ * Subcmd 'chinfo' uses this structure
+ */
+typedef struct wl_cell_avoid_ch_info_v1 {
+	uint16 version;				/* version of this structure */
+	uint16 length;				/* length of this structure */
+	uint16 flags;				/* Mandatory flags */
+	uint16 cnt;				/* Count of pwrcap + chanspec info */
+	wl_cell_pwrcap_chanspec_v1_t list[];	/* list for pwrcap+chanspec info */
+} wl_cell_avoid_ch_info_v1_t;
+
+/* flags in wl_cell_avoid_ch_info_v1_t is populated with following values
+ * If any of these are set, then the driver should completely avoid
+ * using any of cellular channels for any of these modes
+ */
+#define WL_CELL_AVOID_WIFI_DIRECT	0x0001u
+#define WL_CELL_AVOID_SOFTAP		0x0002u
+#define WL_CELL_AVOID_NAN		0x0004u
+/* This flag is used to remove channel info list in chinfo subcmd */
+#define WL_CELL_AVOID_REMOVE_CH_INFO	0x8000u
 #endif /* _wlioctl_h_ */

@@ -1,7 +1,7 @@
 /*
  * Linux DHD Bus Module for PCIE
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -895,6 +895,11 @@ extern int exynos_pcie_pm_resume(int ch_num);
 #define DHD_REGULAR_RING    0
 #define DHD_HP2P_RING    1
 
+#ifdef DHD_SET_PCIE_DMA_MASK_FOR_GS101
+/* This is only for GS101 platform. Others is done on RC side */
+#define DHD_PCIE_DMA_MASK_FOR_GS101 36
+#endif /* DHD_SET_PCIE_DMA_MASK_FOR_GS101 */
+
 #ifdef CONFIG_ARCH_TEGRA
 extern int tegra_pcie_pm_suspend(void);
 extern int tegra_pcie_pm_resume(void);
@@ -921,6 +926,9 @@ extern int dhdpcie_send_mb_data(dhd_bus_t *bus, uint32 h2d_mb_data);
 #ifdef DHD_WAKE_STATUS
 int bcmpcie_get_total_wake(struct dhd_bus *bus);
 int bcmpcie_set_get_wake(struct dhd_bus *bus, int flag);
+#if defined(EWP_EDL)
+int bcmpcie_get_edl_wake(struct dhd_bus *bus);
+#endif /* EWP_EDL */
 #endif /* DHD_WAKE_STATUS */
 #ifdef DHD_MMIO_TRACE
 extern void dhd_dump_bus_mmio_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf);
@@ -1016,7 +1024,6 @@ extern wifi_properties_t *dhd_get_props(dhd_bus_t *bus);
 #if defined(DHD_EFI) || defined(NDIS)
 extern int dhd_get_platform(dhd_pub_t* dhd, char *progname);
 extern bool dhdpcie_is_chip_supported(uint32 chipid, int *idx);
-extern bool dhdpcie_is_sflash_chip(uint32 chipid);
 #endif
 
 extern int dhd_get_pcie_linkspeed(dhd_pub_t *dhd);

@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), common DHD core.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -272,7 +272,10 @@ extern int dhd_change_mtu(dhd_pub_t *dhd, int new_mtu, int ifidx);
 extern int dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
 #endif
 
+#ifndef BCMDBUS
 extern int dhd_socram_dump(struct dhd_bus *bus);
+#endif /* BCMDBUS */
+
 extern void dhd_set_packet_filter(dhd_pub_t *dhd);
 
 #ifdef DNGL_EVENT_SUPPORT
@@ -745,6 +748,7 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 	}
 #endif /* DNGL_AXI_ERROR_LOGGING */
 
+#ifdef BCMPCIE
 	if (dhd_bus_get_linkdown(dhdp)) {
 		/* pcie link down, so do chip big hammer */
 		DHD_ERROR_RLMT(("%s: set do_chip_bighammer\n", __FUNCTION__));
@@ -765,7 +769,7 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 			__FUNCTION__));
 		ret = TRUE;
 	}
-
+#endif /* BCMPCIE */
 	return ret;
 }
 
@@ -971,7 +975,7 @@ dhd_sssr_dump_init(dhd_pub_t *dhd)
 	/* Get SSSR reg info */
 	if (dhd_get_sssr_reg_info(dhd) != BCME_OK) {
 		DHD_ERROR(("%s: dhd_get_sssr_reg_info failed\n", __FUNCTION__));
-		printf("DEBUG_SSSr: %s: dhd_get_sssr_reg_info failed\n", __FUNCTION__);
+		DHD_CONS_ONLY(("DEBUG_SSSr: %s: dhd_get_sssr_reg_info failed\n", __FUNCTION__));
 		return BCME_ERROR;
 	}
 
@@ -1235,6 +1239,133 @@ dhd_coredump_mempool_deinit(dhd_pub_t *dhd)
 		dhd->coredump_len = 0;
 	}
 }
+
+#ifdef DHD_SSSR_DUMP
+dhd_coredump_t dhd_coredump_types[] = {
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER, 0, NULL},
+	{DHD_COREDUMP_TYPE_SOCRAMDUMP, 0, NULL}
+};
+
+static int dhd_append_sssr_tlv(uint8 *buf_dst, int type_idx, int buf_remain)
+{
+	uint32 type_val, length_val;
+	uint32 *type, *length;
+	void *buf_src;
+	int total_size = 0, ret = 0;
+
+	/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_[BEFORE|AFTER] */
+	type_val = dhd_coredump_types[type_idx].type;
+	length_val = dhd_coredump_types[type_idx].length;
+
+	if (length_val == 0) {
+		return 0;
+	}
+
+	type = (uint32*)buf_dst;
+	*type = type_val;
+	length = (uint32*)(buf_dst + sizeof(*type));
+	*length = length_val;
+
+	buf_dst += TLV_TYPE_LENGTH_SIZE;
+	total_size += TLV_TYPE_LENGTH_SIZE;
+
+	buf_src = dhd_coredump_types[type_idx].bufptr;
+	ret = memcpy_s(buf_dst, buf_remain, buf_src, *length);
+
+	if (ret) {
+		DHD_ERROR(("Failed to memcpy_s() for coredump.\n"));
+		return BCME_ERROR;
+	}
+
+	DHD_INFO(("%s: type: %u, length: %u\n",	__FUNCTION__, *type, *length));
+
+	total_size += *length;
+	return total_size;
+}
+
+/* reconstruct dump memory with socram and sssr dump as TLV format */
+int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
+{
+	uint8 *buf_ptr = dhdp->coredump_mem;
+	int buf_len = dhdp->coredump_len;
+	uint8 *socram_mem = dump->buf;
+	int socram_len = dump->bufsize;
+	int ret = 0, i = 0;
+	int total_size = 0;
+	uint32 *magic, *type, *length;
+	uint8 num_d11cores = 0, offset = 0;
+
+	/* SOCRAM dump start with magic code */
+	magic = (uint32*)buf_ptr;
+	*magic = DHD_COREDUMP_MAGIC;
+
+	/* DHD_COREDUMP_TYPE_SOCRAMDUMP */
+	type = (uint32*)(buf_ptr + sizeof(*magic));
+	*type = dhd_coredump_types[DHD_COREDUMP_TYPE_SOCRAMDUMP].type;
+	length = (uint32*)(buf_ptr + sizeof(*magic) + sizeof(*type));
+	*length = socram_len;
+
+	offset = sizeof(*magic) + sizeof(*type) + sizeof(*length);
+	ret = memcpy_s(buf_ptr + offset, buf_len - offset,
+		socram_mem, socram_len);
+
+	if (ret) {
+		DHD_ERROR(("Failed to memmove_s() for coredump.\n"));
+		return BCME_ERROR;
+	}
+	total_size = offset + socram_len;
+	buf_ptr += total_size;
+
+	DHD_ERROR(("%s: type: %u, length: %u\n", __FUNCTION__, *type, *length));
+
+	/* SSSR dump */
+	if (!sssr_enab || !dhdp->collect_sssr) {
+		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
+		return BCME_ERROR;
+	}
+
+	num_d11cores = dhd_d11_slices_num_get(dhdp);
+	for (i = 0; i < num_d11cores + 1; i++) {
+		int written_bytes = 0;
+		int type_idx = i * 2;
+		if ((i < num_d11cores) && (!dhdp->sssr_d11_outofreset[i])) {
+			continue;
+		}
+
+#ifdef DHD_SSSR_DUMP_BEFORE_SR
+		/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_BEFORE */
+		written_bytes = dhd_append_sssr_tlv(buf_ptr, type_idx,
+			buf_len - total_size);
+		if (written_bytes == BCME_ERROR) {
+			return BCME_ERROR;
+		}
+		buf_ptr += written_bytes;
+		total_size += written_bytes;
+#endif /* DHD_SSSR_DUMP_BEFORE_SR */
+
+		/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_AFTER */
+		written_bytes = dhd_append_sssr_tlv(buf_ptr, type_idx + 1,
+			buf_len - total_size);
+		if (written_bytes == BCME_ERROR) {
+			return BCME_ERROR;
+		}
+		buf_ptr += written_bytes;
+		total_size += written_bytes;
+	}
+
+	dump->buf = dhdp->coredump_mem;
+	dump->bufsize = total_size;
+
+	return BCME_OK;
+}
+#endif /* DHD_SSSR_DUMP */
 #endif /* DHD_COREDUMP */
 
 #ifdef DHD_SDTC_ETB_DUMP
@@ -1385,7 +1516,11 @@ void* dhd_get_fwdump_buf(dhd_pub_t *dhd_pub, uint32 length)
 int
 dhd_common_socram_dump(dhd_pub_t *dhdp)
 {
+#ifndef BCMDBUS
 	return dhd_socram_dump(dhdp->bus);
+#else
+	return -1;
+#endif /* BCMDBUS */
 }
 
 int
@@ -3545,7 +3680,6 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 	{
 		const dhd_tx_profile_protocol_t *protocol = NULL;
 		uint8 offset;
-		char *format = "%s:\ttx_profile %s: %d\n";
 
 		for (offset = 0; offset < dhd_pub->num_profiles; offset++) {
 			if (dhd_pub->protocol_filters[offset].profile_index == int_val) {
@@ -3561,11 +3695,16 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 			break;
 		}
 
-		printf(format, __FUNCTION__, "profile_index", protocol->profile_index);
-		printf(format, __FUNCTION__, "layer", protocol->layer);
-		printf(format, __FUNCTION__, "protocol_number", protocol->protocol_number);
-		printf(format, __FUNCTION__, "src_port", protocol->src_port);
-		printf(format, __FUNCTION__, "dest_port", protocol->dest_port);
+		DHD_CONS_ONLY(("%s:\ttx_profile %s: %d\n", __FUNCTION__,
+			"profile_index", protocol->profile_index));
+		DHD_CONS_ONLY(("%s:\ttx_profile %s: %d\n", __FUNCTION__,
+			"layer", protocol->layer));
+		DHD_CONS_ONLY(("%s:\ttx_profile %s: %d\n", __FUNCTION__,
+			"protocol_number", protocol->protocol_number));
+		DHD_CONS_ONLY(("%s:\ttx_profile %s: %d\n", __FUNCTION__,
+			"src_port", protocol->src_port));
+		DHD_CONS_ONLY(("%s:\ttx_profile %s: %d\n", __FUNCTION__,
+			"dest_port", protocol->dest_port));
 
 		break;
 	}
@@ -5998,7 +6137,7 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 					*endptr = '\0';
 					rc = wl_pkt_filter_base_parse(argv[i]);
 					if (rc == -1) {
-						 printf("Invalid base %s\n", argv[i]);
+						DHD_ERROR(("Invalid base %s\n", argv[i]));
 						goto fail;
 					}
 					*endptr = ':';
@@ -6006,7 +6145,7 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 			}
 
 			if (endptr == NULL) {
-				printf("Invalid [base:]offset format: %s\n", argv[i]);
+				DHD_ERROR(("Invalid [base:]offset format: %s\n", argv[i]));
 				goto fail;
 			}
 
@@ -6019,11 +6158,11 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 			}
 
 			if (*endptr) {
-				printf("Invalid [base:]offset format: %s\n", argv[i]);
+				DHD_ERROR(("Invalid [base:]offset format: %s\n", argv[i]));
 				goto fail;
 			}
 			if (rc > 0x0000FFFF) {
-				printf("Offset too large\n");
+				DHD_ERROR(("Offset too large\n"));
 				goto fail;
 			}
 			pf_el->rel_offs = htod16(rc);
@@ -6033,18 +6172,18 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 
 			/* Parse pattern filter mask and pattern directly into ioctl buffer */
 			if (argv[++i] == NULL) {
-				printf("Bitmask not provided\n");
+				DHD_ERROR(("Bitmask not provided\n"));
 				goto fail;
 			}
 			rc = wl_pattern_atoh(argv[i], (char*)pf_el->mask_and_data);
 			if ((rc == -1) || (rc > MAX_PKTFLT_FIXED_PATTERN_SIZE)) {
-				printf("Rejecting: %s\n", argv[i]);
+				DHD_ERROR(("Rejecting: %s\n", argv[i]));
 				goto fail;
 			}
 			mask_size = htod16(rc);
 
 			if (argv[++i] == NULL) {
-				printf("Pattern not provided\n");
+				DHD_ERROR(("Pattern not provided\n"));
 				goto fail;
 			}
 
@@ -6053,19 +6192,19 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 				pf_el->match_flags =
 					htod16(WL_PKT_FILTER_MFLAG_NEG);
 				if (*(++endptr) == '\0') {
-					printf("Pattern not provided\n");
+					DHD_ERROR(("Pattern not provided\n"));
 					goto fail;
 				}
 			}
 			rc = wl_pattern_atoh(endptr, (char*)&pf_el->mask_and_data[rc]);
 			if ((rc == -1) || (rc > MAX_PKTFLT_FIXED_PATTERN_SIZE)) {
-				printf("Rejecting: %s\n", argv[i]);
+				DHD_ERROR(("Rejecting: %s\n", argv[i]));
 				goto fail;
 			}
 			pattern_size = htod16(rc);
 
 			if (mask_size != pattern_size) {
-				printf("Mask and pattern not the same size\n");
+				DHD_ERROR(("Mask and pattern not the same size\n"));
 				goto fail;
 			}
 
@@ -10614,7 +10753,7 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	dhd_dbg_ring_t *ring = (dhd_dbg_ring_t *)ring_ptr;
 #ifndef DHD_DEBUGABILITY_DEBUG_DUMP
 	int pos = 0;
-#endif
+#endif /* !DHD_DEBUGABILITY_DEBUG_DUMP */
 	int fpos_sechdr = 0;
 	int tot_len = 0;
 	char *tmp_buf = NULL;

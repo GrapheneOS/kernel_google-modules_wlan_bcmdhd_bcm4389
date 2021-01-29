@@ -3,7 +3,7 @@
  * Software-specific definitions shared between device and host side
  * Explains the shared area between host and dongle
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -408,6 +408,8 @@ typedef struct {
 	/* Device advertises the txpost extended tag capabilities */
 	uint32		device_txpost_ext_tags_bitmask;
 
+	/* Pointer to ewp_info_t data structure [ipc v9] */
+	uint32	PHYS_ADDR_N(ewp_info_addr);
 } pciedev_shared_t;
 
 /* Device F/W provides the following access function:

@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file - contains private structure definition of the Linux specific layer
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -245,6 +245,11 @@ typedef struct dhd_info {
 	struct work_struct    tx_compl_dispatcher_work;
 	struct work_struct    tx_dispatcher_work;
 	struct work_struct    rx_compl_dispatcher_work;
+
+	/* Emergency queue to hold pkts when flow control is enabled and
+	 * same pkts will be posted back to the dongle till flow control is disabled.
+	*/
+	struct sk_buff_head   rx_emerge_queue	____cacheline_aligned;
 
 	/* Number of times DPC Tasklet ran */
 	uint32	dhd_dpc_cnt;

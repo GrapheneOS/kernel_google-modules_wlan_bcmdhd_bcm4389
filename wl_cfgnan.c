@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1596,7 +1596,7 @@ wl_cfgnan_get_iovars_status(void *ctx, const uint8 *data, uint16 type, uint16 le
 
 	/* If status is non zero */
 	if (status != BCME_OK) {
-		printf("cmd type %d failed, status: %04x\n", type, status);
+		WL_ERR(("cmd type %d failed, status: %04x\n", type, status));
 		goto exit;
 	}
 

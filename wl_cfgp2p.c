@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -931,7 +931,7 @@ wl_cfgp2p_escan(struct bcm_cfg80211 *cfg, struct net_device *dev, u16 active_sca
 	s8 *memblk;
 	wl_p2p_scan_t *p2p_params;
 	wl_escan_params_t *eparams;
-	wl_escan_params_v2_t *eparams_v2;
+	wl_escan_params_v3_t *eparams_v3;
 	wlc_ssid_t ssid;
 	u32 sync_id = 0;
 	s32 nprobes = 0;
@@ -942,9 +942,9 @@ wl_cfgp2p_escan(struct bcm_cfg80211 *cfg, struct net_device *dev, u16 active_sca
 
 	pri_dev = wl_to_p2p_bss_ndev(cfg, P2PAPI_BSSCFG_PRIMARY);
 	/* Allocate scan params which need space for 3 channels and 0 ssids */
-	if (cfg->scan_params_v2) {
-		eparams_size = (WL_SCAN_PARAMS_V2_FIXED_SIZE +
-			OFFSETOF(wl_escan_params_v2_t, params)) +
+	if (IS_SCAN_PARAMS_V3(cfg)) {
+		eparams_size = (WL_SCAN_PARAMS_V3_FIXED_SIZE +
+			OFFSETOF(wl_escan_params_v3_t, params)) +
 			num_chans * sizeof(eparams->params.channel_list[0]);
 	} else {
 		eparams_size = (WL_SCAN_PARAMS_FIXED_SIZE +
@@ -1032,30 +1032,30 @@ wl_cfgp2p_escan(struct bcm_cfg80211 *cfg, struct net_device *dev, u16 active_sca
 
 	wl_escan_set_sync_id(sync_id, cfg);
 	/* Fill in the Scan structure that follows the P2P scan structure */
-	if (cfg->scan_params_v2) {
-		eparams_v2 = (wl_escan_params_v2_t*) (p2p_params + 1);
-		eparams_v2->version = htod16(ESCAN_REQ_VERSION_V2);
-		eparams_v2->action =  htod16(action);
-		eparams_v2->params.version = htod16(WL_SCAN_PARAMS_VERSION_V2);
-		eparams_v2->params.length = htod16(sizeof(wl_scan_params_v2_t));
-		eparams_v2->params.bss_type = DOT11_BSSTYPE_ANY;
-		eparams_v2->params.scan_type = htod32(scan_type);
-		(void)memcpy_s(&eparams_v2->params.bssid, ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
-		eparams_v2->params.home_time = htod32(P2PAPI_SCAN_HOME_TIME_MS);
-		eparams_v2->params.active_time = htod32(active_time);
-		eparams_v2->params.nprobes = htod32(nprobes);
-		eparams_v2->params.passive_time = htod32(-1);
-		eparams_v2->sync_id = sync_id;
+	if (IS_SCAN_PARAMS_V3(cfg)) {
+		eparams_v3 = (wl_escan_params_v3_t*) (p2p_params + 1);
+		eparams_v3->version = htod16(ESCAN_REQ_VERSION_V2);
+		eparams_v3->action =  htod16(action);
+		eparams_v3->params.version = htod16(WL_SCAN_PARAMS_VERSION_V2);
+		eparams_v3->params.length = htod16(sizeof(wl_scan_params_v3_t));
+		eparams_v3->params.bss_type = DOT11_BSSTYPE_ANY;
+		eparams_v3->params.scan_type = htod32(scan_type);
+		(void)memcpy_s(&eparams_v3->params.bssid, ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
+		eparams_v3->params.home_time = htod32(P2PAPI_SCAN_HOME_TIME_MS);
+		eparams_v3->params.active_time = htod32(active_time);
+		eparams_v3->params.nprobes = htod32(nprobes);
+		eparams_v3->params.passive_time = htod32(-1);
+		eparams_v3->sync_id = sync_id;
 		for (i = 0; i < num_chans; i++) {
-			eparams_v2->params.channel_list[i] =
+			eparams_v3->params.channel_list[i] =
 				wl_chspec_host_to_driver(channels[i]);
 		}
-		eparams_v2->params.channel_num = htod32((0 << WL_SCAN_PARAMS_NSSID_SHIFT) |
+		eparams_v3->params.channel_num = htod32((0 << WL_SCAN_PARAMS_NSSID_SHIFT) |
 			(num_chans & WL_SCAN_PARAMS_COUNT_MASK));
 		if (ssid.SSID_len)
-			(void)memcpy_s(&eparams_v2->params.ssid,
+			(void)memcpy_s(&eparams_v3->params.ssid,
 					sizeof(wlc_ssid_t), &ssid, sizeof(wlc_ssid_t));
-		sync_id = eparams_v2->sync_id;
+		sync_id = eparams_v3->sync_id;
 	} else {
 		eparams = (wl_escan_params_t*) (p2p_params + 1);
 		eparams->version = htod32(ESCAN_REQ_VERSION);

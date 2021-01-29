@@ -1,7 +1,7 @@
 /*
  * Linux DHD Bus Module for PCIE
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -143,6 +143,9 @@ typedef struct dhdpcie_info
 	unsigned int	total_wake_count;
 	int		pkt_wake;
 	int		wake_irq;
+#if defined(EWP_EDL)
+	int		edl_wake;
+#endif /* EWP_EDL */
 #endif /* DHD_WAKE_STATUS */
 #ifdef USE_SMMU_ARCH_MSM
 	void *smmu_cxt;
@@ -322,8 +325,8 @@ static int dhdpcie_smmu_init(struct pci_dev *pdev, void *smmu_cxt)
 		smmu_info->smmu_iova_start = smmu_iova_address[0];
 		smmu_info->smmu_iova_len = smmu_iova_address[1];
 	} else {
-		printf("%s : can't get smmu iova address property\n",
-			__FUNCTION__);
+		DHD_CONS_ONLY(("%s : can't get smmu iova address property\n",
+			__FUNCTION__));
 		return -ENODEV;
 	}
 
@@ -1117,10 +1120,26 @@ int bcmpcie_set_get_wake(struct dhd_bus *bus, int flag)
 	ret = pch->pkt_wake;
 	pch->total_wake_count += flag;
 	pch->pkt_wake = flag;
-
+#if defined(EWP_EDL)
+	pch->edl_wake = flag;
+#endif /* EWP_EDL */
 	DHD_PKT_WAKE_UNLOCK(&pch->pkt_wake_lock, flags);
 	return ret;
 }
+
+#if defined(EWP_EDL)
+int
+bcmpcie_get_edl_wake(struct dhd_bus *bus)
+{
+	int ret;
+	dhdpcie_info_t *pch = pci_get_drvdata(bus->dev);
+
+	ret = pch->edl_wake;
+	pch->edl_wake = 0;
+
+	return ret;
+}
+#endif /* EWP_EDL */
 #endif /* DHD_WAKE_STATUS */
 
 static int dhdpcie_resume_dev(struct pci_dev *dev)
@@ -1150,13 +1169,13 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 #endif /* FORCE_TPOWERON */
 	err = pci_enable_device(dev);
 	if (err) {
-		printf("%s:pci_enable_device error %d \n", __FUNCTION__, err);
+		DHD_CONS_ONLY(("%s:pci_enable_device error %d \n", __FUNCTION__, err));
 		goto out;
 	}
 	pci_set_master(dev);
 	err = pci_set_power_state(dev, PCI_D0);
 	if (err) {
-		printf("%s:pci_set_power_state error %d \n", __FUNCTION__, err);
+		DHD_CONS_ONLY(("%s:pci_set_power_state error %d \n", __FUNCTION__, err));
 		goto out;
 	}
 	BCM_REFERENCE(pch);
@@ -1470,9 +1489,9 @@ dhdpcie_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 			return -ENODEV;
 	}
 
-	printf("PCI_PROBE:  bus %X, slot %X,vendor %X, device %X"
+	DHD_CONS_ONLY(("PCI_PROBE:  bus %X, slot %X,vendor %X, device %X"
 		"(good PCI location)\n", pdev->bus->number,
-		PCI_SLOT(pdev->devfn), pdev->vendor, pdev->device);
+		PCI_SLOT(pdev->devfn), pdev->vendor, pdev->device));
 
 	if (dhdpcie_init_succeeded == TRUE) {
 		DHD_ERROR(("%s(): === Driver Already attached to a BRCM device === \r\n",
@@ -1735,7 +1754,7 @@ int dhdpcie_get_resource(dhdpcie_info_t *dhdpcie_info)
 
 	do {
 		if (pci_enable_device(pdev)) {
-			printf("%s: Cannot enable PCI device\n", __FUNCTION__);
+			DHD_CONS_ONLY(("%s: Cannot enable PCI device\n", __FUNCTION__));
 			break;
 		}
 		pci_set_master(pdev);
@@ -1746,9 +1765,9 @@ int dhdpcie_get_resource(dhdpcie_info_t *dhdpcie_info)
 		bar1_size = pci_resource_len(pdev, 2);
 
 		if ((bar1_size == 0) || (bar1_addr == 0)) {
-			printf("%s: BAR1 Not enabled for this device  size(%ld),"
+			DHD_CONS_ONLY(("%s: BAR1 Not enabled for this device  size(%ld),"
 				" addr(0x"PRINTF_RESOURCE")\n",
-				__FUNCTION__, bar1_size, bar1_addr);
+				__FUNCTION__, bar1_size, bar1_addr));
 			goto err;
 		}
 
@@ -1978,12 +1997,17 @@ int dhdpcie_init(struct pci_dev *pdev)
 			break;
 		}
 #endif /* USE_SMMU_ARCH_MSM */
-        // Override dma mask to 36 bits
-        if (pci_set_dma_mask(pdev, DMA_BIT_MASK(36)) ||
-		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(36))) {
-		DHD_ERROR(("%s: AA: DMA set 36bit mask failed.\n", __FUNCTION__));
-		return -EINVAL;
-	}
+
+#ifdef DHD_SET_PCIE_DMA_MASK_FOR_GS101
+		/* S.SLSI PCIe DMA engine cannot support 64 bit bus address. Hence, set 36 bit */
+		if (pci_set_dma_mask(pdev, DMA_BIT_MASK(DHD_PCIE_DMA_MASK_FOR_GS101)) ||
+			pci_set_consistent_dma_mask(pdev,
+				DMA_BIT_MASK(DHD_PCIE_DMA_MASK_FOR_GS101))) {
+			DHD_ERROR(("%s: DMA set %d bit mask failed.\n",
+				__FUNCTION__, DHD_PCIE_DMA_MASK_FOR_GS101));
+			return -EINVAL;
+		}
+#endif /* DHD_SET_PCIE_DMA_MASK_FOR_GS101 */
 
 #ifdef DHD_WAKE_STATUS
 		/* Initialize pkt_wake_lock */
@@ -2510,9 +2534,9 @@ dhdpcie_alloc_resource(dhd_bus_t *bus)
 		bar1_size = pci_resource_len(bus->dev, 2);
 
 		if ((bar1_size == 0) || (bar1_addr == 0)) {
-			printf("%s: BAR1 Not enabled for this device size(%ld),"
+			DHD_CONS_ONLY(("%s: BAR1 Not enabled for this device size(%ld),"
 				" addr(0x"PRINTF_RESOURCE")\n",
-				__FUNCTION__, bar1_size, bar1_addr);
+				__FUNCTION__, bar1_size, bar1_addr));
 			break;
 		}
 

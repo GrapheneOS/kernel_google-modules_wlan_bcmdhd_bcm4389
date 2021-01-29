@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), RTT
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -49,11 +49,24 @@
 #include <wl_cfgnan.h>
 #endif /* WL_NAN */
 
+#ifdef CUSTOM_PREFIX
+#define RTT_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#define RTT_PRINT_SYSTEM_TIME pr_cont(RTT_PRINT_PREFIX)
+#define RTT_CONS_ONLY(args)     \
+do {    \
+	RTT_PRINT_SYSTEM_TIME;  \
+	pr_cont args;           \
+} while (0)
+#else
+#define RTT_PRINT_SYSTEM_TIME
+#define RTT_CONS_ONLY(args) do { printf args;} while (0)
+#endif /* CUSTOM_PREFIX */
+
 static DEFINE_SPINLOCK(noti_list_lock);
 #define NULL_CHECK(p, s, err)  \
 	do { \
 		if (!(p)) { \
-			printf("NULL POINTER (%s) : %s\n", __FUNCTION__, (s)); \
+			RTT_CONS_ONLY(("NULL POINTER (%s) : %s\n", __FUNCTION__, (s))); \
 			err = BCME_ERROR; \
 			return err; \
 		} \

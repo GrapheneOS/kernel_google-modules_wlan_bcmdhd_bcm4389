@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Linux-specific network interface.
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -994,9 +994,6 @@ void dhd_os_wd_timer_extend(void *bus, bool extend);
 static int dhd_toe_get(dhd_info_t *dhd, int idx, uint32 *toe_ol);
 static int dhd_toe_set(dhd_info_t *dhd, int idx, uint32 toe_ol);
 #endif /* TOE */
-#ifdef BCMDBUS
-int dhd_dbus_txdata(dhd_pub_t *dhdp, void *pktbuf);
-#endif
 
 static int dhd_wl_host_event(dhd_info_t *dhd, int ifidx, void *pktdata, uint16 pktlen,
 		wl_event_msg_t *event_ptr, void **data_ptr);
@@ -1942,8 +1939,11 @@ static inline void* dhd_rxf_dequeue(dhd_pub_t *dhdp)
 
 int dhd_process_cid_mac(dhd_pub_t *dhdp, bool prepost)
 {
-	uint chipid = dhd_bus_chip_id(dhdp);
+	uint chipid = 0;
 	int ret = BCME_OK;
+#ifndef BCMDBUS
+	chipid = dhd_bus_chip_id(dhdp);
+#endif /* BCMDBUS */
 	if (prepost) { /* pre process */
 		ret = dhd_alloc_cis(dhdp);
 		if (ret != BCME_OK) {
@@ -5148,6 +5148,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 			len, NULL, NULL, FALSE, pkt_wake, TRUE);
 #if defined(DHD_WAKE_STATUS) && defined(DHD_WAKEPKT_DUMP)
 		if (pkt_wake) {
+			DHD_ERROR(("##### dhdpcie_host_wake caused by packets\n"));
 			dhd_prhex("[wakepkt_dump]", (char*)dump_data, MIN(len, 64), DHD_ERROR_VAL);
 			DHD_ERROR(("config check in_suspend: %d\n", dhdp->in_suspend));
 #ifdef ARP_OFFLOAD_SUPPORT
@@ -5926,6 +5927,7 @@ void dhd_dpc_enable(dhd_pub_t *dhdp)
 
 #ifdef DHD_LB_RXP
 	__skb_queue_head_init(&dhd->rx_pend_queue);
+	skb_queue_head_init(&dhd->rx_emerge_queue);
 #endif /* DHD_LB_RXP */
 
 #ifdef DHD_LB_TXP
@@ -5960,6 +5962,7 @@ dhd_dpc_kill(dhd_pub_t *dhdp)
 #ifdef DHD_LB_RXP
 	cancel_work_sync(&dhd->rx_napi_dispatcher_work);
 	__skb_queue_purge(&dhd->rx_pend_queue);
+	skb_queue_purge(&dhd->rx_emerge_queue);
 #endif /* DHD_LB_RXP */
 #ifdef DHD_LB_TXP
 	cancel_work_sync(&dhd->tx_dispatcher_work);
@@ -7688,6 +7691,7 @@ dhd_stop(struct net_device *net)
 
 #if defined(DHD_LB_RXP)
 			__skb_queue_purge(&dhd->rx_pend_queue);
+			skb_queue_purge(&dhd->rx_emerge_queue);
 #endif /* DHD_LB_RXP */
 
 #if defined(DHD_LB_TXP)
@@ -8188,6 +8192,7 @@ dhd_open(struct net_device *net)
 
 #if defined(DHD_LB_RXP)
 		__skb_queue_head_init(&dhd->rx_pend_queue);
+		skb_queue_head_init(&dhd->rx_emerge_queue);
 		if (dhd->rx_napi_netdev == NULL) {
 			dhd->rx_napi_netdev = dhd->iflist[ifidx]->net;
 			memset(&dhd->rx_napi_struct, 0, sizeof(struct napi_struct));
@@ -9265,13 +9270,13 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 	}
 
 #ifdef DHD_LINUX_STD_FW_API
-        err = dhd_os_get_img_fwreq(&fw, fname);
-        if (err < 0) {
-                DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
-                        err));
-                goto fail;
-        }
-        size = fw->size;
+	err = dhd_os_get_img_fwreq(&fw, fname);
+	if (err < 0) {
+		DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
+			err));
+		goto fail;
+	}
+	size = fw->size;
 #else
 	fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -9292,18 +9297,18 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 	while (count != ALL_ADDR_VAL)
 	{
 #ifdef DHD_LINUX_STD_FW_API
-                /* Bound check for size before doing memcpy() */
-                if ((mem_offset + read_size) > size) {
-                        read_size = size - mem_offset;
-                }
+		/* Bound check for size before doing memcpy() */
+		if ((mem_offset + read_size) > size) {
+			read_size = size - mem_offset;
+		}
 
-                err = memcpy_s(raw_fmts, read_size,
-                        ((char *)(fw->data) + mem_offset), read_size);
-                if (err) {
-                        DHD_ERROR(("%s: failed to copy raw_fmts, err=%d\n",
-                                __FUNCTION__, err));
-                        goto fail;
-                }
+		err = memcpy_s(raw_fmts, read_size,
+			((char *)(fw->data) + mem_offset), read_size);
+		if (err) {
+			DHD_ERROR(("%s: failed to copy raw_fmts, err=%d\n",
+				__FUNCTION__, err));
+			goto fail;
+		}
 #else
 		err = dhd_os_read_file(filep, raw_fmts, read_size);
 		if (err < 0) {
@@ -9311,8 +9316,8 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 				__FUNCTION__, err));
 			goto fail;
 		}
-#endif /* DHD_LINUX_STD_FW_API */
 
+#endif /* DHD_LINUX_STD_FW_API */
 		/* End raw_fmts with NULL as strstr expects NULL terminated
 		* strings
 		*/
@@ -9404,12 +9409,12 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 			offset += (len + 1);
 		}
 #ifdef DHD_LINUX_STD_FW_API
-                if ((mem_offset + read_size) >= size) {
-                        break;
-                }
+		if ((mem_offset + read_size) >= size) {
+			break;
+		}
 
-                memset(raw_fmts, 0, read_size);
-                mem_offset += (read_size -(len + 1));
+		memset(raw_fmts, 0, read_size);
+		mem_offset += (read_size -(len + 1));
 #else
 		if (err < (int)read_size) {
 			/*
@@ -9434,16 +9439,16 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 
 fail:
 #ifdef DHD_LINUX_STD_FW_API
-        if (fw) {
-                dhd_os_close_img_fwreq(fw);
-        }
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
 #else
 	if (!IS_ERR(filep))
 		dhd_filp_close(filep, NULL);
 
 	set_fs(fs);
-#endif /* DHD_LINUX_STD_FW_API */
 
+#endif /* DHD_LINUX_STD_FW_API */
 	if (!(count & PC_FOUND_BIT)) {
 		sprintf(pc_fn, "0x%08x", pc);
 	}
@@ -10434,6 +10439,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	/* Initialize the Load Balancing Tasklets and Napi object */
 #if defined(DHD_LB_RXP)
 	__skb_queue_head_init(&dhd->rx_pend_queue);
+	skb_queue_head_init(&dhd->rx_emerge_queue);
 	skb_queue_head_init(&dhd->rx_napi_queue);
 	__skb_queue_head_init(&dhd->rx_process_queue);
 	/* Initialize the work that dispatches NAPI job to a given core */
@@ -14902,7 +14908,7 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 	memcpy(net->dev_addr, temp_addr, ETHER_ADDR_LEN);
 
 	if (ifidx == 0)
-		printf("%s\n", dhd_version);
+		DHD_CONS_ONLY(("%s\n", dhd_version));
 
 	if (need_rtnl_lock)
 		err = register_netdev(net);
@@ -14927,11 +14933,11 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 	net_stat_tizen_register(net);
 #endif /* CONFIG_TIZEN */
 
-	printf("Register interface [%s]  MAC: "MACDBG"\n\n", net->name,
+	DHD_CONS_ONLY(("Register interface [%s]  MAC: "MACDBG"\n\n", net->name,
 #if defined(CUSTOMER_HW4_DEBUG)
-		MAC2STRDBG(dhd->pub.mac.octet));
+		MAC2STRDBG(dhd->pub.mac.octet)));
 #else
-		MAC2STRDBG(net->dev_addr));
+		MAC2STRDBG(net->dev_addr)));
 #endif /* CUSTOMER_HW4_DEBUG */
 
 #if (defined(BCMPCIE) || defined(BCMLXSDMMC))
@@ -14945,6 +14951,7 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 #endif /* WL_CFG80211 */
 #if defined(DHD_LB_RXP)
 			__skb_queue_purge(&dhd->rx_pend_queue);
+			skb_queue_purge(&dhd->rx_emerge_queue);
 #endif /* DHD_LB_RXP */
 
 #if defined(DHD_LB_TXP)
@@ -15256,6 +15263,7 @@ void dhd_detach(dhd_pub_t *dhdp)
 #ifdef DHD_LB_RXP
 		cancel_work_sync(&dhd->rx_napi_dispatcher_work);
 		__skb_queue_purge(&dhd->rx_pend_queue);
+		skb_queue_purge(&dhd->rx_emerge_queue);
 #endif /* DHD_LB_RXP */
 #ifdef DHD_LB_TXP
 		cancel_work_sync(&dhd->tx_dispatcher_work);
@@ -15286,13 +15294,6 @@ void dhd_detach(dhd_pub_t *dhdp)
 #ifdef RX_PKT_POOL
 	dhd_rx_pktpool_deinit(dhd);
 #endif
-
-#ifdef EWP_EDL
-	if (host_edl_support) {
-		DHD_EDL_MEM_DEINIT(dhdp);
-		host_edl_support = FALSE;
-	}
-#endif /* EWP_EDL */
 
 #ifdef WL_CFG80211
 	if (dhd->dhd_state & DHD_ATTACH_STATE_CFG80211) {
@@ -15421,6 +15422,13 @@ void dhd_detach(dhd_pub_t *dhdp)
 	if (dhdp->prot)
 		dhd_prot_detach(dhdp);
 #endif
+
+#ifdef EWP_EDL
+	if (host_edl_support) {
+		DHD_EDL_MEM_DEINIT(dhdp);
+		host_edl_support = FALSE;
+	}
+#endif /* EWP_EDL */
 
 #if defined(WLTDLS) && defined(PCIE_FULL_DONGLE)
 		dhd_free_tdls_peer_list(dhdp);
@@ -16962,7 +16970,7 @@ dhd_set_suspend_bcn_li_dtim(dhd_pub_t *dhd, bool set_suspend)
 {
 	int ret = BCME_OK;
 	int bcn_li_dtim = 0; /* Default bcn_li_dtim in resume mode is 0 */
-#if defined(OEM_ANDROID) && defined(BCMPCIE)
+#if defined(BCMPCIE)
 	int lpas = 0;
 	int dtim_period = 0;
 	int bcn_interval = 0;
@@ -16979,7 +16987,7 @@ dhd_set_suspend_bcn_li_dtim(dhd_pub_t *dhd, bool set_suspend)
 			return 0;
 		}
 #endif /* WLTDLS */
-#if defined(OEM_ANDROID) && defined(BCMPCIE)
+#if defined(BCMPCIE)
 		bcn_li_dtim = dhd_get_suspend_bcn_li_dtim(dhd, &dtim_period, &bcn_interval);
 		if ((bcn_li_dtim * dtim_period * bcn_interval) >= MIN_DTIM_FOR_ROAM_THRES_EXTEND) {
 			/*
@@ -17006,7 +17014,7 @@ dhd_set_suspend_bcn_li_dtim(dhd_pub_t *dhd, bool set_suspend)
 	if (ret < 0) {
 		DHD_ERROR(("%s set bcn_li_ditm failed %d\n", __FUNCTION__, ret));
 	}
-#if defined(OEM_ANDROID) && defined(BCMPCIE)
+#if defined(BCMPCIE)
 	ret = dhd_iovar(dhd, 0, "lpas", (char *)&lpas, sizeof(lpas), NULL, 0, TRUE);
 	if (ret < 0) {
 		DHD_ERROR(("%s set lpas failed %d\n", __FUNCTION__, ret));
@@ -18735,7 +18743,7 @@ void dhd_get_customized_country_code(struct net_device *dev, char *country_iso_c
 		 * domain
 		 */
 		if ((strncmp(country_iso_code, "", WLC_CNTRY_BUF_SZ) == 0) ||
-			(strncmp(country_iso_code, "00", WLC_CNTRY_BUF_SZ) == 0)) {
+				(strncmp(country_iso_code, "00", WLC_CNTRY_BUF_SZ) == 0)) {
 			strlcpy(country_iso_code, "XZ", WLC_CNTRY_BUF_SZ);
 			strlcpy(cspec->country_abbrev, country_iso_code, WLC_CNTRY_BUF_SZ);
 			strlcpy(cspec->ccode, country_iso_code, WLC_CNTRY_BUF_SZ);
@@ -20451,159 +20459,7 @@ char map_path[PATH_MAX] = DHD_MAP_NAME;
 #else
 char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
 #endif /* DHD_LINUX_STD_FW_API */
-
-#define DHD_COREDUMP_MAGIC 0xDDCEDACF
-#define TLV_TYPE_LENGTH_SIZE	(8u)
-/* coredump is composed as following TLV format.
- * Type(32bit) | Length(32bit) | Value(x bit)
- * e.g) socram type | length | socram dump
- *      sssr core1 type | length | sssr core1 dump
- *      ...
- */
-enum coredump_types {
-	DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE = 0,
-	DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER,
-	DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE,
-	DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER,
-	DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE,
-	DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER,
-	DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE,
-	DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER,
-	DHD_COREDUMP_TYPE_SOCRAMDUMP
-};
-
-#ifdef DHD_SSSR_DUMP
-struct dhd_coredump {
-	uint32 type;
-	uint32 length;
-	void *bufptr;
-};
-
-static struct dhd_coredump dhd_coredump_types[] = {
-	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER, 0, NULL},
-	{DHD_COREDUMP_TYPE_SOCRAMDUMP, 0, NULL}
-};
-
-static int dhd_append_sssr_tlv(uint8 *buf_dst, int type_idx, int buf_remain)
-{
-	uint32 type_val, length_val;
-	uint32 *type, *length;
-	void *buf_src;
-	int total_size = 0, ret = 0;
-
-	/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_[BEFORE|AFTER] */
-	type_val = dhd_coredump_types[type_idx].type;
-	length_val = dhd_coredump_types[type_idx].length;
-
-	if (length_val == 0) {
-		return 0;
-	}
-
-	type = (uint32*)buf_dst;
-	*type = type_val;
-	length = (uint32*)(buf_dst + sizeof(*type));
-	*length = length_val;
-
-	buf_dst += TLV_TYPE_LENGTH_SIZE;
-	total_size += TLV_TYPE_LENGTH_SIZE;
-
-	buf_src = dhd_coredump_types[type_idx].bufptr;
-	ret = memcpy_s(buf_dst, buf_remain, buf_src, *length);
-
-	if (ret) {
-		DHD_ERROR(("Failed to memcpy_s() for coredump.\n"));
-		return BCME_ERROR;
-	}
-
-	DHD_INFO(("%s: type: %u, length: %u\n",	__FUNCTION__, *type, *length));
-
-	total_size += *length;
-	return total_size;
-}
-
-/* reconstruct dump memory with socram and sssr dump as TLV format */
-static int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
-{
-	uint8 *buf_ptr = dhdp->coredump_mem;
-	int buf_len = dhdp->coredump_len;
-	uint8 *socram_mem = dump->buf;
-	int socram_len = dump->bufsize;
-	int ret = 0, i = 0;
-	int total_size = 0;
-	uint32 *magic, *type, *length;
-	uint8 num_d11cores = 0, offset = 0;
-
-	/* SOCRAM dump start with magic code */
-	magic = (uint32*)buf_ptr;
-	*magic = DHD_COREDUMP_MAGIC;
-
-	/* DHD_COREDUMP_TYPE_SOCRAMDUMP */
-	type = (uint32*)(buf_ptr + sizeof(*magic));
-	*type = dhd_coredump_types[DHD_COREDUMP_TYPE_SOCRAMDUMP].type;
-	length = (uint32*)(buf_ptr + sizeof(*magic) + sizeof(*type));
-	*length = socram_len;
-
-	offset = sizeof(*magic) + sizeof(*type) + sizeof(*length);
-	ret = memcpy_s(buf_ptr + offset, buf_len - offset,
-		socram_mem, socram_len);
-
-	if (ret) {
-		DHD_ERROR(("Failed to memmove_s() for coredump.\n"));
-		return BCME_ERROR;
-	}
-	total_size = offset + socram_len;
-	buf_ptr += total_size;
-
-	DHD_INFO(("%s: type: %u, length: %u\n",	__FUNCTION__, *type, *length));
-
-	/* SSSR dump */
-	if (!sssr_enab || !dhdp->collect_sssr) {
-		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
-		return BCME_ERROR;
-	}
-
-	num_d11cores = dhd_d11_slices_num_get(dhdp);
-	for (i = 0; i < num_d11cores + 1; i++) {
-		int written_bytes = 0;
-		int type_idx = i * 2;
-		if ((i < num_d11cores) && (!dhdp->sssr_d11_outofreset[i])) {
-			continue;
-		}
-
-#ifdef DHD_SSSR_DUMP_BEFORE_SR
-		/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_BEFORE */
-		written_bytes = dhd_append_sssr_tlv(buf_ptr, type_idx,
-			buf_len - total_size);
-		if (written_bytes == BCME_ERROR) {
-			return BCME_ERROR;
-		}
-		buf_ptr += written_bytes;
-		total_size += written_bytes;
-#endif /* DHD_SSSR_DUMP_BEFORE_SR */
-
-		/* DHD_COREDUMP_TYPE_SSSRDUMP_[CORE[0|1|2]|DIG]_AFTER */
-		written_bytes = dhd_append_sssr_tlv(buf_ptr, type_idx + 1,
-			buf_len - total_size);
-		if (written_bytes == BCME_ERROR) {
-			return BCME_ERROR;
-		}
-		buf_ptr += written_bytes;
-		total_size += written_bytes;
-	}
-
-	dump->buf = dhdp->coredump_mem;
-	dump->bufsize = total_size;
-
-	return BCME_OK;
-}
-#endif /* DHD_SSSR_DUMP */
+extern int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump);
 #endif /* DHD_COREDUMP */
 
 static void
@@ -20618,10 +20474,10 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #endif /* DHD_FILE_DUMP_EVENT || DHD_DEBUGABILITY_DEBUG_DUMP */
 #endif /* WL_CFG80211 && DHD_LOG_DUMP */
 
-#if (defined(WL_CFG80211) && defined(DHD_FILE_DUMP_EVENT)) || (defined(DHD_SSSR_DUMP) \
-	&& defined(DHD_COREDUMP))
+#if (defined(WL_CFG80211) && defined(DHD_FILE_DUMP_EVENT)) || \
+	(defined(DHD_SSSR_COREDUMP) && defined(DHD_COREDUMP))
 	int ret = 0;
-#endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT || DHD_SSSR_DUMP && DHD_COREDUMP */
+#endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT || DHD_SSSR_COREDUMP && DHD_COREDUMP */
 	dhd_dump_t *dump = NULL;
 #ifdef DHD_COREDUMP
 	char pc_fn[DHD_FUNC_STR_LEN] = "\0";
@@ -20736,13 +20592,13 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	}
 	DHD_ERROR(("%s: dump reason: %s\n", __FUNCTION__, dhdp->memdump_str));
 
-#ifdef DHD_SSSR_DUMP
+#ifdef DHD_SSSR_COREDUMP
 	ret = dhd_collect_coredump(dhdp, dump);
 	if (ret) {
 		DHD_ERROR(("%s: dhd_collect_coredump() failed.\n", __FUNCTION__));
 		goto exit;
 	}
-#endif /* DHD_SSSR_DUMP */
+#endif /* DHD_SSSR_COREDUMP */
 
 	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize, dhdp->memdump_str)) {
 		DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
@@ -21501,6 +21357,9 @@ dhd_log_dump_buf_addr(dhd_pub_t *dhdp, log_dump_type_t *type)
 }
 
 #ifdef DHD_SSSR_DUMP
+#ifdef DHD_COREDUMP
+extern dhd_coredump_t dhd_coredump_types[];
+#endif /* DHD_COREDUMP */
 int
 dhdpcie_sssr_dump_get_before_after_len(dhd_pub_t *dhd, uint32 *arr_len)
 {
@@ -23374,73 +23233,6 @@ int dhd_set_block_tdls_status(dhd_pub_t *dhdp, uint32 idx, int val)
 }
 #endif /* DHD_L2_FILTER */
 
-#ifdef DHD_BUZZZ_LOG_ENABLED
-
-static int
-dhd_buzzz_thread(void *data)
-{
-	tsk_ctl_t *tsk = (tsk_ctl_t *)data;
-
-	DAEMONIZE("dhd_buzzz");
-
-	/*  signal: thread has started */
-	complete(&tsk->completed);
-
-	/* Run until signal received */
-	while (1) {
-		if (down_interruptible(&tsk->sema) == 0) {
-			if (tsk->terminated) {
-				break;
-			}
-			printk("%s: start to dump...\n", __FUNCTION__);
-			dhd_buzzz_dump();
-		} else {
-			break;
-		}
-	}
-	complete_and_exit(&tsk->completed, 0);
-}
-
-void* dhd_os_create_buzzz_thread(void)
-{
-	tsk_ctl_t *thr_buzzz_ctl = NULL;
-
-	thr_buzzz_ctl = kmalloc(sizeof(tsk_ctl_t), GFP_KERNEL);
-	if (!thr_buzzz_ctl) {
-		return NULL;
-	}
-
-	PROC_START(dhd_buzzz_thread, NULL, thr_buzzz_ctl, 0, "dhd_buzzz");
-
-	return (void *)thr_buzzz_ctl;
-}
-
-void dhd_os_destroy_buzzz_thread(void *thr_hdl)
-{
-	tsk_ctl_t *thr_buzzz_ctl = (tsk_ctl_t *)thr_hdl;
-
-	if (!thr_buzzz_ctl) {
-		return;
-	}
-
-	PROC_STOP(thr_buzzz_ctl);
-	kfree(thr_buzzz_ctl);
-}
-
-void dhd_os_sched_buzzz_thread(void *thr_hdl)
-{
-	tsk_ctl_t *thr_buzzz_ctl = (tsk_ctl_t *)thr_hdl;
-
-	if (!thr_buzzz_ctl) {
-		return;
-	}
-
-	if (thr_buzzz_ctl->thr_pid >= 0) {
-		up(&thr_buzzz_ctl->sema);
-	}
-}
-#endif /* DHD_BUZZZ_LOG_ENABLED */
-
 #ifdef DHD_DEBUG_PAGEALLOC
 /* XXX Additional Kernel implemenation is needed to use this function at
  * the top of the check_poison_mem() function in mm/debug-pagealloc.c file.
@@ -23556,7 +23348,7 @@ dhd_create_to_notifier_skt(void)
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)) */
 	if (!nl_to_event_sk)
 	{
-		printf("Error creating socket.\n");
+		DHD_CONS_ONLY(("Error creating socket.\n"));
 		return -1;
 	}
 	DHD_INFO(("nl_to socket created successfully...\n"));
@@ -24382,7 +24174,6 @@ int dhd_read_from_file(dhd_pub_t *dhd)
 		ret = BCME_ERROR;
 	}
 #endif /* DHD_LINUX_STD_FW_API */
-
 exit:
 #ifdef DHD_LINUX_STD_FW_API
 	if (fw) {
@@ -26847,9 +26638,14 @@ dhd_net_del_flowrings_sta(dhd_pub_t *dhd, struct net_device *ndev)
 static void
 dhd_deferred_socram_dump(void *handle, void *event_info, u8 event)
 {
+#ifndef BCMDBUS
 	dhd_pub_t *dhdp = (dhd_pub_t *)event_info;
 	DHD_ERROR(("%s ... scheduled to collect memdump over bus\n", __FUNCTION__));
 	dhd_socram_dump(dhdp->bus);
+#else
+	DHD_ERROR(("%s Not collecting socram dump for BCMDBUS\n", __FUNCTION__));
+	return;
+#endif /* BCMDBUS */
 }
 
 int
@@ -27005,3 +26801,10 @@ static void dhd_module_s2mpu_register(struct device *dev)
 }
 #endif /* CONFIG_EXYNOS_S2MPU */
 #endif /* CONFIG_ARCH_EXYNOS */
+
+#ifdef BCMDBUS
+struct device *dhd_bus_to_dev(struct dhd_bus *bus)
+{
+	return (struct device *)dbus_get_dev();
+}
+#endif /* BCMDBUS */

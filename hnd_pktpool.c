@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -97,6 +97,26 @@ uint32 total_pool_pktid_count = PKTID_POOL;
 #else
 uint32 total_pool_pktid_count = 0U;
 #endif /* DONGLEBUILD */
+
+#if defined(BCMPKTIDMAP) || defined(BCMPKTIDMAP_MIN)
+#define TOTAL_POOL_PKTID_CNT_INC(pktp) \
+	do { \
+		if (pktp->type != lbuf_rxdata) { \
+			total_pool_pktid_count++; \
+		} \
+	} while (0)
+
+#define TOTAL_POOL_PKTID_CNT_DEC(pktp) \
+	do { \
+		if (pktp->type != lbuf_rxdata) { \
+			ASSERT(total_pool_pktid_count > 0); \
+			total_pool_pktid_count--; \
+		} \
+	} while (0)
+#else
+#define TOTAL_POOL_PKTID_CNT_INC(pktp)
+#define TOTAL_POOL_PKTID_CNT_DEC(pktp)
+#endif /* BCMPKTIDMAP || BCMPKTIDMAP_MIN */
 
 #ifdef POOL_HEAP_RECONFIG
 typedef struct pktpool_heap_cb_reg {
@@ -275,8 +295,6 @@ pktpool_init(osl_t *osh,
 
 	pktplen = *n_pkts;
 
-	bzero(pktp, sizeof(pktpool_t));
-
 	/* assign a unique pktpool id */
 	if ((pktp_id = (uint8) pktpool_register(pktp)) == PKTPOOL_INVALID_ID) {
 		return BCME_ERROR;
@@ -339,8 +357,7 @@ pktpool_init(osl_t *osh,
 
 		pktp->avail++;
 
-		ASSERT(total_pool_pktid_count > 0);
-		total_pool_pktid_count--;
+		TOTAL_POOL_PKTID_CNT_DEC(pktp);
 
 #ifdef BCMDBG_POOL
 		pktp->dbg_q[pktp->dbg_qlen++].p = p;
@@ -387,7 +404,7 @@ pktpool_deinit(osl_t *osh, pktpool_t *pktp)
 
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
-		total_pool_pktid_count++;
+		TOTAL_POOL_PKTID_CNT_INC(pktp);
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		freed++;
@@ -463,8 +480,8 @@ pktpool_fill(osl_t *osh, pktpool_t *pktp, bool minimal)
 			err = BCME_ERROR;
 			break;
 		}
-		ASSERT(total_pool_pktid_count > 0);
-		total_pool_pktid_count--;
+
+		TOTAL_POOL_PKTID_CNT_DEC(pktp);
 	}
 
 	/* protect shared resource */
@@ -559,7 +576,7 @@ pktpool_reclaim(osl_t *osh, pktpool_t *pktp, uint16 free_cnt, uint8 action)
 		pktp->avail--;
 		pktp->n_pkts--;
 
-		total_pool_pktid_count++;
+		TOTAL_POOL_PKTID_CNT_INC(pktp);
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		freed++;
@@ -613,7 +630,7 @@ pktpool_empty(osl_t *osh, pktpool_t *pktp)
 
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
-		total_pool_pktid_count++;
+		TOTAL_POOL_PKTID_CNT_INC(pktp);
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		freed++;
@@ -1284,6 +1301,12 @@ done:
 	if (HND_PKTPOOL_MUTEX_RELEASE(&pktp->mutex) != OSL_EXT_SUCCESS)
 		return NULL;
 
+#ifdef APP
+	if (p && (type == lbuf_alfrag_data)) {
+		p = (uint8 *)p + LBUFMEMSZ;
+	}
+#endif /* APP */
+
 	return p;
 }
 
@@ -1487,16 +1510,22 @@ pktpool_t *pktpool_shared = NULL;
 
 #ifdef BCMFRAGPOOL
 pktpool_t *pktpool_shared_lfrag = NULL;
-#ifdef BCMRESVFRAGPOOL
-pktpool_t *pktpool_resv_lfrag = NULL;
-struct resv_info *resv_pool_info = NULL;
-#endif /* BCMRESVFRAGPOOL */
 #endif /* BCMFRAGPOOL */
 
 #ifdef BCMALFRAGPOOL
 pktpool_t *pktpool_shared_alfrag = NULL;
 pktpool_t *pktpool_shared_alfrag_data = NULL;
-#endif /* BCMCTFRAGPOOL */
+#endif /* BCMALFRAGPOOL */
+
+#ifdef BCMRESVFRAGPOOL
+resv_info_t *resv_pool_info = NULL;
+#ifdef APP
+pktpool_t *pktpool_resv_alfrag = NULL;
+pktpool_t *pktpool_resv_alfrag_data = NULL;
+#else
+pktpool_t *pktpool_resv_lfrag = NULL;
+#endif /* APP */
+#endif /* BCMRESVFRAGPOOL */
 
 pktpool_t *pktpool_shared_rxlfrag = NULL;
 
@@ -1548,12 +1577,28 @@ hnd_pktpool_init(osl_t *osh)
 		ASSERT(0);
 		goto error;
 	}
-	pktpool_resv_lfrag = resv_pool_info->pktp;
+
+#ifdef APP
+	pktpool_resv_alfrag = resv_pool_info->rip[RESV_FRAGPOOL_ALFRAG]->pktp;
+	if (pktpool_resv_alfrag == NULL) {
+		err = BCME_ERROR;
+		ASSERT(0);
+		goto error;
+	}
+	pktpool_resv_alfrag_data = resv_pool_info->rip[RESV_FRAGPOOL_ALFRAG_DATA]->pktp;
+	if (pktpool_resv_alfrag_data == NULL) {
+		err = BCME_ERROR;
+		ASSERT(0);
+		goto error;
+	}
+#else
+	pktpool_resv_lfrag = resv_pool_info->rip[RESV_FRAGPOOL_LFRAG]->pktp;
 	if (pktpool_resv_lfrag == NULL) {
 		err = BCME_ERROR;
 		ASSERT(0);
 		goto error;
 	}
+#endif /* APP */
 #endif	/* RESVFRAGPOOL */
 #endif /* FRAGPOOL */
 
@@ -1630,21 +1675,6 @@ hnd_pktpool_init(osl_t *osh)
 	}
 	pktpool_setmaxlen(pktpool_shared_lfrag, SHARED_FRAG_POOL_LEN);
 
-#if defined(BCMRESVFRAGPOOL) && !defined(BCMRESVFRAGPOOL_DISABLED)
-	n = 0; /* IMPORTANT: DO NOT allocate any packets in resv pool */
-#ifdef RESV_POOL_HEAP
-	is_heap_pool = TRUE;
-#else
-	is_heap_pool = FALSE;
-#endif /* RESV_POOL_HEAP */
-
-	if ((err = pktpool_init(osh, pktpool_resv_lfrag, &n, PKTFRAGSZ, TRUE, lbuf_frag,
-		is_heap_pool, POOL_HEAP_FLAG_RSRVPOOL, 0)) != BCME_OK) {
-		ASSERT(0);
-		goto error;
-	}
-	pktpool_setmaxlen(pktpool_resv_lfrag, RESV_FRAG_POOL_LEN);
-#endif /* RESVFRAGPOOL */
 #endif /* BCMFRAGPOOL */
 
 #if defined(BCMALFRAGPOOL) && !defined(BCMALFRAGPOOL_DISABLED)
@@ -1668,6 +1698,42 @@ hnd_pktpool_init(osl_t *osh)
 
 #endif /* BCMCTFRAGPOOL */
 
+#if defined(BCMRESVFRAGPOOL) && !defined(BCMRESVFRAGPOOL_DISABLED)
+#ifdef RESV_POOL_HEAP
+	is_heap_pool = TRUE;
+#else
+	is_heap_pool = FALSE;
+#endif /* RESV_POOL_HEAP */
+
+#ifdef APP
+	/* resv alfrag pool */
+	n = 0; /* IMPORTANT: DO NOT allocate any packets in resv pool */
+	if ((err = pktpool_init(osh, pktpool_resv_alfrag, &n, PKTFRAGSZ, TRUE, lbuf_alfrag,
+			is_heap_pool, POOL_HEAP_FLAG_RSRVPOOL, 0)) != BCME_OK) {
+		ASSERT(0);
+		goto error;
+	}
+	pktpool_setmaxlen(pktpool_resv_alfrag, RESV_ALFRAG_POOL_LEN);
+
+	/* resv alfrag data pool */
+	n = 0; /* IMPORTANT: DO NOT allocate any packets in resv pool */
+	if ((err = pktpool_init(osh, pktpool_resv_alfrag_data, &n, TXPKTALFRAG_DATA_BUFSZ, TRUE,
+			lbuf_alfrag_data, is_heap_pool, POOL_HEAP_FLAG_RSRVPOOL, 0)) != BCME_OK) {
+		ASSERT(0);
+		goto error;
+	}
+	pktpool_setmaxlen(pktpool_resv_alfrag_data, RESV_ALFRAG_DATA_POOL_LEN);
+#else
+	/* resv lfrag pool */
+	n = 0; /* IMPORTANT: DO NOT allocate any packets in resv pool */
+	if ((err = pktpool_init(osh, pktpool_resv_lfrag, &n, PKTFRAGSZ, TRUE, lbuf_frag,
+			is_heap_pool, POOL_HEAP_FLAG_RSRVPOOL, 0)) != BCME_OK) {
+		ASSERT(0);
+		goto error;
+	}
+	pktpool_setmaxlen(pktpool_resv_lfrag, RESV_FRAG_POOL_LEN);
+#endif /* APP */
+#endif /* RESVFRAGPOOL */
 #if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
 #if defined(BCMRXDATAPOOL) && !defined(BCMRXDATAPOOL_DISABLED)
 	n = 1;
@@ -1795,12 +1861,24 @@ hnd_pktpool_deinit(osl_t *osh)
 #endif /* BCMFRAGPOOL */
 
 #if defined(BCMRESVFRAGPOOL) && !defined(BCMRESVFRAGPOOL_DISABLED)
-	if (resv_pool_info != NULL) {
-		if (pktpool_resv_lfrag != NULL) {
+#ifdef APP
+	if (resv_pool_info) {
+		if (pktpool_resv_alfrag) {
+			pktpool_resv_alfrag = NULL;
+		}
+		if (pktpool_resv_alfrag_data) {
+			pktpool_resv_alfrag_data = NULL;
+		}
+		hnd_free(resv_pool_info);
+	}
+#else
+	if (resv_pool_info) {
+		if (pktpool_resv_lfrag) {
 			pktpool_resv_lfrag = NULL;
 		}
 		hnd_free(resv_pool_info);
 	}
+#endif /* APP */
 #endif /* RESVFRAGPOOL */
 
 	if (pktpool_shared != NULL) {
@@ -1876,10 +1954,7 @@ hnd_pktpool_refill(bool minimal)
 #endif
 
 #if defined(BCMFRAGPOOL) && defined(BCMRESVFRAGPOOL)
-	if (POOL_ENAB(pktpool_resv_lfrag)) {
-		int resv_size = (pktpool_resv_lfrag->max_pkt_bytes + LBUFFRAGSZ) *
-			pktpool_resv_lfrag->maxlen;
-		hnd_resv_pool_init(resv_pool_info, resv_size);
+	if (resv_pool_info) {
 		hnd_resv_pool_enable(resv_pool_info);
 	}
 #endif /* BCMRESVFRAGPOOL */
@@ -1979,7 +2054,7 @@ hnd_pktpool_heap_pkt_release(osl_t *osh, pktpool_t *pktp, uint32 flag)
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
 		lb_set_nofree(p);
-		total_pool_pktid_count++;
+		TOTAL_POOL_PKTID_CNT_INC(pktp);
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		rte_freelist_mgr_add(p, pktp->mem_handle);
@@ -2051,8 +2126,7 @@ hnd_pktpool_heap_get_cb(uint8 handle, void *ctxt, void *pkt, uint pktsize)
 			pktp->type, pkt, pktsize)) != NULL) {
 			if ((ret = pktpool_add(pktp, lb)) == BCME_OK) {
 				pktp->poolheap_count--;
-				ASSERT(total_pool_pktid_count > 0);
-				total_pool_pktid_count--;
+				TOTAL_POOL_PKTID_CNT_DEC(pktp);
 				if (pktp->poolheap_count == 0) {
 					pktp->release_active = FALSE;
 					hnd_pktpool_release_active_reset(pktp);

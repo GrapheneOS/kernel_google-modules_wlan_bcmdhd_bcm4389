@@ -1,7 +1,7 @@
 /*
  * Common header file for all error codes.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -641,10 +641,10 @@ enum {
 enum {
 	/* Terminate PASN authentication if off channel. */
 	WL_PASN_E_OFF_CHANNEL		= -8292,
-	/* Terminate PASN authentication if infa attempt to join. */
+	/* Terminate PASN authentication if infra attempt to join. */
 	WL_PASN_E_JOIN_ATTEMPT		= -8293,
-	/* Unexpected PASN auth frame. */
-	WL_PASN_E_AUTH_DISCARD		= -8294,
+	/* Host requests to stop current session. */
+	WL_PASN_E_STOP_ON_REQUEST		= -8294,
 	/* Received PASN auth frame carries failure status code. */
 	WL_PASN_E_AUTH_FAILURE		= -8295,
 	/* Transmitted PASN auth frame is not acknowledged by peer. */
@@ -663,16 +663,40 @@ enum {
 	WL_PASN_E_AUTH_WRAPPED_DATA_TIMEOUT	= -8302,
 	/* Wrapped data handler returns error. */
 	WL_PASN_E_AUTH_WRAPPED_DATA_ERROR	= -8303,
-	/* MIC in PASN authentication frame is invalid. */
-	WL_PASN_E_AUTH_MIC_ERROR		= -8304,
+	/* PASN authentication frame is not correctly constructed. */
+	WL_PASN_E_AUTH_FRAME_CORRUPTED		= -8304,
 	/* Retry time is exhausted. */
 	WL_PASN_E_AUTH_RETRY_LIMIT_REACHED	= -8305,
+	/* cookie carried by STA is invalid. */
+	WL_PASN_E_AUTH_COOKIE_MISMATCH		= -8306,
+	/* PMKSA not found. */
+	WL_PASN_E_SM_INVALID			= -8307,
+	/* PASN state not found */
+	WL_PASN_E_SM_NOTFOUND			= -8308,
 	/* Finite cyclic group indicated in PASN parameters element is not supported. */
-	WL_PASN_E_CRYPTO_UNSUPPORTED_GROUP	= -8306,
+	WL_PASN_E_CRYPTO_UNSUPPORTED_GROUP	= -8309,
 	/* Ephemeral public key in PASN parameters element is not valid. */
-	WL_PASN_E_CRYPTO_INVALID_PUBLIC_KEY	= -8307,
+	WL_PASN_E_CRYPTO_INVALID_PUBLIC_KEY	= -8310,
 	/* Generic cryto failure. */
-	WL_PASN_E_CRYPTO_FAILURE		= -8308
+	WL_PASN_E_CRYPTO_FAILURE		= -8311,
+	/* PASN failed to generate DHss */
+	WL_PASN_E_CRYPTO_DHSS_FAILURE		= -8312,
+	/* Fail to get hash type. */
+	WL_PASN_E_CRYPTO_HASH_TYPE_FAILURE	= -8313,
+	/* PASN state is unexpected */
+	WL_PASN_E_INVALID_STATE			= -8314,
+	/* PASN state is unexpected */
+	WL_PASN_E_AUTH_UNSOLICITED		= -8315,
+	/* Not a valid scenario for transmission */
+	WL_PASN_E_AUTH_TX_INVALID		= -8316,
+	/* PASN session not found */
+	WL_PASN_E_SESSION_NOTFOUND		= -8317,
+	/* PASN session can't allocate SCB to install key */
+	WL_PASN_E_NO_SCB			= -8318,
+	/* Buffer provided to construct public key is too short */
+	WL_PASN_E_AUTH_PK_BUFTOOSHORT		= -8319,
+	/* Abandon the PASN session in progress if received non PASN auth frame from peer. */
+	WL_PASN_E_AUTH_NON_PASN_RCVD		= -8320
 };
 
 #endif	/* BCMUTILS_ERR_CODES */

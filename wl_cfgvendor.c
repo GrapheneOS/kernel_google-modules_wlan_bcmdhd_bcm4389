@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 Vendor Extension Code
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -449,8 +449,27 @@ wl_cfgvendor_set_country(struct wiphy *wiphy,
 	err = wl_cfg80211_set_country_code(primary_ndev, country_code, true, true, 0);
 	if (err < 0) {
 		WL_ERR(("Set country failed ret:%d\n", err));
+		goto exit;
 	}
-
+#ifdef FCC_PWR_LIMIT_2G
+	err = wldev_iovar_setint(primary_ndev, "fccpwrlimit2g", FALSE);
+	if (err < 0) {
+		WL_ERR(("fccpwrlimit2g deactivation is failed\n"));
+		goto exit;
+	} else {
+		WL_ERR(("fccpwrlimit2g is deactivated\n"));
+	}
+#endif /* FCC_PWR_LIMIT_2G */
+#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
+	err = wl_android_set_he_6g_band(primary_ndev, TRUE);
+	if (err < 0) {
+		WL_ERR(("%s: 6g band activation is failed\n", __FUNCTION__));
+		goto exit;
+	} else {
+		WL_ERR(("%s: 6g band is activated\n", __FUNCTION__));
+	}
+#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
+exit:
 	return err;
 }
 
@@ -7101,6 +7120,12 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	BCM_REFERENCE(if_stats);
 	BCM_REFERENCE(if_infra_enh_stats);
 	BCM_REFERENCE(dhdp);
+
+	/* Limit link stats query only on primary interface */
+	if (!IS_INET_LINK_NDEV(cfg, wdev_to_ndev(wdev))) {
+		WL_ERR(("link stats query requested on non primary interface\n"));
+		return BCME_UNSUPPORTED;
+	}
 	/* Get the device rev info */
 	bzero(&revinfo, sizeof(revinfo));
 	err = wldev_ioctl_get(bcmcfg_to_prmry_ndev(cfg), WLC_GET_REVINFO, &revinfo,
@@ -7403,6 +7428,16 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	total_len += chan_stats_size;
 
 	COMPAT_BZERO_IFACE(wifi_iface_stat, iface);
+#ifdef LINKSTAT_EXT_SUPPORT
+	/* Update duty cycle info based on RSDB/VSDB */
+	if (wl_cfg80211_determine_rsdb_scc_mode(cfg)) {
+		COMPAT_ASSIGN_VALUE(iface, info.time_slicing_duty_cycle_percent,
+			WIFI_RSDB_TIMESLICE_DUTY_CYCLE);
+	} else {
+		COMPAT_ASSIGN_VALUE(iface, info.time_slicing_duty_cycle_percent,
+			WIFI_VSDB_TIMESLICE_DUTY_CYCLE);
+	}
+#endif /* LINKSTAT_EXT_SUPPORT */
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VO].ac, WIFI_AC_VO);
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VI].ac, WIFI_AC_VI);
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].ac, WIFI_AC_BE);
@@ -7509,6 +7544,8 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		COMPAT_ASSIGN_VALUE(iface, peer_info->bssload.chan_util, bssload->chan_util);
 	} else if (err == BCME_UNSUPPORTED) {
 		WL_ERR(("bssload_report is unsupported \n"));
+	} else if (err == BCME_NOTASSOCIATED) {
+		WL_ERR(("bssload_report IOVAR failed. STA is not associated.\n"));
 	} else {
 		WL_ERR(("error (%d) - size = %zu\n", err, sizeof(wl_bssload_t)));
 		goto exit;
@@ -8539,8 +8576,13 @@ static int wl_cfgvendor_nla_put_pktlogdump_data(struct sk_buff *skb,
 	char pktlogdump_path[MEMDUMP_PATH_LEN];
 	uint32 pktlog_dumpsize = dhd_os_get_pktlog_dump_size(ndev);
 	if (pktlog_dumpsize == 0) {
+#ifdef DHD_PKT_LOGGING_DBGRING
+		/* dump size can be zero. do not fail dump process */
+		return BCME_OK;
+#else
 		WL_ERR(("Failed to calcuate pktlog len\n"));
 		return BCME_ERROR;
+#endif /* DHD_PKT_LOGGING_DBGRING */
 	}
 
 	dhd_os_get_pktlogdump_filename(ndev, pktlogdump_path, MEMDUMP_PATH_LEN);
@@ -10106,11 +10148,11 @@ wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 	}
 
 	cfg = wl_get_cfg(wdev_to_ndev(wdev));
-	cfg->primary_sta_ndev = wdev_to_ndev(wdev);
-	WL_INFORM_MEM(("Mark interface (%s) as primary\n", cfg->primary_sta_ndev->name));
+	cfg->inet_ndev = wdev_to_ndev(wdev);
+	WL_INFORM_MEM(("Mark interface (%s) as primary\n", cfg->inet_ndev->name));
 
 	/* Enable roam on primary connection interface */
-	err = wldev_iovar_setint(cfg->primary_sta_ndev, "roam_off", FALSE);
+	err = wldev_iovar_setint(cfg->inet_ndev, "roam_off", FALSE);
 	if (err) {
 		WL_ERR(("Failed to enable roam for primary interface err:%d\n", err));
 	}
@@ -10753,9 +10795,9 @@ wl_cfgvendor_twt_update_teardown_response(struct sk_buff *skb, void *event_data)
 		WL_ERR(("nla_put_u8 ANDR_TWT_ATTR_CONFIG_ID failed\n"));
 		goto fail;
 	}
-	err = nla_put_s32(skb, ANDR_TWT_ATTR_ALL_TWT, teardesc->alltwt);
+	err = nla_put_u8(skb, ANDR_TWT_ATTR_ALL_TWT, teardesc->alltwt);
 	if (unlikely(err)) {
-		WL_ERR(("nla_put_s32 ANDR_TWT_ATTR_ALL_TWT failed\n"));
+		WL_ERR(("nla_put_u8 ANDR_TWT_ATTR_ALL_TWT failed\n"));
 		goto fail;
 	}
 
@@ -10793,6 +10835,12 @@ wl_cfgvendor_twt_update_infoframe_response(struct sk_buff *skb, void *event_data
 	err = nla_put_u8(skb, ANDR_TWT_ATTR_CONFIG_ID, info_cplt->configID);
 	if (unlikely(err)) {
 		WL_ERR(("nla_put_u8 WIFI_TWT_ATTR_CONFIG_ID failed\n"));
+		goto fail;
+	}
+	err = nla_put_u8(skb, ANDR_TWT_ATTR_ALL_TWT,
+			!!(infodesc->flow_flags & WL_TWT_INFO_FLAG_ALL_TWT));
+	if (unlikely(err)) {
+		WL_ERR(("nla_put_u8 ANDR_TWT_ATTR_TWT_RESUMED failed\n"));
 		goto fail;
 	}
 	err = nla_put_u8(skb, ANDR_TWT_ATTR_TWT_RESUMED,
@@ -11437,7 +11485,7 @@ const struct nla_policy ota_update_attr_policy[OTA_UPDATE_ATTRIBUTE_MAX] = {
 	[OTA_DOWNLOAD_CLM_ATTR ] = { .type = NLA_BINARY },
 	[OTA_DOWNLOAD_NVRAM_LENGTH_ATTR ] = { .type = NLA_U32 },
 	[OTA_DOWNLOAD_NVRAM_ATTR ] = { .type = NLA_BINARY },
-	[OTA_SET_FORCE_REG_ON] = { .type = NLA_U32 },
+	[OTA_SET_FORCE_REG_ON ] = { .type = NLA_U32 },
 	[OTA_CUR_NVRAM_EXT_ATTR] = { .type = NLA_NUL_STRING },
 };
 #endif /* SUPPORT_OTA_UPDATE */

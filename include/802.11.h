@@ -1,7 +1,7 @@
 /*
  * Fundamental types and constants relating to 802.11
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -670,6 +670,7 @@ typedef struct dot11_extcap_ie dot11_extcap_ie_t;
 #define TDLS_CAP_MAX_BIT			39	/* TDLS max bit defined in ext cap */
 
 /* Extended RSN capabilities (RSNXE capabilities) */
+#define DOT11_EXT_RSN_CAP_LEN_MASK		0x000fu	/* Field length mask */
 #define DOT11_EXT_RSN_CAP_SAE_H2E		5u	/* SAE Hash-to-element support */
 #define DOT11_CAP_SAE_HASH_TO_ELEMENT		DOT11_EXT_RSN_CAP_SAE_H2E /* duped. to be removed */
 #define DOT11_EXT_RSN_CAP_SAE_PK		6u	/* SAE-PK support */
@@ -1172,7 +1173,8 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_FILS_SKEY		4	/* d11 fils shared key authentication w/o pfs */
 #define DOT11_FILS_SKEY_PFS	5	/* d11 fils shared key authentication w/ pfs */
 #define DOT11_FILS_PKEY		6	/* d11 fils public key authentication */
-#define DOT11_MAX_AUTH_ALG  DOT11_FILS_PKEY /* maximum value of an auth alg */
+#define DOT11_PASN		7	/* Pre association security negotiation */
+#define DOT11_MAX_AUTH_ALG  DOT11_PASN /* maximum value of an auth alg */
 #define DOT11_CHALLENGE_LEN	128	/* d11 challenge text length */
 
 /* Frame control macros */
@@ -1518,13 +1520,21 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_SC_POOR_RSSI_CONDN	34	/* Association denied due to poor RSSI */
 #define	DOT11_SC_DECLINED		37	/* request declined */
 #define	DOT11_SC_INVALID_PARAMS		38	/* One or more params have invalid values */
+#define DOT11_SC_INVALID_GROUP_CIPHER	41	/* invalid pairwise cipher */
 #define DOT11_SC_INVALID_PAIRWISE_CIPHER 42	/* invalid pairwise cipher */
 #define	DOT11_SC_INVALID_AKMP		43	/* Association denied due to invalid AKMP */
+#define	DOT11_SC_UNSUPPORTED_RSNE_VERSION 44	/* Unsupported RSNE version. */
 #define DOT11_SC_INVALID_RSNIE_CAP	45	/* invalid RSN IE capabilities */
 #define DOT11_SC_DLS_NOT_ALLOWED	48	/* DLS is not allowed in the BSS by policy */
 #define	DOT11_SC_INVALID_PMKID		53	/* Association denied due to invalid PMKID */
 #define	DOT11_SC_INVALID_MDID		54	/* Association denied due to invalid MDID */
 #define	DOT11_SC_INVALID_FTIE		55	/* Association denied due to invalid FTIE */
+
+/* Requested TCLAS processing is not supported by the AP or PCP. */
+#define	DOT11_SC_REQUESETD_TCLAS_NOT_SUPPORTED			56u
+
+/* The AP or PCP has insufficient TCLAS processing resources to satisfy the request. */
+#define DOT11_SC_INSUFFICIENT_TCLAS_PROCESSING_RESOURCES	57u
 
 #define DOT11_SC_ADV_PROTO_NOT_SUPPORTED 59	/* ad proto not supported */
 #define DOT11_SC_NO_OUTSTAND_REQ	60	/* no outstanding req */
@@ -1694,6 +1704,9 @@ enum dot11_tag_ids {
 	DOT11_MNG_EXT_PREQ_ID			= 130,	/* Mesh PREQ IE */
 	DOT11_MNG_EXT_PREP_ID			= 131,	/* Mesh PREP IE */
 	DOT11_MNG_EXT_PERR_ID			= 132,	/* Mesh PERR IE */
+	DOT11_MNG_MIC_ID			= 140,	/* MIC IE */
+	DOT11_MNG_INTRA_AC_PRIO_ID		= 184,	/* Intra-Access Category Priority IE */
+	DOT11_MNG_SCS_DESCR_ID			= 185,	/* SCS Descriptor IE */
 	DOT11_MNG_VHT_CAP_ID			= 191,	/* d11 mgmt VHT cap id */
 	DOT11_MNG_VHT_OPERATION_ID		= 192,	/* d11 mgmt VHT op id */
 	DOT11_MNG_EXT_BSSLOAD_ID		= 193,	/* d11 mgmt VHT extended bss load id */
@@ -1960,6 +1973,10 @@ enum dot11_tag_ids {
 #define DOT11_EXT_CAP_IDENT_LOC			44u
 /* WNM notification */
 #define DOT11_EXT_CAP_WNM_NOTIF			46u
+
+/* SCS (Stream Classification Service) support */
+#define DOT11_EXT_CAP_SCS			54u
+
 /* Operating mode notification - VHT (11ac D3.0 - 8.4.2.29) */
 #define DOT11_EXT_CAP_OPER_MODE_NOTIF		62u
 /* Fine timing measurement - D3.0 */
@@ -1994,7 +2011,7 @@ enum dot11_tag_ids {
 #define DOT11_EXT_CAP_I2R_LMR_FEEDBACK_POLICY	97u /* I2R LMR Feedback policy (of RSTA) */
 
 /* Last bit index of Extended Capabilities defined in P802.11
- * Please update DOT11_EXT_CAP_LAST_BIT_IDX to the last bit when P802.11 inteoduced new bit
+ * Please update DOT11_EXT_CAP_LAST_BIT_IDX to the last bit when P802.11 introduces new bit
  */
 #define DOT11_EXT_CAP_LAST_BIT_IDX	DOT11_EXT_CAP_I2R_LMR_FEEDBACK_POLICY /* update this */
 #define DOT11_EXT_CAP_NUM_BITS_MAX	(DOT11_EXT_CAP_LAST_BIT_IDX + 1) /* last bit index + 1 */
@@ -2520,6 +2537,9 @@ typedef struct dot11_tclas_fc_hdr dot11_tclas_fc_hdr_t;
 #define DOT11_TCLAS_FC_3_OFFSET		3
 #define DOT11_TCLAS_FC_4_IP_HIGHER	4
 #define DOT11_TCLAS_FC_5_8021D		5
+#define DOT11_TCLAS_FC_10_IP_HIGHER	10 /* classifier type 10, IP extensions and
+					    * higher layer parameters
+					    */
 
 /** TCLAS frame classifier type 0 parameters for Ethernet */
 BWL_PRE_PACKED_STRUCT struct dot11_tclas_fc_0_eth {
@@ -2598,6 +2618,18 @@ BWL_PRE_PACKED_STRUCT struct dot11_tclas_fc_5_8021d {
 typedef struct dot11_tclas_fc_5_8021d dot11_tclas_fc_5_8021d_t;
 #define DOT11_TCLAS_FC_5_8021D_LEN	6
 
+/** TCLAS frame classifier type 10 parameters for IP extensions and higher layer parameters */
+BWL_PRE_PACKED_STRUCT struct dot11_tclas_fc_10_ip_ext {
+	uint8 type;
+	uint8 proto_inst;	/* protocol instance */
+	uint8 proto_or_nh;	/* protocol(for IPv4) or next header(for IPv6) */
+	uint8 data[];
+	/* variable filter value */
+	/* variable filer mask */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_tclas_fc_10_ip_ext dot11_tclas_fc_10_ip_ext_t;
+#define DOT11_TCLAS_FC_10_IP_EXT_LEN	3u
+
 /** TCLAS frame classifier type parameters */
 BWL_PRE_PACKED_STRUCT union dot11_tclas_fc {
 	uint8 data[1];
@@ -2653,6 +2685,19 @@ BWL_PRE_PACKED_STRUCT struct dot11_tclas_mask_ie {
 typedef struct dot11_tclas_mask_ie dot11_tclas_mask_ie_t;
 #define DOT11_TCLAS_MASK_IE_LEN		1u	/* Fixed length, excludes id and len */
 #define DOT11_TCLAS_MASK_IE_HDR_LEN	3u	/* Fixed length */
+
+/* Intra-Access Category Priority element */
+BWL_PRE_PACKED_STRUCT struct dot11_intra_ac_prio_ie {
+	uint8 id;				/* 184, DOT11_MNG_INTRA_AC_PRIO_ID */
+	uint8 len;
+	uint8 priority;				/* Bits 0..2 : User Priority
+						 * Bit  3    : Alternate Queue
+						 * Bit  4    : Drop Eligibility
+						 * Bits 5..7 : Reserved
+						 */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_intra_ac_prio_ie dot11_intra_ac_prio_ie_t;
+#define DOT11_INTRA_AC_PRIO_IE_LEN	3u	/* Fixed length, include id and len */
 
 /* Bitmap definitions for the User Priority Bitmap
  * Each bit in the bitmap corresponds to a user priority.
@@ -2728,6 +2773,62 @@ BWL_PRE_PACKED_STRUCT struct dot11_mscs_subelement {
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_mscs_subelement dot11_mscs_subelement_t;
 #define DOT11_MSCS_DESCR_SUBELEM_IE_STATUS_LEN	2u	/* Subelement ID status length */
+
+/* SCS Request Types */
+#define DOT11_SCS_REQ_TYPE_ADD		0u
+#define DOT11_SCS_REQ_TYPE_REMOVE	1u
+#define DOT11_SCS_REQ_TYPE_CHANGE	2u
+
+/** SCS Descriptor element */
+BWL_PRE_PACKED_STRUCT struct dot11_scs_descr_ie {
+	uint8  id;				/* DOT11_MNG_SCS_DESCR_ID (185) */
+	uint8  len;
+	uint8  scsid;				/* SCS descriptor id */
+	uint8  req_type;			/* SCS request type(0/1/2) */
+	uint8  data[];
+	/* optional Intra-Access Category Priority element, dot11_intrac_ac_prio_ie_t */
+	/* zero or more tclas elements, dot11_tclas_ie_t */
+	/* optional tclas processing element, dot11_tclas_proc_ie_t */
+	/* zero or more SCS sub-elements, dot11_scs_subelement_t */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_scs_descr_ie dot11_scs_descr_ie_t;
+#define DOT11_SCS_DESCR_IE_LEN		2u	/* Fixed length, exludes id and len */
+#define DOT11_SCS_DESCR_IE_HDR_LEN	4u	/* Entire descriptor header length */
+
+/** SCS Request frame, refer section 9.4.18.6 in the spec IEEE802.11REVmd (aka IEEE802.11-2020) */
+BWL_PRE_PACKED_STRUCT struct dot11_scs_req {
+	uint8 category;				/* ACTION_RAV_STREAMING (19) */
+	uint8 robust_action;			/* action: SCS Req (0) */
+	uint8 dialog_token;			/* To identify the SCS request and response */
+	uint8 data[];				/* SCS descriptor list */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_scs_req dot11_scs_req_t;
+#define DOT11_SCS_REQ_HDR_LEN		3u	/* Fixed length */
+
+BWL_PRE_PACKED_STRUCT struct dot11_scs_status_duple {
+	uint8 scsid;
+	uint16 status;
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_scs_status_duple dot11_scs_status_duple_t;
+
+/** SCS Response frame, refer section 9.4.18.7 in the spec IEEE802.11REVmd */
+BWL_PRE_PACKED_STRUCT struct dot11_scs_res {
+	uint8  category;			/* ACTION_RAV_STREAMING (19) */
+	uint8  robust_action;			/* action: SCS Res (1) */
+	uint8  dialog_token;			/* To identify the SCS request and response */
+	dot11_scs_status_duple_t scs_status_list[];
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_scs_res dot11_scs_res_t;
+#define DOT11_SCS_RES_HDR_LEN		3u	/* Fixed length */
+
+/* SCS subelement */
+BWL_PRE_PACKED_STRUCT struct dot11_scs_subelement {
+	uint8 id;				/* SCS specific subelement ID */
+	uint8 len;				/* Length in bytes */
+	uint8 data[];				/* Subelement specific data */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_scs_subelement dot11_scs_subelement_t;
+#define DOT11_SCS_DESCR_SUBELEM_IE_LEN	2u	/* Subelement IE length */
 
 /** TFS request element */
 BWL_PRE_PACKED_STRUCT struct dot11_tfs_req_ie {
@@ -5031,8 +5132,8 @@ typedef struct dot11_sae_pk_element dot11_sae_pk_element_t;
 #define DOT11_MAX_KEY_SIZE	32	/* max size of any key */
 #define DOT11_MAX_IV_SIZE	16	/* max size of any IV */
 #define DOT11_EXT_IV_FLAG	(1<<5)	/* flag to indicate IV is > 4 bytes */
+#define DOT11_FTM_PFT_IV_FLAG   0x10    /* Protected Fine Timing frame flag in IV */
 #define DOT11_WPA_KEY_RSC_LEN   8       /* WPA RSC key len */
-
 #define WEP1_KEY_SIZE		5	/* max size of any WEP key */
 #define WEP1_KEY_HEX_SIZE	10	/* size of WEP key in hex. */
 #define WEP128_KEY_SIZE		13	/* max size of any WEP key */
@@ -6021,6 +6122,65 @@ typedef struct supp_op_classes_ie supp_op_classes_ie_t;
 	TRANSITION_MODE_SAE_PK | \
 	TRANSITION_MODE_WPA3_ENTERPRISE | \
 	TRANSITION_MODE_ENHANCED_OPEN)
+
+/* 11az d2.5 table 9-92 */
+#define DOT11_PASN_PARAMS_EXT_ID	100u
+#define DOT11_MNG_PASN_PARAMS		(DOT11_MNG_ID_EXT_ID + \
+	DOT11_PASN_PARAMS_EXT_ID)
+
+#define PASN_PARAMS_CTRL_CBINFO_PRESENT		BCM_BIT(0)
+#define PASN_PARAMS_CTRL_GROUP_KEY_PRESENT	BCM_BIT(1u)
+
+enum {
+	PASN_WRAPPED_NO_DATA	= 0,
+	PASN_WRAPPED_FBT_DATA	= 1u,
+	PASN_WRAPPED_FILS_DATA	= 2u,
+	PASN_WRAPPED_SAE_DATA	= 3u
+};
+
+BWL_PRE_PACKED_STRUCT struct dot11_pasn_params_ie {
+	uint8 id;	/* 255 */
+	uint8 len;
+	uint8 id_ext;	/* DOT11_PASN_PARAMS_EXT_ID */
+	uint8 ctrl;
+	uint8 wd_format;
+	/* optional comback info, group id and public key */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_pasn_params_ie dot11_pasn_params_ie_t;
+
+BWL_PRE_PACKED_STRUCT struct pasn_params_ap_cbinfo_field {
+	uint16 after_tu;	/* ask STA to retry in TU times */
+	uint8 cookie_len;	/* length of cookie */
+	uint8 cookie[]; 	/* variable cookie */
+} BWL_POST_PACKED_STRUCT;
+typedef struct pasn_params_ap_cbinfo_field pasn_params_ap_cbinfo_field_t;
+
+BWL_PRE_PACKED_STRUCT struct pasn_params_sta_cbinfo_field {
+	uint8 cookie_len;	/* length of cookie */
+	uint8 cookie[]; 	/* variable cookie */
+} BWL_POST_PACKED_STRUCT;
+typedef struct pasn_params_sta_cbinfo_field pasn_params_sta_cbinfo_field_t;
+
+BWL_PRE_PACKED_STRUCT union pasn_params_cbinfo_field {
+	pasn_params_ap_cbinfo_field_t ap_cbinfo;
+	pasn_params_sta_cbinfo_field_t sta_cbinfo;
+} BWL_POST_PACKED_STRUCT;
+typedef union pasn_params_cbinfo_field pasn_params_cbinfo_field_t;
+
+BWL_PRE_PACKED_STRUCT struct pasn_params_group_key {
+	uint16 group_id; /* IANA id of Finite Cyclic Group */
+	uint8 len;	/* Public key length */
+	uint8 key[];	/* public key encoded using RFC 5480 conventions */
+} BWL_POST_PACKED_STRUCT;
+typedef struct pasn_params_group_key pasn_params_group_key_t;
+
+/* MIC ie */
+BWL_PRE_PACKED_STRUCT struct mic_ie {
+	uint8	id; /* IE ID: DOT11_MNG_MIE_ID */
+	uint8	len;	/* IE length */
+	uint8	mic[];	/* mic: 16 or 24 octets */
+} BWL_POST_PACKED_STRUCT;
+typedef struct mic_ie mic_ie_t;
 
 /* This marks the end of a packed structure section. */
 #include <packed_section_end.h>

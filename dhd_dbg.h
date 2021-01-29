@@ -1,7 +1,7 @@
 /*
  * Debug/trace/assert driver definitions for Dongle Host Driver.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -45,10 +45,16 @@
 
 #ifdef CUSTOM_PREFIX
 #define DBG_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
-#else
-#define DBG_PRINT_PREFIX
-#endif
 #define DBG_PRINT_SYSTEM_TIME pr_cont(DBG_PRINT_PREFIX)
+#define DHD_CONS_ONLY(args)	\
+do {	\
+	DBG_PRINT_SYSTEM_TIME;	\
+	pr_cont args;		\
+} while (0)
+#else
+#define DBG_PRINT_SYSTEM_TIME
+#define DHD_CONS_ONLY(args) do { printf args;} while (0)
+#endif /* CUSTOM_PREFIX */
 
 #if defined(BCMDBG) || defined(DHD_DEBUG)
 
@@ -291,8 +297,107 @@ do {	\
 		DBG_PRINT_SYSTEM_TIME;	\
 		pr_cont args;		\
 	}	\
+	if (dhd_log_level & DHD_PKT_MON_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
 } while (0)
 
+#define DHD_CTL(args)	\
+do {	\
+	if (dhd_msg_level & DHD_CTL_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_CTL_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_TIMER(args)	\
+do {	\
+	if (dhd_msg_level & DHD_TIMER_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_TIMER_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_INTR(args)	\
+do {	\
+	if (dhd_msg_level & DHD_INTR_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_INTR_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_ISCAN(args)	\
+do {	\
+	if (dhd_msg_level & DHD_ISCAN_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_ISCAN_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_ARPOE(args)	\
+do {	\
+	if (dhd_msg_level & DHD_ARPOE_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_ARPOE_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_REORDER(args)	\
+do {	\
+	if (dhd_msg_level & DHD_REORDER_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_REORDER_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_PNO(args)	\
+do {	\
+	if (dhd_msg_level & DHD_PNO_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_PNO_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
+
+#define DHD_RTT(args)	\
+do {	\
+	if (dhd_msg_level & DHD_RTT_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;	\
+		pr_cont args;		\
+	}	\
+	if (dhd_log_level & DHD_RTT_VAL) {	\
+		DHD_LOG_DUMP_WRITE_TS;	\
+		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+} while (0)
 #endif /* DHD_EFI */
 #else /* DHD_LOG_DUMP */
 /* !DHD_LOG_DUMP */
@@ -308,19 +413,22 @@ do {	\
 #define DHD_PKT_MON(args)	DHD_ERROR(args)
 #endif /* DHD_LOG_DUMP */
 
-#define DHD_DATA(args)		do {if (dhd_msg_level & DHD_DATA_VAL) printf args;} while (0)
+#if defined(DHD_EFI) || !defined(DHD_LOG_DUMP)
 #define DHD_CTL(args)		do {if (dhd_msg_level & DHD_CTL_VAL) printf args;} while (0)
 #define DHD_TIMER(args)		do {if (dhd_msg_level & DHD_TIMER_VAL) printf args;} while (0)
-#define DHD_HDRS(args)		do {if (dhd_msg_level & DHD_HDRS_VAL) printf args;} while (0)
-#define DHD_BYTES(args)		do {if (dhd_msg_level & DHD_BYTES_VAL) printf args;} while (0)
 #define DHD_INTR(args)		do {if (dhd_msg_level & DHD_INTR_VAL) printf args;} while (0)
-#define DHD_GLOM(args)		do {if (dhd_msg_level & DHD_GLOM_VAL) printf args;} while (0)
-#define DHD_BTA(args)		do {if (dhd_msg_level & DHD_BTA_VAL) printf args;} while (0)
 #define DHD_ISCAN(args)		do {if (dhd_msg_level & DHD_ISCAN_VAL) printf args;} while (0)
 #define DHD_ARPOE(args)		do {if (dhd_msg_level & DHD_ARPOE_VAL) printf args;} while (0)
 #define DHD_REORDER(args)	do {if (dhd_msg_level & DHD_REORDER_VAL) printf args;} while (0)
 #define DHD_PNO(args)		do {if (dhd_msg_level & DHD_PNO_VAL) printf args;} while (0)
 #define DHD_RTT(args)		do {if (dhd_msg_level & DHD_RTT_VAL) printf args;} while (0)
+#endif /* defined(DHD_EFI) || !defined(DHD_LOG_DUMP) */
+
+#define DHD_DATA(args)		do {if (dhd_msg_level & DHD_DATA_VAL) printf args;} while (0)
+#define DHD_HDRS(args)		do {if (dhd_msg_level & DHD_HDRS_VAL) printf args;} while (0)
+#define DHD_BYTES(args)		do {if (dhd_msg_level & DHD_BYTES_VAL) printf args;} while (0)
+#define DHD_GLOM(args)		do {if (dhd_msg_level & DHD_GLOM_VAL) printf args;} while (0)
+#define DHD_BTA(args)		do {if (dhd_msg_level & DHD_BTA_VAL) printf args;} while (0)
 
 #if defined(DHD_LOG_DUMP)
 #if defined(DHD_EFI)

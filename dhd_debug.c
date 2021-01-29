@@ -1,7 +1,7 @@
 /*
  * DHD debugability support
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -180,6 +180,10 @@ dhd_dbg_urgent_pull(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 	uint32 pending_len = 0;
 	unsigned long flags = 0;
 
+	if (ring->id != PACKET_LOG_RING_ID) {
+		return pending_len;
+	}
+
 	DHD_PKT_LOG_LOCK(dhd_os_get_pktlog_lock(dhdp), flags);
 	{
 		if (ring->stat.written_bytes > ring->stat.read_bytes) {
@@ -266,9 +270,7 @@ dhd_dbg_push_to_ring(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_entry_t *hdr, vo
 		return ret;
 
 #ifdef DHD_PKT_LOGGING_DBGRING
-	if (ring_id == PACKET_LOG_RING_ID) {
-		pending_len = dhd_dbg_urgent_pull(dhdp, ring);
-	}
+	pending_len = dhd_dbg_urgent_pull(dhdp, ring);
 #endif /* DHD_PKT_LOGGING_DBGRING */
 	if (pending_len == 0) {
 		pending_len = dhd_dbg_ring_get_pending_len(ring);
@@ -2913,7 +2915,8 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	int ring_id = 0;
 	void *buf = NULL;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
-	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING
+	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING ||
+	* (DEBUGABILITY && CUSTOMER_HW6)
 	*/
 	int ret = BCME_ERROR;
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
@@ -2937,7 +2940,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 		goto error;
 #endif /* DHD_DEBUGABILITY_EVENT_RING */
 
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
+#if defined(DHD_DEBUGABILITY_LOG_DUMP_RING)
 	buf = MALLOCZ(dhdp->osh, FW_VERBOSE_RING_SIZE);
 	if (!buf)
 		goto error;
@@ -2945,7 +2948,9 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 			(uint8 *)FW_VERBOSE_RING_NAME, FW_VERBOSE_RING_SIZE, buf, FALSE);
 	if (ret)
 		goto error;
+#endif
 
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	buf = MALLOCZ(dhdp->osh, DRIVER_LOG_RING_SIZE);
 	if (!buf)
 		goto error;
@@ -3045,7 +3050,8 @@ error:
 	}
 	MFREE(dhdp->osh, dbg, sizeof(dhd_dbg_t));
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
-	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING
+	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING ||
+	* (DEBUGABILITY && CUSTOMER_HW6)
 	*/
 	return ret;
 }

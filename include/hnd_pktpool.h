@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -136,6 +136,10 @@ typedef struct pktpool {
 	bool is_heap_pool;	/* Whether this pool can be used as heap */
 	bool release_active;
 	uint8 mem_handle;
+
+	struct resv_info *resv_info; /* Resv frag pool info */
+	uint resv_pool_idx;
+
 #ifdef BCMDBG_POOL
 	uint8 dbg_cbcnt;
 	pktpool_cbinfo_t dbg_cbs[PKTPOOL_CB_MAX];
@@ -238,7 +242,15 @@ extern pktpool_t *pktpool_shared_alfrag_data;
 #endif
 
 #ifdef BCMRESVFRAGPOOL
+#ifdef APP
+#define RESV_FRAG_POOL		(NULL)
+#define RESV_ALFRAG_POOL	(pktpool_resv_alfrag)
+#define RESV_ALFRAG_DATA_POOL	(pktpool_resv_alfrag_data)
+#else
 #define RESV_FRAG_POOL		(pktpool_resv_lfrag)
+#define RESV_ALFRAG_POOL	(NULL)
+#define RESV_ALFRAG_DATA_POOL	(NULL)
+#endif /* APP */
 #define RESV_POOL_INFO		(resv_pool_info)
 #else
 #define RESV_FRAG_POOL		((struct pktpool *)NULL)
@@ -258,7 +270,12 @@ int hnd_pktpool_fill(pktpool_t *pktpool, bool minimal);
 void hnd_pktpool_refill(bool minimal);
 
 #ifdef BCMRESVFRAGPOOL
+#ifdef APP
+extern pktpool_t *pktpool_resv_alfrag;
+extern pktpool_t *pktpool_resv_alfrag_data;
+#else
 extern pktpool_t *pktpool_resv_lfrag;
+#endif /* APP */
 extern struct resv_info *resv_pool_info;
 #endif /* BCMRESVFRAGPOOL */
 

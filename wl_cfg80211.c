@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -6288,6 +6288,30 @@ wl_handle_reassoc(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	return BCME_OK;
 }
 
+#ifdef WL_DUAL_STA
+static bool
+wl_is_macaddr_in_use(struct bcm_cfg80211 *cfg, struct net_device *dev)
+{
+	struct net_info *iter, *next;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	for_each_ndev(cfg, iter, next) {
+		GCC_DIAGNOSTIC_POP();
+		/* Check against wl_iftype_t type */
+		if ((iter->wdev) && (iter->iftype == WL_IF_TYPE_STA)) {
+			struct net_device *ndev = iter->wdev->netdev;
+			if (ndev && wl_get_drv_status(cfg, CONNECTED, ndev) && (ndev != dev)) {
+				if (memcmp(dev->dev_addr, ndev->dev_addr, ETHER_ADDR_LEN) == 0) {
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+#endif /* WL_DUAL_STA */
+
 static s32
 wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	struct cfg80211_connect_params *sme)
@@ -6302,6 +6326,14 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	/* syncronize the connect states */
 	mutex_lock(&cfg->connect_sync);
 
+#ifdef WL_DUAL_STA
+	if (wl_is_macaddr_in_use(cfg, dev)) {
+		WL_ERR(("Blocking connect request as another STA interface"
+			" with same MAC address already connected\n"));
+		err = -EINVAL;
+		goto fail;
+	}
+#endif /* WL_DUAL_STA */
 	bzero(&assoc_info, sizeof(wlcfg_assoc_info_t));
 	if ((assoc_info.bssidx = wl_get_bssidx_by_wdev(cfg, dev->ieee80211_ptr)) < 0) {
 		WL_ERR(("Find wlan index from wdev(%p) failed\n", dev->ieee80211_ptr));
@@ -6974,7 +7006,13 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 				iov_buf, WLC_IOCTL_SMLEN, bssidx, NULL);
 			if (err) {
 				/* could fail in case that 'okc' is not supported */
-				WL_INFORM_MEM(("okc_info_pmk failed, err=%d (ignore)\n", err));
+				if (err == BCME_UNSUPPORTED) {
+					WL_DBG_MEM(("okc_info_pmk not supported. Ignore.\n"));
+				} else {
+					WL_INFORM_MEM(("okc_info_pmk failed (%d). Ignore.\n", err));
+				}
+				/* OKC failure is not fatal */
+				err = BCME_OK;
 			}
 		}
 
@@ -6982,6 +7020,11 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 		if (err) {
 			bzero(&pmk, sizeof(pmk));
 			WL_ERR(("pmk failed, err=%d (ignore)\n", err));
+			/* PMK failure is not fatal, the connection could still go through
+			 * by handling EAPOL at supplicant level. so print error reason and
+			 * make an attempt to proceed.
+			 */
+			err = BCME_OK;
 			goto exit;
 		} else {
 			WL_DBG(("pmk set. flags:0x%x\n", pmk.flags));
@@ -7036,7 +7079,8 @@ exit:
 	bzero(&pmk, sizeof(pmk));
 
 	if (err) {
-		WL_ERR(("add key failed\n"));
+		WL_ERR(("add_key failed. err:%d key_idx:%d cipher:0x%x\n",
+				err, key_idx, params->cipher));
 		return err;
 	}
 
@@ -9274,6 +9318,8 @@ wl_cfg80211_mgmt_auth_tx(struct net_device *dev, bcm_struct_cfgdev *cfgdev,
 		if (unlikely(err)) {
 			WL_ERR(("%s: Failed to send auth(%d)\n", __func__, err));
 			ack = false;
+		} else {
+			WL_INFORM_MEM(("auth tx triggered (%llu)\n", *cookie));
 		}
 	}
 
@@ -10828,7 +10874,7 @@ wl_post_linkup_ops(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 	wl_wps_session_update(ndev, WPS_STATE_LINKUP, as->addr);
 #endif /** WL_WPS_SYNC */
 
-	if (IS_PRIMARY_NDEV(cfg, ndev)) {
+	if (IS_STA_IFACE(ndev_to_wdev(ndev))) {
 		vndr_oui_num = wl_vndr_ies_get_vendor_oui(cfg,
 			ndev, vndr_oui, ARRAY_SIZE(vndr_oui));
 		if (vndr_oui_num > 0) {
@@ -12510,7 +12556,12 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	BCM_REFERENCE(sec);
 
 	if (status == WLC_E_STATUS_SUCCESS && reason != WLC_E_REASON_INITIAL_ASSOC) {
+#ifndef WES_SUPPORT
 		WL_ERR(("Attempting roam with reason code : %d\n", reason));
+#else
+		WL_ERR(("Attempting roam with reason code : %d, Current %s mode\n",
+			reason, (cfg->ncho_mode ? "NCHO" : "Legacy Roam")));
+#endif /* WES_SUPPORT */
 	}
 
 #ifdef CONFIG_SILENT_ROAM
@@ -14630,7 +14681,7 @@ static void wl_cfg80211_determine_vsdb_mode(struct bcm_cfg80211 *cfg)
 }
 
 int
-wl_cfg80211_determine_p2p_rsdb_scc_mode(struct bcm_cfg80211 *cfg)
+wl_cfg80211_determine_rsdb_scc_mode(struct bcm_cfg80211 *cfg)
 {
 	struct net_info *iter, *next;
 	u32 chanspec = 0;
@@ -14741,7 +14792,7 @@ static s32 wl_notifier_change_state(struct bcm_cfg80211 *cfg, struct net_info *_
 #ifdef DISABLE_FRAMEBURST_VSDB
 		if (!DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_HOSTAP_MODE) &&
 			wl_cfg80211_is_concurrent_mode(primary_dev)) {
-			rsdb_scc_flag = wl_cfg80211_determine_p2p_rsdb_scc_mode(cfg);
+			rsdb_scc_flag = wl_cfg80211_determine_rsdb_scc_mode(cfg);
 			wl_cfg80211_set_frameburst(cfg, rsdb_scc_flag);
 		}
 #endif /* DISABLE_FRAMEBURST_VSDB */
@@ -16465,9 +16516,20 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 
 	ret = wldev_iovar_getbuf(ndev, "scan_ver", NULL, 0, ioctl_buf, sizeof(ioctl_buf), NULL);
 	if (ret == BCME_OK) {
-		WL_INFORM_MEM(("scan_params v2\n"));
-		/* use scan_params ver2 */
-		cfg->scan_params_v2 = true;
+		wl_scan_version_t *ver = (wl_scan_version_t *)ioctl_buf;
+		if ((ver->scan_ver_major == SCAN_PARAMS_VER_3) ||
+				(ver->scan_ver_major == SCAN_PARAMS_VER_2)) {
+			/* v2 and v3 structs are of same size just that a pad variable
+			 * has been changed to ssid type for 6G use. That will variable
+			 * get ignored when used with branches supporting V2 struct
+			 */
+			cfg->scan_params_ver = SCAN_PARAMS_VER_3;
+			WL_INFORM_MEM(("scan_params version:%d\n", cfg->scan_params_ver));
+		} else {
+			WL_INFORM(("scan_ver (%d), UNSUPPORTED\n", ver->scan_ver_major));
+			err = -EINVAL;
+			return err;
+		}
 	} else {
 		if (ret == BCME_UNSUPPORTED) {
 			WL_INFORM(("scan_ver, UNSUPPORTED\n"));
@@ -16678,8 +16740,17 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 #endif /* DHCP_SCAN_SUPPRESS */
 
 #ifdef WL_SCHED_SCAN
-	cancel_delayed_work(&cfg->sched_scan_stop_work);
+	if (cfg->sched_scan_req) {
+		struct wireless_dev *wdev = ndev->ieee80211_ptr;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
+		wl_cfg80211_sched_scan_stop(wdev->wiphy, ndev,
+				cfg->sched_scan_req->reqid);
+#else
+		wl_cfg80211_sched_scan_stop(wdev->wiphy, ndev);
+#endif /* KERNEL >= 4.11 */
+	}
 #endif /* WL_SCHED_SCAN */
+
 #ifdef WL_SAR_TX_POWER
 	cfg->wifi_tx_power_mode = WIFI_POWER_SCENARIO_INVALID;
 #if defined(WL_SAR_TX_POWER_CONFIG)
@@ -16871,6 +16942,9 @@ s32 wl_cfg80211_up(struct net_device *net)
 	WL_DBG(("In\n"));
 	cfg = wl_get_cfg(net);
 
+#ifdef WL_DUAL_STA
+	cfg->inet_ndev = net;
+#endif /* WL_DUAL_STA */
 	if ((err = wldev_ioctl_get(bcmcfg_to_prmry_ndev(cfg), WLC_GET_VERSION, &val,
 		sizeof(int)) < 0)) {
 		WL_ERR(("WLC_GET_VERSION failed, err=%d\n", err));
@@ -22475,13 +22549,15 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 	wl_auth_start_evt_t *evt_data = (wl_auth_start_evt_t *)data;
 	wl_assoc_mgr_cmd_t cmd;
 	struct wireless_dev *wdev = ndev->ieee80211_ptr;
-	int err, retry = 3;
+	int retry = 3;
+	int err = BCME_OK;
 
 	WL_DBG(("Enter \n"));
 
 	if (!datalen || !data) {
 		WL_ERR(("Invalid data for auth start event\n"));
-		return BCME_ERROR;
+		err = BCME_ERROR;
+		goto fail;
 	}
 
 	if (wl_get_drv_status(cfg, CONNECTED, ndev)) {
@@ -22514,7 +22590,8 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 	err = cfg80211_external_auth_request(ndev, &ext_auth_param, GFP_KERNEL);
 	if (err) {
 		WL_ERR(("Send external auth request failed, ret %d\n", err));
-		return BCME_ERROR;
+		err = BCME_ERROR;
+		goto fail;
 	}
 
 	cmd.version = WL_ASSOC_MGR_CURRENT_VERSION;
@@ -22525,6 +22602,12 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 		WLC_IOCTL_SMLEN, &cfg->ioctl_buf_sync);
 	if (unlikely(err)) {
 		WL_ERR(("%s: Failed to pause assoc(%d)\n", __func__, err));
+	}
+
+fail:
+	if (err) {
+		/* Issue disassoc to abort the current connection for recovery */
+		wl_cfg80211_disassoc(ndev, WLAN_REASON_UNSPECIFIED);
 	}
 
 	return BCME_OK;

@@ -1,7 +1,7 @@
 /*
  * DHD debugability Linux os layer
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -108,7 +108,10 @@ dbg_ring_poll_worker(struct work_struct *work)
 	void *buf;
 	dhd_dbg_ring_entry_t *hdr;
 	uint32 buflen, rlen;
-	unsigned long flags, lock;
+	unsigned long flags;
+#ifdef DHD_PKT_LOGGING_DBGRING
+	unsigned long flags2 = 0;
+#endif /* DHD_PKT_LOGGING_DBGRING */
 
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	ring_info = container_of(d_work, linux_dbgring_info_t, work);
@@ -116,8 +119,11 @@ dbg_ring_poll_worker(struct work_struct *work)
 
 	dhdp = ring_info->dhdp;
 	ringid = ring_info->ring_id;
-
-	DHD_PKT_LOG_LOCK(dhd_os_get_pktlog_lock(dhdp), lock);
+#ifdef DHD_PKT_LOGGING_DBGRING
+	if (ringid == PACKET_LOG_RING_ID) {
+		DHD_PKT_LOG_LOCK(dhd_os_get_pktlog_lock(dhdp), flags2);
+	}
+#endif /* DHD_PKT_LOGGING_DBGRING */
 
 	ring = &dhdp->dbg->dbg_rings[ringid];
 	DHD_DBG_RING_LOCK(ring->lock, flags);
@@ -208,7 +214,11 @@ exit:
 			schedule_delayed_work(d_work, ring_info->interval);
 		}
 	}
-	DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), lock);
+#ifdef DHD_PKT_LOGGING_DBGRING
+	if (ringid == PACKET_LOG_RING_ID) {
+		DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), flags2);
+	}
+#endif /* DHD_PKT_LOGGING_DBGRING */
 
 	return;
 }

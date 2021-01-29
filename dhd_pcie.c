@@ -1,7 +1,7 @@
 /*
  * DHD Bus Module for PCIE
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2508,7 +2508,7 @@ dhdpcie_advertise_bus_cleanup(dhd_pub_t *dhdp)
 			dhdpcie_fw_trap(dhdp->bus);
 			OSL_DELAY(100 * 1000); // wait 100 msec
 			if (!dhdp->db7_trap.fw_db7w_trap_recieved) {
-				DHD_ERROR(("%s : Did not receive DB7\n", __FUNCTION__));
+				DHD_ERROR(("%s : Did not receive DB7 Ack\n", __FUNCTION__));
 #ifdef WBRC
 				if (dhdp->fw_mode_changed == FALSE) {
 					DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
@@ -5158,6 +5158,13 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 				dhdp->db7_trap.fw_db7w_trap_inprogress = TRUE;
 				dhdpcie_fw_trap(dhdp->bus);
 				OSL_DELAY(100 * 1000); // wait 100 msec
+				/*
+				 * Since dpc may have triggered db7, it will not pre-empt itself
+				 * so if trap_data is 0, re-read trap_data before giving up
+				 */
+				if (dhdp->dongle_trap_data == 0) {
+					dhdp->dongle_trap_data = dhd_prot_process_trapbuf(dhdp);
+				}
 				if (dhdp->db7_trap.fw_db7w_trap_recieved) {
 					/* Collect SSSR dump for all non trap cases
 					 * only after DB7 ack
@@ -5173,7 +5180,7 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 					dhdp->collect_sdtc = TRUE;
 #endif /* DHD_SDTC_ETB_DUMP */
 				} else {
-					DHD_ERROR(("%s : Did not receive DB7\n", __FUNCTION__));
+					DHD_ERROR(("%s : Did not receive DB7 Ack\n", __FUNCTION__));
 #ifdef WBRC
 					DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
 					bus->dhd->do_chip_bighammer = TRUE;
@@ -6629,7 +6636,7 @@ dhd_buzzz_dump_log(char *p, uint32 *core, uint32 *log, bcm_buzzz_t *buzzz)
 			break;
 		}
 		default:
-			printf("Maximum one argument supported\n");
+			DHD_CONS_ONLY(("Maximum one argument supported\n"));
 			break;
 	}
 
@@ -6661,11 +6668,11 @@ void dhd_buzzz_dump(bcm_buzzz_t *buzzz_p, void *buffer_p, char *p)
 	}
 
 	if (total == 0U) {
-		printf("bcm_buzzz_dump total<%u> done\n", total);
+		DHD_CONS_ONLY(("bcm_buzzz_dump total<%u> done\n", total));
 		return;
 	} else {
-		printf("bcm_buzzz_dump total<%u> : part2<%u> + part1<%u>\n",
-		       total, part2, part1);
+		DHD_CONS_ONLY(("bcm_buzzz_dump total<%u> : part2<%u> + part1<%u>\n",
+		       total, part2, part1));
 	}
 
 	if (part2) {   /* with wrap */
@@ -6686,7 +6693,7 @@ void dhd_buzzz_dump(bcm_buzzz_t *buzzz_p, void *buffer_p, char *p)
 		log = (void*)((size_t)log + buzzz_p->log_sz);
 	}
 
-	printf("bcm_buzzz_dump done.\n");
+	DHD_CONS_ONLY(("bcm_buzzz_dump done.\n"));
 }
 
 int dhd_buzzz_dump_dngl(dhd_bus_t *bus)
@@ -6701,11 +6708,11 @@ int dhd_buzzz_dump_dngl(dhd_bus_t *bus)
 		return BCME_UNSUPPORTED;
 	}
 	if ((page_p = (char *)MALLOC(bus->dhd->osh, 4096)) == NULL) {
-		printf("Page memory allocation failure\n");
+		DHD_CONS_ONLY(("Page memory allocation failure\n"));
 		goto done;
 	}
 	if ((buzzz_p = MALLOC(bus->dhd->osh, sizeof(bcm_buzzz_t))) == NULL) {
-		printf("BCM BUZZZ memory allocation failure\n");
+		DHD_CONS_ONLY(("BCM BUZZZ memory allocation failure\n"));
 		goto done;
 	}
 
@@ -6724,24 +6731,24 @@ int dhd_buzzz_dump_dngl(dhd_bus_t *bus)
 		dhdpcie_bus_membytes(bus, FALSE, (ulong)sh->buzz_dbg_ptr,
 		                     (uint8 *)buzzz_p, sizeof(bcm_buzzz_t));
 
-		printf("BUZZZ[0x%08x]: log<0x%08x> cur<0x%08x> end<0x%08x> "
+		DHD_CONS_ONLY(("BUZZZ[0x%08x]: log<0x%08x> cur<0x%08x> end<0x%08x> "
 			"count<%u> status<%u> wrap<%u>\n"
 			"cpu<0x%02X> counters<%u> group<%u> buffer_sz<%u> log_sz<%u>\n",
 			(int)sh->buzz_dbg_ptr,
 			(int)buzzz_p->log, (int)buzzz_p->cur, (int)buzzz_p->end,
 			buzzz_p->count, buzzz_p->status, buzzz_p->wrap,
 			buzzz_p->cpu_idcode, buzzz_p->counters, buzzz_p->group,
-			buzzz_p->buffer_sz, buzzz_p->log_sz);
+			buzzz_p->buffer_sz, buzzz_p->log_sz));
 
 		if (buzzz_p->count == 0) {
-			printf("Empty dongle BUZZZ trace\n\n");
+			DHD_CONS_ONLY(("Empty dongle BUZZZ trace\n\n"));
 			goto done;
 		}
 
 		/* Allocate memory for trace buffer and format strings */
 		buffer_p = MALLOC(bus->dhd->osh, buzzz_p->buffer_sz);
 		if (buffer_p == NULL) {
-			printf("Buffer memory allocation failure\n");
+			DHD_CONS_ONLY(("Buffer memory allocation failure\n"));
 			goto done;
 		}
 
@@ -6756,12 +6763,12 @@ int dhd_buzzz_dump_dngl(dhd_bus_t *bus)
 			for (ctr = 0; ctr < buzzz_p->counters; ctr++) {
 				printf("<Evt[%02X]> ", buzzz_p->eventid[ctr]);
 			}
-			printf("<code execution point>\n");
+			DHD_CONS_ONLY(("<code execution point>\n"));
 		}
 
 		dhd_buzzz_dump(buzzz_p, buffer_p, page_p);
 
-		printf("----- End of dongle BCM BUZZZ Trace -----\n\n");
+		DHD_CONS_ONLY(("----- End of dongle BCM BUZZZ Trace -----\n\n"));
 
 		MFREE(bus->dhd->osh, buffer_p, buzzz_p->buffer_sz); buffer_p = NULL;
 	}
@@ -11754,7 +11761,7 @@ dhd_bus_handle_d3_ack(dhd_bus_t *bus)
 	dhdpcie_bus_clear_intstatus(bus);
 
 	DHD_SET_BUS_LPS_D3_ACKED(bus);
-	DHD_ERROR(("%s: D3_ACK Received\n", __FUNCTION__));
+	DHD_ERROR(("%s: D3_ACK Recieved\n", __FUNCTION__));
 
 	if (bus->dhd->dhd_induce_error == DHD_INDUCE_D3_ACK_TIMEOUT) {
 		/* Set bus_low_power_state to DHD_BUS_D3_ACK_RECIEVED */
@@ -12233,6 +12240,9 @@ static bool
 dhdpci_bus_read_frames(dhd_bus_t *bus)
 {
 	bool more = FALSE;
+#if defined(EWP_EDL)
+	uint32 edl_itmes = 0;
+#endif /* EWP_EDL */
 
 	/* First check if there a FW trap */
 	if ((bus->api.fw_rev >= PCIE_SHARED_VERSION_6) &&
@@ -12293,7 +12303,7 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 	}
 #ifdef EWP_EDL
 	else {
-		more |= dhd_prot_process_msgbuf_edl(bus->dhd);
+		more |= dhd_prot_process_msgbuf_edl(bus->dhd, &edl_itmes);
 		bus->last_process_edl_time = OSL_LOCALTIME_NS();
 	}
 #endif /* EWP_EDL */
@@ -12358,6 +12368,13 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 #if defined(DHD_H2D_LOG_TIME_SYNC)
 	dhdpci_bus_rte_log_time_sync_poll(bus);
 #endif /* DHD_H2D_LOG_TIME_SYNC */
+
+#if defined(EWP_EDL) && defined(DHD_WAKE_STATUS)
+	if ((edl_itmes > 0) && (bcmpcie_get_edl_wake(bus) > 0)) {
+		DHD_ERROR(("##### dhdpcie_host_wake caused by Event Logs, edl_itmes %d\n",
+			edl_itmes));
+	}
+#endif /* EWP_EDL && DHD_WAKE_STATUS */
 	return more;
 }
 

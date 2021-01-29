@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -309,17 +309,17 @@ typedef struct nan_ranging_inst {
 	bool role_concurrency_status;
 } nan_ranging_inst_t;
 
-#define DUMP_NAN_RTT_INST(inst) { printf("svc instance ID %d", (inst)->svc_inst_id); \
-	printf("Range ID %d", (inst)->range_id); \
-	printf("range_status %d", (inst)->range_status); \
-	printf("Range Type %d", (inst)->range_type); \
-	printf("Peer MAC "MACDBG"\n", MAC2STRDBG((inst)->peer_addr.octet)); \
+#define DUMP_NAN_RTT_INST(inst) { WL_CONS_ONLY(("svc instance ID %d", (inst)->svc_inst_id)); \
+	WL_CONS_ONLY(("Range ID %d", (inst)->range_id)); \
+	WL_CONS_ONLY(("range_status %d", (inst)->range_status)); \
+	WL_CONS_ONLY(("Range Type %d", (inst)->range_type)); \
+	WL_CONS_ONLY(("Peer MAC "MACDBG"\n", MAC2STRDBG((inst)->peer_addr.octet))); \
 	}
 
-#define DUMP_NAN_RTT_RPT(rpt) { printf("Range ID %d", (rpt)->rng_id); \
-	printf("Distance in MM %d", (rpt)->dist_mm); \
-	printf("range_indication %d", (rpt)->indication); \
-	printf("Peer MAC "MACDBG"\n", MAC2STRDBG((rpt)->peer_m_addr.octet)); \
+#define DUMP_NAN_RTT_RPT(rpt) { WL_CONS_ONLY("Range ID %d", (rpt)->rng_id); \
+	WL_CONS_ONLY(("Distance in MM %d", (rpt)->dist_mm)); \
+	WL_CONS_ONLY(("range_indication %d", (rpt)->indication)); \
+	WL_CONS_ONLY(("Peer MAC "MACDBG"\n", MAC2STRDBG((rpt)->peer_m_addr.octet))); \
 	}
 /*
  * Data request Initiator/Responder

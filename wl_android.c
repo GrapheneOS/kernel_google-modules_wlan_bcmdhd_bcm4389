@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -3222,6 +3222,14 @@ wl_android_ncho_private_command(struct net_device *net, char *command, int total
 			WL_ERR(("fccpwrlimit2g is deactivated\n"));
 		}
 #endif /* FCC_PWR_LIMIT_2G */
+#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
+		if (wl_android_set_he_6g_band(net, TRUE) != BCME_OK) {
+			WL_ERR(("%s: 6g band activation is failed\n", __FUNCTION__));
+		} else {
+			WL_ERR(("%s: 6g band is activated\n", __FUNCTION__));
+		}
+#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
+
 	} else if (strnicmp(command, CMD_COUNTRYREV_GET, strlen(CMD_COUNTRYREV_GET)) == 0) {
 		bytes_written = wl_android_get_country_rev(net, command, total_len);
 	} else
@@ -3812,6 +3820,9 @@ wl_android_set_fcc_pwr_limit_2g(struct net_device *dev, char *command)
 		return BCME_ERROR;
 	}
 
+#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
+	error = wl_android_set_he_6g_band(dev, (enable == 0) ? TRUE : FALSE);
+#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
 	return error;
 }
 
@@ -4942,11 +4953,11 @@ exit:
 	return ret;
 }
 
-int wl_android_wifi_off(struct net_device *dev, bool on_failure)
+int wl_android_wifi_off(struct net_device *dev, bool force_off)
 {
 	int ret = 0;
 
-	DHD_ERROR(("%s g_wifi_on=%d on_failure=%d\n", __FUNCTION__, g_wifi_on, on_failure));
+	DHD_ERROR(("%s g_wifi_on=%d force_off=%d\n", __FUNCTION__, g_wifi_on, force_off));
 	if (!dev) {
 		DHD_TRACE(("wl_android_wifi_off: dev is null\n"));
 		return -EINVAL;
@@ -4960,7 +4971,7 @@ int wl_android_wifi_off(struct net_device *dev, bool on_failure)
 	}
 #endif	/* BCMPCIE && DHD_DEBUG_UART */
 	dhd_net_if_lock(dev);
-	if (g_wifi_on || on_failure) {
+	if (g_wifi_on || force_off) {
 #if defined(BCMSDIO) || defined(BCMPCIE)
 		ret = dhd_net_bus_devreset(dev, TRUE);
 #ifdef BCMSDIO
@@ -11902,6 +11913,13 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 			DHD_ERROR(("%s: fccpwrlimit2g is deactivated\n", __FUNCTION__));
 		}
 #endif /* FCC_PWR_LIMIT_2G */
+#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
+		if (wl_android_set_he_6g_band(net, TRUE) != BCME_OK) {
+			DHD_ERROR(("%s: 6g band activation is failed\n", __FUNCTION__));
+		} else {
+			DHD_ERROR(("%s: 6g band is activated\n", __FUNCTION__));
+		}
+#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
 #endif /* CUSTOMER_HW4_PRIVATE_CMD */
 	}
 #endif /* CUSTOMER_SET_COUNTRY */
@@ -14184,3 +14202,45 @@ exit:
 	return bytes_written;
 }
 #endif /* WL_UWB_COEX */
+
+#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
+int
+wl_android_set_he_6g_band(struct net_device *dev, bool enable)
+{
+	s32 err = BCME_OK;
+	s32 bssidx = 0;
+	struct bcm_cfg80211 *cfg = NULL;
+
+	if (!dev) {
+		err = BCME_NOTFOUND;
+		return err;
+	}
+
+	cfg = wl_get_cfg(dev);
+	if (!cfg) {
+		err = BCME_NOTFOUND;
+		return err;
+	}
+
+	if ((bssidx = wl_get_bssidx_by_wdev(cfg, dev->ieee80211_ptr)) < 0) {
+		WL_ERR(("find bss index from wdev failed\n"));
+		err = BCME_NOTFOUND;
+		return err;
+	}
+#ifdef DHD_PM_CONTROL_FROM_FILE
+	if (g_pm_control) {
+		enable = TRUE;
+	}
+#endif	/* DHD_PM_CONTROL_FROM_FILE */
+
+	WL_ERR(("%s: Set he mode 6G band to %s\n", __FUNCTION__, enable ? "Enable" : "Disable"));
+	/* Enable/disable for 6G */
+	err = wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_HE_FEATURES_6G, enable);
+	if (err != BCME_OK) {
+		WL_ERR(("%s: failed to set he mode 6G band - err(%d)\n",
+			__FUNCTION__, err));
+	}
+
+	return err;
+}
+#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
