@@ -3,7 +3,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -727,6 +727,9 @@ typedef struct dhd_prot {
 #ifdef DHD_DEBUG_INVALID_PKTID
 	uint8 ctrl_cpl_snapshot[D2HRING_CTRL_CMPLT_ITEMSIZE];
 #endif /* DHD_DEBUG_INVALID_PKTID */
+	uint32 event_wakeup_pkt; /* Number of event wakeup packet rcvd */
+	uint32 rx_wakeup_pkt;    /* Number of Rx wakeup packet rcvd */
+	uint32 info_wakeup_pkt;  /* Number of info cpl wakeup packet rcvd */
 } dhd_prot_t;
 
 #ifdef DHD_EWPR_VER2
@@ -3966,6 +3969,9 @@ dhd_prot_init(dhd_pub_t *dhd)
 	prot->ioctl_status = 0;
 	prot->ioctl_resplen = 0;
 	prot->ioctl_received = IOCTL_WAIT;
+	prot->rx_wakeup_pkt = 0;
+	prot->event_wakeup_pkt = 0;
+	prot->info_wakeup_pkt = 0;
 
 	/* Initialize Common MsgBuf Rings */
 
@@ -4449,6 +4455,8 @@ dhd_prot_reset(dhd_pub_t *dhd)
 extern void dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp);
 extern void dhd_lb_rx_pkt_enqueue(dhd_pub_t *dhdp, void *pkt, int ifidx);
 extern unsigned long dhd_read_lb_rxp(dhd_pub_t *dhdp);
+extern void dhd_rx_emerge_enqueue(dhd_pub_t *dhdp, void *pkt);
+extern void * dhd_rx_emerge_dequeue(dhd_pub_t *dhdp);
 
 #if defined(DHD_LB_RXP)
 /**
@@ -4461,6 +4469,12 @@ dhd_lb_dispatch_rx_process(dhd_pub_t *dhdp)
 	dhd_lb_rx_napi_dispatch(dhdp); /* dispatch rx_process_napi */
 }
 #endif /* DHD_LB_RXP */
+#else
+static INLINE void *
+dhd_rx_emerge_dequeue(dhd_pub_t *dhdp)
+{
+	return NULL;
+}
 #endif /* DHD_LB */
 
 void
@@ -5007,27 +5021,28 @@ BCMFASTPATH(dhd_prot_print_metadata)(dhd_pub_t *dhd, void *ptr, int len)
 			uint32 txs;
 			memcpy(&txs, tlv_v, sizeof(uint32));
 			if (tlv_l < (sizeof(wl_txstatus_additional_info_t) + sizeof(uint32))) {
-				printf("METADATA TX_STATUS: %08x\n", txs);
+				DHD_CONS_ONLY(("METADATA TX_STATUS: %08x\n", txs));
 			} else {
 				wl_txstatus_additional_info_t tx_add_info;
 				memcpy(&tx_add_info, tlv_v + sizeof(uint32),
 					sizeof(wl_txstatus_additional_info_t));
-				printf("METADATA TX_STATUS: %08x WLFCTS[%04x | %08x - %08x - %08x]"
+				DHD_CONS_ONLY(("METADATA TX_STATUS: %08x"
+					" WLFCTS[%04x | %08x - %08x - %08x]"
 					" rate = %08x tries = %d - %d\n", txs,
 					tx_add_info.seq, tx_add_info.entry_ts,
 					tx_add_info.enq_ts, tx_add_info.last_ts,
 					tx_add_info.rspec, tx_add_info.rts_cnt,
-					tx_add_info.tx_cnt);
+					tx_add_info.tx_cnt));
 			}
 			} break;
 
 		case WLFC_CTL_TYPE_RSSI: {
 			if (tlv_l == 1)
-				printf("METADATA RX_RSSI: rssi = %d\n", *tlv_v);
+				DHD_CONS_ONLY(("METADATA RX_RSSI: rssi = %d\n", *tlv_v));
 			else
-				printf("METADATA RX_RSSI[%04x]: rssi = %d snr = %d\n",
+				DHD_CONS_ONLY(("METADATA RX_RSSI[%04x]: rssi = %d snr = %d\n",
 					(*(tlv_v + 3) << 8) | *(tlv_v + 2),
-					(int8)(*tlv_v), *(tlv_v + 1));
+					(int8)(*tlv_v), *(tlv_v + 1))_;
 			} break;
 
 		case WLFC_CTL_TYPE_FIFO_CREDITBACK:
@@ -5045,8 +5060,8 @@ BCMFASTPATH(dhd_prot_print_metadata)(dhd_pub_t *dhd, void *ptr, int len)
 				uint32 wlan_time;
 			} rx_tmstamp;
 			memcpy(&rx_tmstamp, tlv_v, sizeof(rx_tmstamp));
-			printf("METADATA RX TIMESTMAP: WLFCTS[%08x - %08x] rate = %08x\n",
-				rx_tmstamp.wlan_time, rx_tmstamp.bus_time, rx_tmstamp.rspec);
+			DHD_CONS_ONLY(("METADATA RX TIMESTMAP: WLFCTS[%08x - %08x] rate = %08x\n",
+				rx_tmstamp.wlan_time, rx_tmstamp.bus_time, rx_tmstamp.rspec));
 			} break;
 
 		case WLFC_CTL_TYPE_TRANS_ID:
@@ -5258,7 +5273,11 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 	pktlen = (uint32 *)((uint8 *)pktbuf_pa + sizeof(dmaaddr_t) * RX_BUF_BURST);
 
 	for (i = 0; i < count; i++) {
-		if ((p = PKTGET(dhd->osh, pktsz, FALSE)) == NULL) {
+		/* First try to dequeue from emergency queue which will be filled
+		 * during rx flow control.
+		*/
+		p = dhd_rx_emerge_dequeue(dhd);
+		if ((p == NULL) && ((p = PKTGET(dhd->osh, pktsz, FALSE)) == NULL)) {
 			dhd->rx_pktgetfail++;
 			DHD_ERROR_RLMT(("%s:%d: PKTGET for rxbuf failed, rx_pktget_fail :%lu\n",
 				__FUNCTION__, __LINE__, dhd->rx_pktgetfail));
@@ -6100,7 +6119,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_btlogcpl)(dhd_pub_t *dhd, uint bound)
 
 #ifdef EWP_EDL
 bool
-dhd_prot_process_msgbuf_edl(dhd_pub_t *dhd)
+dhd_prot_process_msgbuf_edl(dhd_pub_t *dhd, uint32 *edl_itmes)
 {
 	dhd_prot_t *prot = dhd->prot;
 	msgbuf_ring_t *ring = prot->d2hring_edl;
@@ -6146,6 +6165,7 @@ dhd_prot_process_msgbuf_edl(dhd_pub_t *dhd)
 	depth = ring->max_items;
 	/* check for avail space, in number of ring items */
 	items = READ_AVAIL_SPACE(ring->wr, rd, depth);
+	*edl_itmes = items;
 	if (items == 0) {
 		/* no work items in edl ring */
 		return FALSE;
@@ -6371,10 +6391,6 @@ dhd_prot_edl_ring_tcm_rd_update(dhd_pub_t *dhd)
 	DHD_RING_LOCK(ring->ring_lock, flags);
 	dhd_prot_upd_read_idx(dhd, ring);
 	DHD_RING_UNLOCK(ring->ring_lock, flags);
-	if (dhd->dma_h2d_ring_upd_support &&
-		!IDMA_ACTIVE(dhd)) {
-		dhd_prot_ring_doorbell(dhd, DHD_RDPTR_UPDATE_H2D_DB_MAGIC(ring));
-	}
 }
 #endif /* EWP_EDL */
 
@@ -6396,6 +6412,7 @@ static int dhd_prot_lb_rxp_flow_ctrl(dhd_pub_t *dhd)
 {
 	if ((dhd->lb_rxp_stop_thr == 0) || (dhd->lb_rxp_strt_thr == 0)) {
 		/* when either of stop and start thresholds are zero flow ctrl is not enabled */
+		atomic_set(&dhd->lb_rxp_flow_ctrl, FALSE);
 		return FALSE;
 	}
 
@@ -6448,12 +6465,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 
 #ifdef DHD_LB_RXP
 	/* must be the first check in this function */
-	if (dhd_prot_lb_rxp_flow_ctrl(dhd)) {
-		/* DHD is holding a lot of RX packets.
-		 * Just give chance for netwrok stack to consumes RX packets.
-		 */
-		return FALSE;
-	}
+	(void)dhd_prot_lb_rxp_flow_ctrl(dhd);
 #endif /* DHD_LB_RXP */
 #ifdef DHD_PCIE_RUNTIMEPM
 	/* Set rx_pending_due_to_rpm if device is not in resume state */
@@ -6517,6 +6529,10 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 			}
 
 			pktid = ltoh32(msg->cmn_hdr.request_id);
+			if (msg->cmn_hdr.flags & BCMPCIE_CMNHDR_FLAGS_WAKE_PACKET) {
+				DHD_ERROR(("%s:Rx: Wakeup Packet received\n", __FUNCTION__));
+				dhd->prot->rx_wakeup_pkt ++;
+			}
 
 #ifdef DHD_PKTID_AUDIT_RING
 			if (DHD_PKTID_AUDIT_RING_DEBUG(dhd, dhd->prot->pktid_rx_map, pktid,
@@ -6594,6 +6610,19 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 #endif /* DHD_DBG_SHOW_METADATA */
 #endif /* !BCM_ROUTER_DHD */
 
+#ifdef DHD_LB_RXP
+			/* If flow control is hit, do not enqueue the pkt into napi queue,
+			 * rather enque it in emergency queue and same will be dequeued first
+			 * during PKTGET. This rxcpl packet will be dropped and will not be sent
+			 * to network stack.
+			 */
+			if (atomic_read(&dhd->lb_rxp_flow_ctrl)) {
+				/* Put back rx_metadata_offset which was pulled during rxpost */
+				PKTPUSH(dhd->osh, pkt, prot->rx_metadata_offset);
+				dhd_rx_emerge_enqueue(dhd, pkt);
+				continue;
+			}
+#endif /* DHD_LB_RXP */
 			/* data_offset from buf start */
 			if (ltoh16(msg->data_offset)) {
 				/* data offset given from dongle after split rx */
@@ -6812,15 +6841,6 @@ BCMFASTPATH(dhd_prot_process_msgbuf_txcpl)(dhd_pub_t *dhd, uint bound, int ringt
 		}
 	}
 
-	if (n) {
-		/* For IDMA and HWA case, doorbell is sent along with read index update.
-		 * For DMA indices case ring doorbell once n items are read to sync with dongle.
-		 */
-		if (dhd->dma_h2d_ring_upd_support && !IDMA_ACTIVE(dhd)) {
-			dhd_prot_ring_doorbell(dhd, DHD_RDPTR_UPDATE_H2D_DB_MAGIC(ring));
-			dhd->prot->txcpl_db_cnt++;
-		}
-	}
 	return more;
 }
 
@@ -7404,13 +7424,14 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 		 * |    |> delay time first fetch to the last fetch (4-bit 1 = 32ms)
 		 * |> fetch count (4-bit)
 		 */
-		printf("TX status[%d] = %04x-%04x -> status = %d (%d/%dms + %d/%dms)\n", pktid,
+		DHD_CONS_ONLY(("TX status[%d] = %04x-%04x -> status = %d (%d/%dms + %d/%dms)\n",
+			pktid,
 			ltoh16(txstatus->tx_status_ext), ltoh16(txstatus->tx_status),
 			(txstatus->tx_status & WLFC_CTL_PKTFLAG_MASK),
 			((txstatus->tx_status >> 12) & 0xf),
 			((txstatus->tx_status >> 8) & 0xf) * 32,
 			((txstatus->tx_status_ext & 0xff) * 4),
-			((txstatus->tx_status_ext >> 8) & 0xff) * 4);
+			((txstatus->tx_status_ext >> 8) & 0xff) * 4));
 	}
 	pkt_fate = TRUE;
 
@@ -7595,6 +7616,10 @@ dhd_prot_event_process(dhd_pub_t *dhd, void *msg)
 	buflen = ltoh16(evnt->event_data_len);
 
 	ifidx = BCMMSGBUF_API_IFIDX(&evnt->cmn_hdr);
+	if (evnt->cmn_hdr.flags & BCMPCIE_CMNHDR_FLAGS_WAKE_PACKET) {
+		DHD_ERROR(("%s:Event: Wakeup Packet received\n", __FUNCTION__));
+		prot->event_wakeup_pkt ++;
+	}
 	/* FIXME: check the event status */
 
 	/* Post another rxbuf to the device */
@@ -7652,6 +7677,10 @@ BCMFASTPATH(dhd_prot_process_infobuf_complete)(dhd_pub_t *dhd, void* buf)
 		if (resp->dest < DEBUG_BUF_DEST_MAX) {
 			dhd->debug_buf_dest_stat[resp->dest]++;
 		}
+	}
+	if (resp->cmn_hdr.flags & BCMPCIE_CMNHDR_FLAGS_WAKE_PACKET) {
+		DHD_ERROR(("%s:Infobuf: Wakeup Packet received\n", __FUNCTION__));
+		dhd->prot->info_wakeup_pkt ++;
 	}
 
 	pkt = dhd_prot_packet_get(dhd, pktid, PKTTYPE_INFO_RX, TRUE);
@@ -10758,11 +10787,17 @@ BCMFASTPATH(dhd_prot_ring_write_complete)(dhd_pub_t *dhd, msgbuf_ring_t * ring, 
 }
 
 static void
+BCMFASTPATH(__dhd_prot_ring_doorbell)(dhd_pub_t *dhd, uint32 value)
+{
+	dhd->prot->mb_ring_fn(dhd->bus, value);
+}
+
+static void
 BCMFASTPATH(dhd_prot_ring_doorbell)(dhd_pub_t *dhd, uint32 value)
 {
 	unsigned long flags_bus;
 	DHD_BUS_LP_STATE_LOCK(dhd->bus->bus_lp_state_lock, flags_bus);
-	dhd->prot->mb_ring_fn(dhd->bus, value);
+	__dhd_prot_ring_doorbell(dhd, value);
 	DHD_BUS_LP_STATE_UNLOCK(dhd->bus->bus_lp_state_lock, flags_bus);
 }
 
@@ -10800,6 +10835,12 @@ dhd_prot_upd_read_idx(dhd_pub_t *dhd, msgbuf_ring_t * ring)
 	dhd_prot_t *prot = dhd->prot;
 	uint32 db_index;
 	uint corerev;
+	unsigned long flags_bus;
+
+	/* Hold lp state lock before ringing DB for synchronization
+	 * purpose, to avoid rininging after D3.
+	 */
+	DHD_BUS_LP_STATE_LOCK(dhd->bus->bus_lp_state_lock, flags_bus);
 
 	/* update read index */
 	/* If dma'ing h2d indices supported
@@ -10821,10 +10862,16 @@ dhd_prot_upd_read_idx(dhd_pub_t *dhd, msgbuf_ring_t * ring)
 	} else if (dhd->dma_h2d_ring_upd_support) {
 		dhd_prot_dma_indx_set(dhd, ring->rd,
 		                      D2H_DMA_INDX_RD_UPD, ring->idx);
+		/* For IDMA and HWA case, doorbell is sent along with read index update.
+		 * For DMA indices case ring doorbell once n items are read to sync with dongle.
+		 */
+		__dhd_prot_ring_doorbell(dhd, DHD_RDPTR_UPDATE_H2D_DB_MAGIC(ring));
 	} else {
 		dhd_bus_cmn_writeshared(dhd->bus, &(ring->rd),
 			sizeof(uint16), RING_RD_UPD, ring->idx);
 	}
+
+	DHD_BUS_LP_STATE_UNLOCK(dhd->bus->bus_lp_state_lock, flags_bus);
 }
 
 static int
@@ -11886,6 +11933,10 @@ void dhd_prot_print_info(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 		dhd_prot_print_flow_ring(dhd, prot->d2hring_edl, FALSE, strbuf,
 			" %5d:%5d:%5d %5d:%5d:%5d %17p %8x:%8x %14d %14d %10d\n");
 	}
+
+	bcm_bprintf(strbuf, "Total wakeup packet rcvd: Event:%d,\t RX:%d,\t Info:%d\n",
+		dhd->prot->event_wakeup_pkt, dhd->prot->rx_wakeup_pkt,
+		dhd->prot->info_wakeup_pkt);
 
 	bcm_bprintf(strbuf, "active_tx_count %d	 pktidmap_avail(ctrl/rx/tx) %d %d %d\n",
 		OSL_ATOMIC_READ(dhd->osh, &dhd->prot->active_tx_count),

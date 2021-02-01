@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -339,6 +339,13 @@ typedef float64 float_t;
 	#define INLINE
 #endif /* _MSC_VER */
 #endif /* INLINE */
+
+/* Force inlining. */
+#if defined(BWL_COMPILER_GNU)
+#define INLINE_ALWAYS	inline  __attribute__ ((always_inline))
+#else
+#define INLINE_ALWAYS	INLINE
+#endif
 
 #undef TYPEDEF_BOOL
 #undef TYPEDEF_UCHAR

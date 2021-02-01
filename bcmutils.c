@@ -1,7 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <bcmutils.h>
+#include <stdlib.h>
 
 #if defined(BCMEXTSUP)
 #include <bcm_osl.h>
@@ -1706,7 +1707,7 @@ bcm_mwbmap_init(osl_t *osh, uint32 items_max)
 		ASSERT(0);
 		goto error1;
 	}
-	memset(mwbmap_p, 0, size);
+	bzero(mwbmap_p, size);
 
 	/* Initialize runtime multiword bitmap state */
 	mwbmap_p->imaps = (uint16)words;
@@ -3283,7 +3284,7 @@ bcm_object_trace_init(void)
 {
 	int i = 0;
 	BCM_OBJDBG_LOCK_INIT();
-	memset(&bcm_dbg_objs, 0x00, sizeof(struct bcm_dbgobj) * BCM_OBJDBG_COUNT);
+	bzero(&bcm_dbg_objs, sizeof(struct bcm_dbgobj) * BCM_OBJDBG_COUNT);
 	dbgobj_freehead = &bcm_dbg_objs[0];
 	dbgobj_freetail = &bcm_dbg_objs[BCM_OBJDBG_COUNT - 1];
 
@@ -5348,7 +5349,7 @@ ipv4_tcp_hdr_cksum(uint8 *ip, uint8 *tcp, uint16 tcp_len)
 	ASSERT(tcp_len >= TCP_MIN_HEADER_LEN);
 
 	/* pseudo header cksum */
-	memset(&tcp_ps, 0, sizeof(tcp_ps));
+	bzero(&tcp_ps, sizeof(tcp_ps));
 	memcpy(&tcp_ps.dst_ip, ip_hdr->dst_ip, IPV4_ADDR_LEN);
 	memcpy(&tcp_ps.src_ip, ip_hdr->src_ip, IPV4_ADDR_LEN);
 	tcp_ps.zero = 0;
@@ -5384,7 +5385,7 @@ ipv6_tcp_hdr_cksum(uint8 *ipv6, uint8 *tcp, uint16 tcp_len)
 	ASSERT(tcp_len >= TCP_MIN_HEADER_LEN);
 
 	/* pseudo header cksum */
-	memset((char *)&ipv6_pseudo, 0, sizeof(ipv6_pseudo));
+	bzero((char *)&ipv6_pseudo, sizeof(ipv6_pseudo));
 	memcpy((char *)ipv6_pseudo.saddr, (char *)ipv6_hdr->saddr.addr,
 		sizeof(ipv6_pseudo.saddr));
 	memcpy((char *)ipv6_pseudo.daddr, (char *)ipv6_hdr->daddr.addr,
@@ -5488,12 +5489,12 @@ setbits(uint8 *addr, uint size, uint stbit, uint nbits, uint32 val)
 uint32
 getbits(const uint8 *addr, uint size, uint stbit, uint nbits)
 {
-	uint fbyte = stbit >> 3;		/* first byte */
-	uint lbyte = (stbit + nbits - 1) >> 3;	/* last byte */
-	uint fbit = stbit & 7;			/* first bit in the first byte */
-	uint rbits = (nbits > 8 - fbit ?
-	              nbits - (8 - fbit) :
-	              0) & 7;			/* remaining bits of the last byte when not 0 */
+	uint fbyte = stbit >> 3u;		/* first byte */
+	uint lbyte = (stbit + nbits - 1u) >> 3u;	/* last byte */
+	uint fbit = stbit & 7u;			/* first bit in the first byte */
+	uint rbits = (nbits > 8u - fbit ?
+	              nbits - (8u - fbit) :
+	              0) & 7u;			/* remaining bits of the last byte when not 0 */
 	uint32 val = 0;
 	uint bits = 0;				/* bits in first partial byte */
 	uint8 mask;
@@ -5503,33 +5504,33 @@ getbits(const uint8 *addr, uint size, uint stbit, uint nbits)
 
 	ASSERT(fbyte < size);
 	ASSERT(lbyte < size);
-	ASSERT(nbits <= (sizeof(val) << 3));
+	ASSERT(nbits <= (sizeof(val) << 3u));
 
 	/* all bits are in the same byte */
 	if (fbyte == lbyte) {
-		mask = ((1 << nbits) - 1) << fbit;
+		mask = ((1u << nbits) - 1u) << fbit;
 		val = (addr[fbyte] & mask) >> fbit;
 		return val;
 	}
 
 	/* first partial byte */
 	if (fbit > 0) {
-		bits = 8 - fbit;
-		mask = (0xff << fbit);
+		bits = 8u - fbit;
+		mask = (0xffu << fbit);
 		val |= (addr[fbyte] & mask) >> fbit;
 		fbyte ++;	/* first full byte */
 	}
 
 	/* last partial byte */
 	if (rbits > 0) {
-		mask = (1 << rbits) - 1;
+		mask = (1u << rbits) - 1u;
 		val |= (addr[lbyte] & mask) << (nbits - rbits);
 		lbyte --;	/* last full byte */
 	}
 
 	/* remaining full byte(s) */
 	for (byte = fbyte; byte <= lbyte; byte ++) {
-		val |= (addr[byte] << (((byte - fbyte) << 3) + bits));
+		val |= ((uint32)addr[byte] << (((byte - fbyte) << 3u) + bits));
 	}
 
 	return val;

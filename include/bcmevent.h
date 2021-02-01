@@ -3,7 +3,7 @@
  *
  * Dependencies: bcmeth.h
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -35,6 +35,7 @@
 #include <typedefs.h>
 /* #include <ethernet.h> -- TODO: req., excluded to overwhelming coupling (break up ethernet.h) */
 #include <bcmeth.h>
+#include <bcmwifi_channels.h>
 #if defined(HEALTH_CHECK) || defined(DNGL_EVENT_SUPPORT)
 #include <dnglevent.h>
 #endif /* HEALTH_CHECK || DNGL_EVENT_SUPPORT */
@@ -302,7 +303,7 @@ typedef union bcm_event_msg_u {
 #define WLC_E_AP_BCN_DRIFT		192	/* Beacon Drift event */
 #define WLC_E_PFN_SCAN_ALLGONE_EXT	193	/* last found PFN network gets lost. */
 #define WLC_E_AUTH_START		194	/* notify upper layer to start auth */
-#define WLC_E_TWT				195	/* TWT event */
+#define WLC_E_TWT			195	/* TWT event */
 #define WLC_E_AMT			196	/* Address Management Table (AMT) */
 #define WLC_E_ROAM_SCAN_RESULT		197	/* roam/reassoc scan result event */
 #define WLC_E_LAST			199	/* highest val + 1 for range checking */
@@ -723,6 +724,7 @@ typedef struct wl_event_wa_lqm {
 #define WLC_E_LINK_REASSOC_ROAM_FAIL	6	/* Link down due to reassoc roaming failed */
 #define WLC_E_LINK_LOWRSSI_ROAM_FAIL	7	/* Link down due to Low rssi roaming failed */
 #define WLC_E_LINK_NO_FIRST_BCN_RX	8	/* Link down due to 1st beacon rx failure */
+#define WLC_E_LINK_COUNTRY_CHANGE	9	/* Link down due to Country Code Change */
 
 /* WLC_E_NDIS_LINK event data */
 typedef BWL_PRE_PACKED_STRUCT struct ndis_link_parms {
@@ -1274,7 +1276,8 @@ typedef enum {
 	CHANSW_SLOTTED_BSS = 28, /* channel switch due to slotted bss */
 	CHANSW_SLOTTED_CMN_SYNC = 29, /* channel switch due to Common Sync Layer */
 	CHANSW_SLOTTED_BSS_CAL = 30,	/* channel switch due to Cal request from slotted bss */
-	CHANSW_MAX_NUMBER = 31	/* max channel switch reason */
+	CHANSW_PASN = 31,	/* channel switch due to PASN authentication */
+	CHANSW_MAX_NUMBER = 32	/* max channel switch reason */
 } wl_chansw_reason_t;
 
 #define CHANSW_REASON(reason)	(1 << reason)
@@ -1553,4 +1556,19 @@ typedef struct wlc_bcn_drift_event_data_v1 {
 	int16	jitter;		/* in ms */
 } wlc_bcn_drift_event_data_v1_t;
 
+/** Channel Switch Announcement param */
+typedef struct wl_csa_switch_event {
+	uint8 mode;		/**< value 0 or 1 */
+	uint8 count;		/**< count # of beacons before switching */
+	chanspec_t chspec;	/**< chanspec */
+	uint8 reg;		/**< regulatory class */
+	uint8 frame_type;	/**< csa frame type, unicast or broadcast */
+	uint8 PAD[2];		/**> padding to 32-bit struct alignment */
+} wl_csa_switch_event_t;
+
+/** Channel Switch Announcement event data */
+typedef struct wl_csa_event {
+	wl_csa_switch_event_t csa;	/**< Channel Switch Announcement parameters */
+	uint32 switch_time;		/**< csa switch time: TSF + BI * count, msec */
+} wl_csa_event_t;
 #endif /* _BCMEVENT_H_ */

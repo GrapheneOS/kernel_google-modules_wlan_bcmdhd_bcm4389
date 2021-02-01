@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2839,6 +2839,8 @@ static INLINE int dhd_os_ds_enter_wake(dhd_pub_t * pub)
 #endif /* DHD_EFI */
 #endif /* PCIE_INB_DW */
 
+#define FWBOOT_INTR_TIMEOUT_MS 5000u
+
 #if defined(LINUX) || defined(linux) || defined(DHD_EFI)
 extern int dhd_os_busbusy_wait_negation(dhd_pub_t * pub, uint * condition);
 extern int dhd_os_busbusy_wake(dhd_pub_t * pub);
@@ -2886,6 +2888,9 @@ static INLINE int dhd_os_busbusy_wait_bitmask(dhd_pub_t *pub, uint *var,
 		uint bitmask, uint condition)
 { return 0; }
 #endif /* LINUX || DHD_EFI */
+
+int dhd_os_fwboot_intr_wait(dhd_pub_t *pub, uint *condition);
+int dhd_os_fwboot_intr_wake(dhd_pub_t *pub);
 
 #if defined(LINUX) || defined(linux)
 /*
@@ -4407,18 +4412,20 @@ int dhd_tx_profile_detach(dhd_pub_t *dhdp);
 #endif /* defined (DHD_TX_PROFILE) */
 #if defined(DHD_LB_RXP)
 uint32 dhd_lb_rxp_process_qlen(dhd_pub_t *dhdp);
-#ifdef DHD_ENAB_LB_RXP_FLOW_CONTROL
 /*
  * To avoid OOM, Flow control will be kicked in when packet size in process_queue
  * crosses LB_RXP_STOP_THR * rcpl ring size * 1500(pkt size) and will stop
  * when it goes below LB_RXP_STRT_THR * rcpl ring size * 1500(pkt size)
+ * By default flow control is diabled. i.e tunables set to 0/0.
+ * to enable flow control, these tunables need to be passed from platform Makefiles.
  */
-#define LB_RXP_STOP_THR 200	/* 200 * 1024 * 1500 = 300MB */
-#define LB_RXP_STRT_THR 199	/* 199 * 1024 * 1500 = 291MB */
-#else /* !DHD_ENAB_LB_RXP_FLOW_CONTROL */
+#ifndef LB_RXP_STOP_THR
 #define LB_RXP_STOP_THR 0
+#endif /* LB_RXP_STOP_THR */
+#ifndef LB_RXP_STRT_THR
 #define LB_RXP_STRT_THR 0
-#endif /* DHD_ENAB_LB_RXP_FLOW_CONTROL */
+#endif /* LB_RXP_STRT_THR */
+
 #endif /* DHD_LB_RXP */
 #ifdef DHD_SUPPORT_HDM
 extern bool hdm_trigger_init;

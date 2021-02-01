@@ -1,7 +1,7 @@
 /*
  * Platform Dependent file for Hikey
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -223,12 +223,12 @@ dhd_wlan_init_hardware_info(void)
 				strcmp(match_str, "GFQM1") == 0) {
 				strcpy(val_sku, "MMW");
 			} else if (strcmp(match_str, "GR1YH") == 0 ||
-					   strcmp(match_str, "GF5KQ") == 0 ||
-					   strcmp(match_str, "GPQ72") == 0) {
+				strcmp(match_str, "GF5KQ") == 0 ||
+				strcmp(match_str, "GPQ72") == 0) {
 				strcpy(val_sku, "JPN");
 			} else if (strcmp(match_str, "GB7N6") == 0 ||
-					   strcmp(match_str, "GLU0G") == 0 ||
-					   strcmp(match_str, "GNA8F") == 0) {
+				strcmp(match_str, "GLU0G") == 0 ||
+				strcmp(match_str, "GNA8F") == 0) {
 				strcpy(val_sku, "ROW");
 			} else {
 				strcpy(val_sku, "NA");

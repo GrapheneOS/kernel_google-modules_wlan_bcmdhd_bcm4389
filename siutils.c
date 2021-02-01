@@ -2,7 +2,7 @@
  * Misc utility routines for accessing chip-specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -521,13 +521,14 @@ si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 				GCI_OFFSETOF(&sii->pub, gci_corecaps0), 0, 0) & GCI_CAP0_REV_MASK;
 
 			if (GCIREV(sii->pub.gcirev) >= 9) {
+#if !defined(BCMQT) && !defined(BCMFPGA)
 				sii->pub.lhlrev = si_corereg(&sii->pub, GCI_CORE_IDX(&sii->pub),
 					OFFSETOF(gciregs_t, lhl_core_capab_adr), 0, 0) &
 					LHL_CAP_REV_MASK;
+#endif /* !defined(BCMQT && !defined(BCMFPGA */
 			} else {
 				sii->pub.lhlrev = NOREV;
 			}
-
 		} else
 			sii->pub.pmucaps = R_REG(sii->osh, &cc->pmucapabilities);
 
@@ -2521,6 +2522,7 @@ si_gci_clear_functionsel(si_t *sih, uint8 fnsel)
 	}
 }
 
+#endif /* !defined(BCMDONGLEHOST) */
 /** write 'val' to the gci chip control register indexed by 'reg' */
 uint32
 BCMPOSTTRAPFN(si_gci_chipcontrol)(si_t *sih, uint reg, uint32 mask, uint32 val)
@@ -2535,7 +2537,6 @@ BCMPOSTTRAPFN(si_gci_chipcontrol)(si_t *sih, uint reg, uint32 mask, uint32 val)
 	si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_indirect_addr), ~0, reg);
 	return si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_chipctrl), mask, val);
 }
-#endif /* !defined(BCMDONGLEHOST) */
 
 /* Read the gci chip status register indexed by 'reg' */
 uint32
@@ -2551,6 +2552,28 @@ BCMPOSTTRAPFN(si_gci_chipstatus)(si_t *sih, uint reg)
 	si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_indirect_addr), ~0, reg);
 	/* setting mask and value to '0' to use si_corereg for read only purpose */
 	return si_corereg(sih, GCI_CORE_IDX(sih), GCI_OFFSETOF(sih, gci_chipsts), 0, 0);
+}
+
+void
+sflash_gpio_config(si_t *sih)
+{
+	ASSERT(sih);
+
+	/* config sflash gpio by setting gci
+	 * chip control register with mask and value
+	 */
+
+	si_gci_chipcontrol(sih, CC_GCI_CHIPCTRL_01,
+		(1 << CC_PIN_GPIO_19) | (1 << CC_PIN_GPIO_23) | (1 << CC_PIN_GPIO_31),
+		(1 << CC_PIN_GPIO_19) | (1 << CC_PIN_GPIO_23) | (1 << CC_PIN_GPIO_31));
+
+	si_gci_chipcontrol(sih, CC_GCI_CHIPCTRL_02,
+		((1 << CC_PIN_GPIO_03) | (1 << CC_PIN_GPIO_07) |
+		(1 << CC_PIN_GPIO_11) | (1<< CC_PIN_GPIO_15)),
+		((1 << CC_PIN_GPIO_03) | (1 << CC_PIN_GPIO_07) |
+		(1 << CC_PIN_GPIO_11) | (1<< CC_PIN_GPIO_15)));
+
+	return;
 }
 
 uint16

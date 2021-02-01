@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD)
  * Prefered Network Offload and Wi-Fi Location Service(WLS) code.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -78,14 +78,28 @@
 #define COMPLETION_WAIT_QUEUE_ACTIVE(wait_queue) waitqueue_active(wait_queue)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0) */
 
+#ifdef CUSTOM_PREFIX
+#define PNO_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#define PNO_PRINT_SYSTEM_TIME pr_cont(PNO_PRINT_PREFIX)
+#define PNO_CONS_ONLY(args)     \
+do {    \
+	PNO_PRINT_SYSTEM_TIME;  \
+	pr_cont args;           \
+} while (0)
+#else
+#define PNO_PRINT_SYSTEM_TIME
+#define PNO_CONS_ONLY(args) do { printf args;} while (0)
+#endif /* CUSTOM_PREFIX */
+
 #define NULL_CHECK(p, s, err)  \
-			do { \
-				if (!(p)) { \
-					printf("NULL POINTER (%s) : %s\n", __FUNCTION__, (s)); \
-					err = BCME_ERROR; \
-					return err; \
-				} \
-			} while (0)
+do { \
+	if (!(p)) { \
+		PNO_CONS_ONLY(("NULL POINTER (%s) : %s\n", __FUNCTION__, (s))); \
+		err = BCME_ERROR; \
+		return err; \
+	} \
+} while (0)
+
 #define PNO_GET_PNOSTATE(dhd) ((dhd_pno_status_info_t *)dhd->pno_state)
 
 #define PNO_BESTNET_LEN		WLC_IOCTL_MEDLEN

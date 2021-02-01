@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -495,7 +495,6 @@
 #define	EVENT_LOG_TAG_SPMI_TRACE		397
 
 #define EVENT_LOG_TAG_PROXD_DBG			400
-
 #define EVENT_LOG_TAG_SB_SCHED_TIMEREF		401
 
 /* MLO EVEVNT_LOG_TAG */
@@ -503,8 +502,18 @@
 #define EVENT_LOG_TAG_WL_MLO_TRACE		403
 #define EVENT_LOG_TAG_WL_MLO_WARN		404
 #define EVENT_LOG_TAG_WL_MLO_ERROR		405
+#define EVENT_LOG_TAG_RX_DEAFNESS_DBG		406	/* Used with triggered log events */
+
+/* BCMSM event log tags */
+#define EVENT_LOG_TAG_BCMSM_ERROR		407
+#define EVENT_LOG_TAG_BCMSM_INFO		408
+#define EVENT_LOG_TAG_BCMSM_TRACE		409
+
+/* EWP HW event log tags */
+#define EVENT_LOG_TAG_EWP_HW			410
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			405
+#define EVENT_LOG_TAG_MAX			410
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

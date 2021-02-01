@@ -1,7 +1,7 @@
 /*
  * Wifi Virtual Interface implementaion
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1424,7 +1424,6 @@ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd
 			{
 				dev_close(iter->ndev);
 				WL_DBG(("Cleaning up iface:%s \n", iter->ndev->name));
-				wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
 #if defined(WLAN_ACCEL_BOOT)
 				/* Trigger force reg_on to ensure clean up of virtual interface
 				* states in FW for any residual interface states, casued due to
@@ -1434,6 +1433,7 @@ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd
 				" interface states in FW\n"));
 				dhd_dev_set_accel_force_reg_on(iter->ndev);
 #endif /* WLAN_ACCEL_BOOT */
+				wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
 			}
 		}
 	}
@@ -1511,14 +1511,14 @@ wl_get_nl80211_band(u32 wl_band)
 			return IEEE80211_BAND_2GHZ;
 		case WL_CHANSPEC_BAND_5G:
 			return IEEE80211_BAND_5GHZ;
-#ifdef WL_BAND_6G
+#ifdef WL_6G_BAND
 		case WL_CHANSPEC_BAND_6G:
 			/* current kernels doesn't support seperate
 			 * band for 6GHz. so till patch is available
 			 * map it under 5GHz
 			 */
 			return IEEE80211_BAND_5GHZ;
-#endif /* WL_BAND_6G */
+#endif /* WL_6G_BAND */
 		default:
 			WL_ERR(("unsupported Band. %d\n", wl_band));
 	}
@@ -3804,12 +3804,12 @@ wl_cfg80211_stop_ap(
 			}
 		}
 
-#ifdef WL_DISABLE_HE_SOFTAP
+#if defined(WL_DISABLE_HE_SOFTAP) || defined(WL_6G_BAND)
 		if (wl_cfg80211_set_he_mode(dev, cfg, bssidx, WL_HE_FEATURES_HE_AP,
 			TRUE) != BCME_OK) {
 			WL_ERR(("failed to set he features\n"));
 		}
-#endif /* WL_DISABLE_HE_SOFTAP */
+#endif /* defined(WL_DISABLE_HE_SOFTAP) || defined(WL_6G_BAND) */
 
 		wl_cfg80211_clear_per_bss_ies(cfg, dev->ieee80211_ptr);
 #ifdef SUPPORT_AP_RADIO_PWRSAVE
@@ -5109,6 +5109,7 @@ int wl_chspec_chandef(chanspec_t chanspec,
 		chandef->width = NL80211_CHAN_WIDTH_80;
 		chandef->center_freq1 = freq;
 	}
+
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION (3, 5, 0) && (LINUX_VERSION_CODE <= (3, 7, \
 	0)))
 	chaninfo->freq = freq;

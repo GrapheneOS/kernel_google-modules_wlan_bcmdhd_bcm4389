@@ -2,7 +2,7 @@
  * Misc utility routines for accessing PMU corerev specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -6076,6 +6076,7 @@ si_pmu_otp_power(si_t *sih, osl_t *osh, bool on, uint32* min_res_mask)
 		rsrcs = PMURES_BIT(rsc->otp_pu);
 		break;
 	case BCM4378_CHIP_GRPID:
+	case BCM4381_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 	case BCM4388_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:

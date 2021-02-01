@@ -1,7 +1,7 @@
 /*
  * OS Abstraction Layer
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -63,6 +63,8 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 #elif defined(_RTE_)
 #include <rte_osl.h>
 #include <hnd_pkt.h>
+#elif defined(COEX_OSL)
+#include <coex_osl.h>
 #elif defined(MACOSX)
 #include <macosx_osl.h>
 #else

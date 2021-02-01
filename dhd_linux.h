@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file (dhd_linux exports for cfg80211 and other components)
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -77,6 +77,34 @@
 #define ALL_ADDR_VAL (PC_FOUND_BIT | LR_FOUND_BIT)
 #define READ_NUM_BYTES 1000
 #define DHD_FUNC_STR_LEN 80
+
+#define DHD_COREDUMP_MAGIC 0xDDCEDACF
+#define TLV_TYPE_LENGTH_SIZE	(8u)
+/* coredump is composed as following TLV format.
+ * Type(32bit) | Length(32bit) | Value(x bit)
+ * e.g) socram type | length | socram dump
+ *      sssr core1 type | length | sssr core1 dump
+ *      ...
+ */
+enum coredump_types {
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_BEFORE = 0,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE0_AFTER,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_BEFORE,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE1_AFTER,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_BEFORE,
+	DHD_COREDUMP_TYPE_SSSRDUMP_CORE2_AFTER,
+	DHD_COREDUMP_TYPE_SSSRDUMP_DIG_BEFORE,
+	DHD_COREDUMP_TYPE_SSSRDUMP_DIG_AFTER,
+	DHD_COREDUMP_TYPE_SOCRAMDUMP
+};
+
+#ifdef DHD_SSSR_DUMP
+typedef struct dhd_coredump {
+	uint32 type;
+	uint32 length;
+	void *bufptr;
+} dhd_coredump_t;
+#endif /* DHD_SSSR_DUMP */
 #endif /* DHD_COREDUMP */
 
 #ifdef BCMDBUS
@@ -564,4 +592,7 @@ extern void dhd_reset_tcpsync_info_by_dev(struct net_device *dev);
 extern void dhd_net_del_flowrings_sta(dhd_pub_t * dhd, struct net_device * ndev);
 #endif /* PCIE_FULL_DONGLE */
 int dhd_get_fw_capabilities(dhd_pub_t * dhd);
+#ifdef BCMDBUS
+int dhd_dbus_txdata(dhd_pub_t *dhdp, void *pktbuf);
+#endif
 #endif /* __DHD_LINUX_H__ */

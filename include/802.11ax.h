@@ -2,7 +2,7 @@
  * Basic types and constants relating to 802.11ax/HE STA
  * This is a portion of 802.11ax definition. The rest are in 802.11.h.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -651,6 +651,11 @@ typedef struct he_op_ie he_op_ie_t;
 #define HE_6G_CTL_REG_INFO_SHIFT    3u
 #define HE_6G_OP_CTL_REG_INFO(ctl) \
 	((ctl & HE_6G_CTL_REG_INFO_MASK) >> HE_6G_CTL_REG_INFO_SHIFT)
+
+#define HE_6G_OP_REG_INFO_LOW_PWR 0u   /* INDOOR Low Power */
+#define HE_6G_OP_REG_INFO_STD_PWR 1u   /* Standard Power */
+#define HE_6G_OP_REG_INFO_VLP_PWR 2u   /* Very low Power (Not yet defined in spec) */
+#define HE_6G_OP_REG_INFO_CAT_MAX 2u   /* Category reserved */
 
 /* HE 6G Operation info */
 BWL_PRE_PACKED_STRUCT struct he_6g_op_info {

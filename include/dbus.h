@@ -2,7 +2,7 @@
  * Dongle BUS interface Abstraction layer
  *   target serial buses like USB, SDIO, SPI, etc.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -625,4 +625,8 @@ void optimize_submit_rx_request(const dbus_pub_t *pub, int epn, struct ehci_qtd 
 #endif /* EHCI_FASTPATH_TX || EHCI_FASTPATH_RX */
 
 void  dbus_flowctrl_tx(void *dbi, bool on);
+#ifdef LINUX
+struct device * dbus_get_dev(void);
+#endif /* LINUX */
+
 #endif /* __DBUS_H__ */

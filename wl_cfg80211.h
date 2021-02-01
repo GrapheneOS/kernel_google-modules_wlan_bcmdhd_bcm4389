@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -423,6 +423,13 @@ extern char *dhd_log_dump_get_timestamp(void);
 #define CFG80211_SCAN_TEXT		USER_PREFIX_CFG80211
 #define CFG80211_TRACE_TEXT		USER_PREFIX_CFG80211
 #define CFG80211_DEBUG_TEXT		USER_PREFIX_CFG80211
+
+#define WL_CONS_ONLY(args)	\
+do {	\
+	WL_DBG_PRINT_SYSTEM_TIME;	\
+	pr_cont(USER_PREFIX_CFG80211 "%s : ", __func__);	\
+	pr_cont args;			\
+} while (0)
 #else
 #define CFG80211_INFO_TEXT		"CFG80211-INFO) "
 /* Samsung want to print INFO2 instead of ERROR
@@ -437,6 +444,7 @@ extern char *dhd_log_dump_get_timestamp(void);
 #define CFG80211_SCAN_TEXT		"CFG80211-SCAN) "
 #define CFG80211_TRACE_TEXT		"CFG80211-TRACE) "
 #define CFG80211_DEBUG_TEXT		"CFG80211-DEBUG) "
+#define WL_CONS_ONLY(args) do { printf args; } while (0)
 #endif /* defined(CUSTOMER_DBG_PREFIX_ENABLE) */
 
 #ifdef DHD_DEBUG
@@ -759,11 +767,13 @@ do {									\
 #endif /* WLAN_AKM_SUITE_FILS_SHA256 */
 
 #define MIN_VENDOR_EXTN_IE_LEN		2
+
 #ifdef WL_OWE
 #ifndef WLAN_AKM_SUITE_OWE
 #define WLAN_AKM_SUITE_OWE                0X000FAC12
 #endif /* WPA_KEY_MGMT_OWE */
 #endif /* WL_OWE */
+
 #ifndef WLAN_AKM_SUITE_DPP
 #define WLAN_AKM_SUITE_DPP                0X506F9A02
 #endif /* WLAN_AKM_SUITE_DPP */
@@ -1998,7 +2008,7 @@ struct bcm_cfg80211 {
 	uint8 static_ndev_state;
 	bool hal_started;
 	wl_wlc_version_t wlc_ver;
-	bool scan_params_v2;
+	u8 scan_params_ver;
 #ifdef SUPPORT_AP_BWCTRL
 	u32 bw_cap_5g;
 #endif /* SUPPORT_AP_BWCTRL */
@@ -2058,7 +2068,7 @@ struct bcm_cfg80211 {
 #ifdef WL_SCHED_SCAN
 	struct delayed_work sched_scan_stop_work;
 #endif /* WL_SCHED_SCAN */
-	struct net_device *primary_sta_ndev;
+	struct net_device *inet_ndev;
 	struct wireless_dev *nmi_wdev;	/* representing cfg cfg80211 device for NAN NMI */
 	struct net_device *nmi_ndev;    /* reference to NAN NMI interface */
 };
@@ -2728,7 +2738,15 @@ wl_iftype_to_str(int wl_iftype)
 	(wdev->iftype == NL80211_IFTYPE_P2P_GO) || \
 	(wdev->iftype == NL80211_IFTYPE_P2P_CLIENT)))
 
+/* Initial registered ndev on driver load */
 #define IS_PRIMARY_NDEV(cfg, ndev)	(ndev == bcmcfg_to_prmry_ndev(cfg))
+
+/* Primary link interface: used for internet traffic */
+#ifdef WL_DUAL_STA
+#define IS_INET_LINK_NDEV(cfg, ndev)	(ndev == cfg->inet_ndev)
+#else
+#define IS_INET_LINK_NDEV(cfg, ndev)	(ndev == bcmcfg_to_prmry_ndev(cfg))
+#endif /* WL_DUAL_STA */
 #define IS_STA_IFACE(wdev) (wdev && \
 		(wdev->iftype == NL80211_IFTYPE_STATION))
 
@@ -3143,7 +3161,7 @@ extern int wl_cfg80211_if_infra_enh_ifstats_counters(struct net_device *dev,
 extern s32 wl_cfg80211_set_dbg_verbose(struct net_device *ndev, u32 level);
 extern int wl_cfg80211_deinit_p2p_discovery(struct bcm_cfg80211 * cfg);
 extern int wl_cfg80211_set_frameburst(struct bcm_cfg80211 *cfg, bool enable);
-extern int wl_cfg80211_determine_p2p_rsdb_scc_mode(struct bcm_cfg80211 *cfg);
+extern int wl_cfg80211_determine_rsdb_scc_mode(struct bcm_cfg80211 *cfg);
 extern uint8 wl_cfg80211_get_bus_state(struct bcm_cfg80211 *cfg);
 #ifdef WL_WPS_SYNC
 void wl_handle_wps_states(struct net_device *ndev, u8 *dump_data, u16 len, bool direction);

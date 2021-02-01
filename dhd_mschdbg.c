@@ -1,7 +1,7 @@
 /*
  * DHD debugability support
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -53,6 +53,14 @@ do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
 		DHD_LOG_DUMP_WRITE_FW("[%s]: ", dhd_log_dump_get_timestamp()); \
 		DHD_LOG_DUMP_WRITE_FW args; \
+	}	\
+} while (0)
+#elif defined(CUSTOM_PREFIX)
+#define MSCH_EVENT(args) \
+do {	\
+	if (dhd_msg_level & DHD_EVENT_VAL) {	\
+		DBG_PRINT_SYSTEM_TIME;  \
+		pr_cont args;	\
 	}	\
 } while (0)
 #else

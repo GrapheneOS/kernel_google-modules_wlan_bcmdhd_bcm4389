@@ -1,7 +1,7 @@
 /*
  * HND Run Time Environment ioctl.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -60,8 +60,9 @@
 #define RTEDEVDBGVAL		0x8919  /* Set debug val */
 #define RTEDEVVIFDEL		0x891A  /* Delete virtual cfgs */
 #define RTEQUIESCEFORCE		0x891B	/* Force D11 core into quiesce */
+#define RTEPTMENABLE		0x891C	/* Start/stop PTM time stamping in TX/RX status */
 /* Ensure last RTE IOCTL define val is assigned to RTEIOCTLEND */
-#define RTEIOCTLEND		0x891B  /* LAST RTE IOCTL value */
+#define RTEIOCTLEND		0x891C  /* LAST RTE IOCTL value */
 
 #define RTE_IOCTL_QUERY		0x00
 #define RTE_IOCTL_SET		0x01

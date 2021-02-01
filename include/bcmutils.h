@@ -1,7 +1,7 @@
 /*
  * Misc useful os-independent macros and functions.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2021, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -707,9 +707,13 @@ uint16 bcmhex2bin(const uint8* hex, uint hex_len, uint8 *buf, uint buf_len);
 #endif /* CONTAINEROF */
 
 /* substruct size up to and including a member of the struct */
+/* use 0x10 offset to avoid undefined behavior error due to NULL access */
+#define SIZETHROUGHOF(type, member) (OFFSETOF(type, member) + sizeof(((type *)0x10)->member))
+
+/* The STRUCT_SIZE_THROUGH will be obsolete. Please use SIZETHROUGHOF macro above */
 #ifndef STRUCT_SIZE_THROUGH
 #define STRUCT_SIZE_THROUGH(sptr, fname) \
-	(((uint8*)&((sptr)->fname) - (uint8*)(sptr)) + sizeof((sptr)->fname))
+	(((uintptr)&((sptr)->fname) - (uintptr)(sptr)) + sizeof((sptr)->fname))
 #endif
 
 /* Extracting the size of element in a structure */
