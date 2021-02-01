@@ -82,6 +82,9 @@
 #ifdef RTT_SUPPORT
 #include "dhd_rtt.h"
 #endif /* RTT_SUPPORT */
+#ifdef WL_CELLULAR_CHAN_AVOID
+#include <wl_cfg_cellavoid.h>
+#endif /* WL_CELLULAR_CHAN_AVOID */
 
 #define ACTIVE_SCAN 1
 #define PASSIVE_SCAN 0
@@ -1419,11 +1422,6 @@ chanspec_t wl_freq_to_chanspec(int freq)
 	return chanspec;
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
-#define IS_RADAR_CHAN(flags) (flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_PASSIVE_SCAN))
-#else
-#define IS_RADAR_CHAN(flags) (flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_NO_IR))
-#endif
 static void
 wl_cfgscan_populate_scan_channels(struct bcm_cfg80211 *cfg,
 	struct ieee80211_channel **channels, u32 n_channels,
@@ -6033,6 +6031,44 @@ static void wl_cfgscan_acs_result_event(struct work_struct *work)
 	}
 }
 
+static chanspec_t
+wl_cfgscan_acs_find_default_chanspec(struct bcm_cfg80211 *cfg, u32 band,
+	uint32 *pList, int qty)
+{
+	chanspec_t chosen;
+#ifndef WL_CELLULAR_CHAN_AVOID
+	uint16 channel;
+	BCM_REFERENCE(cfg);
+#endif
+
+	if (pList != NULL && qty != 0) {
+		chosen = pList[qty - 1];
+	} else {
+#ifdef WL_CELLULAR_CHAN_AVOID
+		wl_cellavoid_sync_lock(cfg);
+		chosen = wl_cellavoid_find_chspec_fromband(cfg->cellavoid_info, band);
+		wl_cellavoid_sync_unlock(cfg);
+#else
+		switch (band) {
+#ifdef WL_6G_BAND
+			case WLC_BAND_6G:
+				channel = APCS_DEFAULT_6G_CH;
+				break;
+#endif /* WL_6G_BAND */
+			case WLC_BAND_5G:
+				channel = APCS_DEFAULT_5G_CH;
+				break;
+			default:
+				channel = APCS_DEFAULT_2G_CH;
+				break;
+		}
+		chosen = CH20MHZ_CHSPEC(channel);
+#endif /* WL_CELLULAR_CHAN_AVOID */
+	}
+
+	return chosen;
+}
+
 static int wl_cfgscan_acs_do_apcs(struct net_device *dev,
 	drv_acs_params_t *parameter, chanspec_t *pCH,
 	int len, unsigned char *pBuffer, int qty, uint32 *pList)
@@ -6042,6 +6078,7 @@ static int wl_cfgscan_acs_do_apcs(struct net_device *dev,
 	int retry = 0;
 	int ret = 0;
 	u32 band = parameter->band;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 #if defined(CONFIG_WLAN_BEYONDX) || defined(CONFIG_SEC_5GMODEL)
 	wl_cfg80211_register_dev_ril_bridge_event_notifier();
@@ -6138,28 +6175,10 @@ done:
 			__FUNCTION__, retry, ret, chosen));
 
 		/* On failure, fallback to a default channel */
-		if (band == WLC_BAND_5G) {
-			if ((!pList) || (!qty)) {
-				chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_5G_CH);
-			} else {
-				chosen = pList[qty - 1];
-			}
-#ifdef WL_6G_BAND
-		} else if (band == WLC_BAND_6G) {
-			if ((!pList) || (!qty)) {
-				chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_6G_CH);
-			} else {
-				chosen = pList[qty - 1];
-			}
-#endif /* WL_6G_BAND */
-		} else {
-			if ((!pList) || (!qty)) {
-				chosen = CH20MHZ_CHSPEC(APCS_DEFAULT_2G_CH);
-			} else {
-				chosen = pList[qty - 1];
-			}
-		}
-		if (ret < 0) {
+		chosen = wl_cfgscan_acs_find_default_chanspec(cfg, band, pList, qty);
+
+		/* Cellavoid might return INVCHANSPEC */
+		if (ret < 0 && chosen != INVCHANSPEC) {
 			/* set it 0 when use default channel */
 			ret = 0;
 		}
@@ -6172,7 +6191,7 @@ done2:
 	return ret;
 }
 
-static inline bool
+inline bool
 is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec)
 {
 	u32 ch;
@@ -6195,7 +6214,7 @@ is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec)
 	return FALSE;
 }
 
-static void
+void
 wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data)
 {
 	struct net_info *iter, *next;
@@ -6319,6 +6338,7 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 	}
 
 	chspec = wl_cfg80211_get_sta_chanspec(cfg);
+
 	if (chspec) {
 		bool scc_case = false;
 		u32 sta_band = CHSPEC_TO_WLC_BAND(chspec);
@@ -6384,8 +6404,15 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 {
 	int i, j;
 	u32 list_size;
-	s32 ret = BCME_OK;
+	s32 ret = -EINVAL;
 	u32 *chspeclist = NULL;
+	u32 *p_chspec_list = NULL;
+#ifdef WL_CELLULAR_CHAN_AVOID
+	int safe_chspec_cnt = 0;
+	u32 *safe_chspeclist = NULL;
+	drv_acs_params_t safe_param = { 0 };
+	bool safe_success = FALSE;
+#endif /* WL_CELLULAR_CHAN_AVOID */
 
 	if (freq_list_len > MAX_ACS_FREQS) {
 		WL_ERR(("invalid len:%d\n", freq_list_len));
@@ -6399,6 +6426,19 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		return -ENOMEM;
 	}
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+	safe_chspeclist = MALLOCZ(cfg->osh, list_size);
+	if (!safe_chspeclist) {
+		WL_ERR(("safe chspec list alloc failed\n"));
+		MFREE(cfg->osh, chspeclist, list_size);
+		return -ENOMEM;
+	}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
+#ifdef WL_CELLULAR_CHAN_AVOID
+	wl_cellavoid_sync_lock(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 	for (i = 0, j = 0; i < freq_list_len; i++) {
 		chspeclist[j] = wl_freq_to_chanspec(pElem_freq[i]);
 		if (CHSPEC_IS6G(chspeclist[j]) && !CHSPEC_IS_6G_PSC(chspeclist[j])) {
@@ -6407,12 +6447,24 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 			continue;
 		}
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+		if (wl_cellavoid_is_safe(cfg->cellavoid_info, chspeclist[j])) {
+			safe_chspeclist[safe_chspec_cnt++] = chspeclist[j];
+			safe_param.freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chspeclist[j]));
+			WL_INFORM_MEM(("Adding safe chanspec %x to the list\n", chspeclist[j]));
+		}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 		/* mark all the bands found */
 		parameter->freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chspeclist[j]));
 		WL_DBG(("%s: list[%d]=%d => chspec=0x%x\n", __FUNCTION__, i,
 				pElem_freq[i], chspeclist[j]));
 		j++;
 	}
+
+#ifdef WL_CELLULAR_CHAN_AVOID
+	wl_cellavoid_sync_unlock(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID */
 
 	/* Overried freq list len with the new value */
 	freq_list_len = j;
@@ -6440,25 +6492,73 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	}
 #endif /* WL_5G_SOFTAP_ONLY_ON_DEF_CHAN */
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+	if (safe_chspec_cnt) {
+		WL_INFORM_MEM(("Try with safe channel, freq_band %x, chanspec cnt %d\n",
+			safe_param.freq_bands, safe_chspec_cnt));
+		ret = wl_handle_acs_concurrency_cases(cfg, &safe_param,
+			safe_chspec_cnt, safe_chspeclist);
+		if (ret == BCME_OK) {
+			WL_INFORM_MEM(("Succeded to handle the acs concurrency case "
+				"with safe channels!\n"));
+			safe_success = TRUE;
+			goto success;
+		}
+	}
+
+	if (wl_cellavoid_mandatory_isset(cfg->cellavoid_info, NL80211_IFTYPE_AP)) {
+		WL_INFORM_MEM(("Mandatory flag for AP is set, skip the ACS, safe_chspec_cnt %d\n",
+			safe_chspec_cnt));
+		goto exit;
+	}
+
+	if (safe_chspec_cnt != freq_list_len) {
+		WL_INFORM_MEM(("Try with all channels, freq_band %x, chanspec cnt %d\n",
+			parameter->freq_bands, freq_list_len));
+		ret = wl_handle_acs_concurrency_cases(cfg, parameter, freq_list_len, chspeclist);
+		if (ret) {
+			WL_ERR(("Failed to handle the acs concurrency cases!\n"));
+			goto exit;
+		}
+	}
+#else
 	ret = wl_handle_acs_concurrency_cases(cfg, parameter, freq_list_len, chspeclist);
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 	if (ret) {
 		WL_ERR(("Failed to handle the acs concurrency cases!\n"));
 		goto exit;
 	}
 
+success:
+#ifdef WL_CELLULAR_CHAN_AVOID
+	if (safe_success) {
+		p_chspec_list = safe_chspeclist;
+		parameter->freq_bands = safe_param.freq_bands;
+		parameter->scc_chspec = safe_param.scc_chspec;
+		freq_list_len = safe_chspec_cnt;
+	} else
+#endif /* WL_CELLULAR_CHAN_AVOID */
+	{
+		p_chspec_list = chspeclist;
+	}
+
 	for (i = 0; i < freq_list_len; i++) {
-		if ((parameter->freq_bands & CHSPEC_TO_WLC_BAND(chspeclist[i])) == 0) {
-			WL_DBG(("Skipping no matched band channel(0x%x).\n", chspeclist[i]));
+		if ((parameter->freq_bands & CHSPEC_TO_WLC_BAND(p_chspec_list[i])) == 0) {
+			WL_DBG(("Skipping no matched band channel(0x%x).\n", p_chspec_list[i]));
 			continue;
 		}
 
-		WL_INFORM_MEM(("ACS chanspec:0x%x\n", chspeclist[i]));
+		WL_INFORM_MEM(("ACS chanspec:0x%x\n", p_chspec_list[i]));
 		wl_cfgscan_acs_parse_parameter(req_len, pList,
-			chspeclist[i], parameter);
+			p_chspec_list[i], parameter);
 	}
 
 exit:
 	MFREE(cfg->osh, chspeclist, list_size);
+#ifdef WL_CELLULAR_CHAN_AVOID
+	MFREE(cfg->osh, safe_chspeclist, list_size);
+#endif /* WL_CELLULAR_CHAN_AVOID */
 	return ret;
 }
 
@@ -6627,6 +6727,14 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 		/* process 'freq_list' */
 		pElem_freq = (unsigned int *)nla_data(pFreqList);
 		if (pElem_freq) {
+#ifdef WL_CELLULAR_CHAN_AVOID
+			ret = wl_cellavoid_set_requested_freq_bands(net, cfg->cellavoid_info,
+				pElem_freq, freq_list_len);
+			if (ret) {
+				WL_ERR(("Setting requested freq band failed, ret %d\n", ret));
+				break;
+			}
+#endif /* WL_CELLULAR_CHAN_AVOID */
 			ret = wl_convert_freqlist_to_chspeclist(cfg, pElem_freq, freq_list_len,
 					&req_len, pList, parameter, qty);
 			if (ret) {
@@ -6665,6 +6773,14 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 			__FUNCTION__, pReq, total));
 		MFREE(cfg->osh, pReq, total);
 	}
+
+#ifdef WL_CELLULAR_CHAN_AVOID
+	/* This needs to be cleared in case of ACS failure */
+	if (ret < 0) {
+		wl_cellavoid_clear_requested_freq_bands(net, cfg->cellavoid_info);
+	}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 	return ret;
 }
 #endif /* WL_SOFTAP_ACS */

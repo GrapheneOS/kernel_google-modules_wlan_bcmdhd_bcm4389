@@ -90,6 +90,10 @@
 #endif
 #include <brcm_nl80211.h>
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+#include <wl_cfg_cellavoid.h>
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 char*
 wl_get_kernel_timestamp(void)
 {
@@ -9868,273 +9872,6 @@ wl_cfgvendor_custom_mapping_of_dscp_reset(struct wiphy *wiphy,
 }
 #endif /* WL_CUSTOM_MAPPING_OF_DSCP */
 
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-void
-wl_chavoid_clean_unsafe_list(struct bcm_cfg80211 *cfg, struct list_head *configs)
-{
-	wl_chavoid_config_t *iter, *next;
-
-	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
-	list_for_each_entry_safe(iter, next, configs, list) {
-		GCC_DIAGNOSTIC_POP();
-		list_del(&iter->list);
-		MFREE(cfg->osh, iter, sizeof(wl_chavoid_config_t));
-	}
-}
-
-static int
-wl_chavoid_check_dup(struct list_head *configs, int ch)
-{
-	wl_chavoid_config_t *iter;
-	list_for_each_entry(iter, configs, list) {
-		if (iter->channel == ch) {
-			return 1;
-		}
-	}
-	return 0;
-}
-
-static int
-wl_chavoid_check_validation(struct wiphy *wiphy, wl_chavoid_config_t *config)
-{
-	struct ieee80211_channel *channel = NULL;
-	u32 center_freq;
-	int ret = BCME_OK;
-	int band = config->band;
-	int nl_band;
-	int num_ch = config->channel;
-
-	/* Not supported DFS band */
-	if (wl_cfgscan_is_dfs_set(band)) {
-		WL_ERR(("Not supported DFS band\n"));
-		return -EINVAL;
-	}
-
-	if (band == WIFI_BAND_BG) {
-		nl_band = IEEE80211_BAND_2GHZ;
-	} else if (band == WIFI_BAND_A) {
-		nl_band = IEEE80211_BAND_5GHZ;
-	} else {
-		WL_ERR(("Not supported other cases band:%d\n", band));
-		return -ENOTSUPP;
-	}
-
-	center_freq = ieee80211_channel_to_frequency(num_ch, nl_band);
-	if (!center_freq) {
-		WL_ERR(("Invalid Channel band:%d num_ch:%d\n", band, num_ch));
-		return -EINVAL;
-	}
-	config->center_freq = center_freq;
-
-	channel = ieee80211_get_channel(wiphy, center_freq);
-	if (!channel) {
-		WL_ERR(("Not found in freq table freq:%d\n", center_freq));
-		return -EINVAL;
-	}
-
-	return ret;
-}
-
-static int
-chavoid_cmp(void *priv, struct list_head *prev, struct list_head *next)
-{
-	wl_chavoid_config_t *p = list_entry(prev, wl_chavoid_config_t, list);
-	wl_chavoid_config_t *n = list_entry(next, wl_chavoid_config_t, list);
-
-	if (p->channel < n->channel)
-		return -1;
-	else if (p->channel > n->channel)
-		return 1;
-	return 0;
-}
-
-static int
-wl_chavoid_set_info(struct wiphy *wiphy,
-		struct wireless_dev *wdev, wl_chavoid_param_t *param)
-{
-	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	wl_chavoid_info_t *info = cfg->chavoid_info;
-	wl_chavoid_config_t *iter, *new;
-	struct ieee80211_channel *channel = NULL;
-	int ret = BCME_OK, i;
-	int dup = 0, skip_cnt = 0;
-	int param_ch, param_freq, bw;
-	chanspec_t chanspec;
-
-	if (!info) {
-		return -EADDRNOTAVAIL;
-	}
-
-	/* Initiailize Channel Avoidance table */
-	info->config_cnt = 0;
-	info->mandatory = 0;
-	wl_chavoid_clean_unsafe_list(cfg, &info->configs);
-
-	/* Copy configs to cfg->chavoid_info */
-	info->mandatory = param->mandatory;
-	for (i = 0; i < param->config_cnt; i++) {
-		param_ch = param->configs[i].channel;
-		param_freq = param->configs[i].center_freq;
-		chanspec = param->configs[i].chanspec;
-
-		/* Skip duplicated config */
-		dup = wl_chavoid_check_dup(&info->configs, param_ch);
-		if (dup) {
-			WL_ERR(("Skip duplicated channel CH:%d\n", param_ch));
-			skip_cnt++;
-			continue;
-		}
-		channel = ieee80211_get_channel(wiphy, param_freq);
-		if (channel->flags & IEEE80211_CHAN_DISABLED) {
-			WL_ERR(("Skip disabled channel ch:%d freq:%d\n", param_ch, param_freq));
-			skip_cnt++;
-			continue;
-		}
-		bw = CHSPEC_BW(chanspec);
-		if (bw != WL_CHANSPEC_BW_20) {
-			WL_ERR(("Skip not 20Mhz channel ch:%d freq:%d\n", param_ch, param_freq));
-			skip_cnt++;
-			continue;
-		}
-
-		new = (wl_chavoid_config_t *)MALLOCZ(cfg->osh, sizeof(wl_chavoid_config_t));
-		if (!new) {
-			ret = -ENOMEM;
-			goto exit;
-		}
-		memcpy_s(new, sizeof(wl_chavoid_config_t),
-				&param->configs[i], sizeof(wl_chavoid_config_t));
-		list_add(&new->list, &info->configs);
-	}
-	info->config_cnt = param->config_cnt - skip_cnt;
-
-	/* Sorting ascending */
-	list_sort(NULL, &info->configs, chavoid_cmp);
-
-	WL_ERR(("CHAVOID - CNT:%d MANDATORY:%d\n", info->config_cnt, info->mandatory));
-
-	list_for_each_entry(iter, &info->configs, list) {
-		chanspec = iter->chanspec;
-		WL_ERR(("CHAVOID - BAND:%u CHANNEL:%u PWRCAP:%u FREQ:%u CHSPEC:0x%04x\n",
-			iter->band, iter->channel, iter->pwr_cap,
-			wl_channel_to_frequency(CHSPEC_CHANNEL(chanspec), CHSPEC_BAND(chanspec)),
-			iter->chanspec));
-	}
-	return ret;
-
-exit:
-	wl_chavoid_clean_unsafe_list(cfg, &info->configs);
-	return ret;
-}
-
-static int
-wl_cfgvendor_set_channel_avoidance(struct wiphy *wiphy,
-		struct wireless_dev *wdev, const void  *data, int len)
-{
-	int err = BCME_OK, rem, rem1, rem2, type;
-	wl_chavoid_param_t param;
-	wl_chavoid_config_t* cur_config = NULL;
-	const struct nlattr *iter, *iter1, *iter2;
-	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	u32 chanspec;
-	int i;
-
-	bzero(&param, sizeof(param));
-	if (len <= 0) {
-		WL_ERR(("Length of the nlattr is not valid len : %d\n", len));
-		err = -EINVAL;
-		goto exit;
-	}
-	nla_for_each_attr(iter, data, len, rem) {
-		type = nla_type(iter);
-		switch (type) {
-		case CHAVOID_ATTRIBUTE_CNT:
-			param.config_cnt = nla_get_u8(iter);
-			if (param.config_cnt > CHAVOID_MAX_CH) {
-				err = -EINVAL;
-				goto exit;
-			}
-			param.configs = (wl_chavoid_config_t *)MALLOCZ(cfg->osh,
-					sizeof(wl_chavoid_config_t) * param.config_cnt);
-			if (param.configs == NULL) {
-				WL_ERR(("failed to allocate target param for (%d)\n",
-					param.config_cnt));
-				err = -ENOMEM;
-				goto exit;
-			}
-
-			break;
-		case CHAVOID_ATTRIBUTE_MANDATORY:
-			param.mandatory = nla_get_u32(iter);
-			break;
-		case CHAVOID_ATTRIBUTE_CONFIG:
-			if (param.configs == NULL) {
-				WL_ERR(("configs is NULL (%d)\n", param.config_cnt));
-				err = -ENOMEM;
-				goto exit;
-			}
-			cur_config = param.configs;
-			nla_for_each_nested(iter1, iter, rem1) {
-				if ((uint8 *)cur_config >= ((uint8 *)param.configs +
-					sizeof(wl_chavoid_config_t) * param.config_cnt)) {
-					WL_ERR(("increased addr is over its max size\n"));
-					err = -EINVAL;
-					goto exit;
-				}
-				nla_for_each_nested(iter2, iter1, rem2) {
-					type = nla_type(iter2);
-					switch (type) {
-						case CHAVOID_ATTRIBUTE_BAND:
-							cur_config->band = nla_get_u32(iter2);
-							break;
-						case CHAVOID_ATTRIBUTE_CHANNEL:
-							cur_config->channel = nla_get_u32(iter2);
-							break;
-						case CHAVOID_ATTRIBUTE_PWRCAP:
-							cur_config->pwr_cap = nla_get_u32(iter2);
-							break;
-					}
-				}
-				cur_config++;
-			}
-			break;
-		}
-	}
-
-	WL_ERR(("CHAVOID PARAM - CNT:%d MANDATORY:%d\n", param.config_cnt, param.mandatory));
-	for (i = 0; i < param.config_cnt; i++) {
-		err = wl_chavoid_check_validation(wiphy, &param.configs[i]);
-		if (err) {
-			goto exit;
-		}
-		chanspec = wl_freq_to_chanspec(param.configs[i].center_freq);
-		if (chanspec == INVCHANSPEC) {
-			WL_ERR(("CHAVOID Invalid freq:%d\n", param.configs[i].center_freq));
-			err = -EINVAL;
-			goto exit;
-		}
-		param.configs[i].chanspec = chanspec;
-
-		WL_ERR(("CHAVOID PARAM - BAND:%u CHANNEL:%u PWRCAP:%u\n",
-			param.configs[i].band, param.configs[i].channel,
-			param.configs[i].pwr_cap));
-	}
-
-	err = wl_chavoid_set_info(wiphy, wdev, &param);
-	if (err) {
-		WL_ERR(("Failed to set Channel Avoidance table err:%d\n", err));
-	}
-
-exit:
-	/* free the config param table */
-	if (param.configs) {
-		MFREE(cfg->osh, param.configs,
-			sizeof(wl_chavoid_config_t) * param.config_cnt);
-	}
-	return err;
-}
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
-
 static int
 wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
@@ -11459,16 +11196,16 @@ const struct nla_policy custom_setting_attr_policy[CUSTOM_SETTING_ATTRIBUTE_MAX]
 };
 #endif /* WL_CUSTOM_MAPPING_OF_DSCP */
 
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-const struct nla_policy channel_avoidance_attr_policy[CHAVOID_ATTRIBUTE_MAX] = {
-	[CHAVOID_ATTRIBUTE_CNT] = { .type = NLA_U32 },
-	[CHAVOID_ATTRIBUTE_CONFIG] = { .type = NLA_NESTED },
-	[CHAVOID_ATTRIBUTE_BAND] = { .type = NLA_U32 },
-	[CHAVOID_ATTRIBUTE_CHANNEL] = { .type = NLA_U32 },
-	[CHAVOID_ATTRIBUTE_PWRCAP] = { .type = NLA_U32 },
-	[CHAVOID_ATTRIBUTE_MANDATORY] = { .type = NLA_U32 },
+#ifdef WL_CELLULAR_CHAN_AVOID
+const struct nla_policy cellavoid_attr_policy[CELLAVOID_ATTRIBUTE_MAX] = {
+	[CELLAVOID_ATTRIBUTE_CNT] = { .type = NLA_U32 },
+	[CELLAVOID_ATTRIBUTE_CONFIG] = { .type = NLA_NESTED },
+	[CELLAVOID_ATTRIBUTE_BAND] = { .type = NLA_U32 },
+	[CELLAVOID_ATTRIBUTE_CHANNEL] = { .type = NLA_U32 },
+	[CELLAVOID_ATTRIBUTE_PWRCAP] = { .type = NLA_U32 },
+	[CELLAVOID_ATTRIBUTE_MANDATORY] = { .type = NLA_U32 },
 };
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+#endif /* WL_CELLULAR_CHAN_AVOID */
 
 #ifdef TPUT_DEBUG_DUMP
 const struct nla_policy tput_debug_dump_attr_policy[TPUT_DEBUG_ATTRIBUTE_MAX] = {
@@ -12537,20 +12274,20 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 #endif /* LINUX_VERSION >= 5.3 */
 	},
 #endif /* WL_CUSTOM_MAPPING_OF_DSCP */
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
+#ifdef WL_CELLULAR_CHAN_AVOID
 	{
 		{
 			.vendor_id = OUI_GOOGLE,
-			.subcmd = WIFI_SUBCMD_CHAVOID_SUBCMD_SET_CONFIG
+			.subcmd = WIFI_SUBCMD_CELL_AVOID_SUBCMD_SET_CONFIG
 		},
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
-		.doit = wl_cfgvendor_set_channel_avoidance,
+		.doit = wl_cfgvendor_cellavoid_set_cell_channels,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
-		.policy = channel_avoidance_attr_policy,
-		.maxattr = CHAVOID_ATTRIBUTE_MAX
+		.policy = cellavoid_attr_policy,
+		.maxattr = CELLAVOID_ATTRIBUTE_MAX
 #endif /* LINUX_VERSION >= 5.3 */
 	},
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+#endif /* WL_CELLULAR_CHAN_AVOID */
 #ifdef TPUT_DEBUG_DUMP
 	{
 		{

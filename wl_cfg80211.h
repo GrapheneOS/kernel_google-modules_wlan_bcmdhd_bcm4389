@@ -811,6 +811,12 @@ do {									\
 #define FILS_INDICATION_IE_TAG_FIXED_LEN		2
 #endif
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
+#define IS_RADAR_CHAN(flags) (flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_PASSIVE_SCAN))
+#else
+#define IS_RADAR_CHAN(flags) (flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_NO_IR))
+#endif
+
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
 	4 && __GNUC_MINOR__ >= 6))
 #define BCM_SET_LIST_FIRST_ENTRY(entry, ptr, type, member) \
@@ -1754,32 +1760,6 @@ typedef struct wl_roamoff_info {
 } wl_roamoff_info_t;
 #endif /* DEBUG_SETROAMMODE */
 
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-#define CHAVOID_MAX_CH 128u
-
-typedef struct wl_chavoid_config {
-	struct list_head list;
-	u32 chanspec;
-	int band;	/* The band for the channel as param */
-	int channel;	/* The channel number as param */
-	int pwr_cap;	/* The pwrcap as param */
-	int center_freq;
-} wl_chavoid_config_t;
-
-typedef struct wl_chavoid_info {
-	struct list_head configs;
-	u8 config_cnt;
-	u32 mandatory;
-} wl_chavoid_info_t;
-
-typedef struct wl_chavoid_param {
-	wl_chavoid_config_t *configs;
-	u8 config_cnt;
-	u32 mandatory;
-} wl_chavoid_param_t;
-
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
-
 #ifdef CONFIG_COMPAT
 typedef struct compat_buf_data {
 	u32 ver; /* version of struct */
@@ -2049,9 +2029,10 @@ struct bcm_cfg80211 {
 	uint16 btmreq_len;
 	uint8 btmreq_token;
 #endif /* WL_MBO_HOST */
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-	wl_chavoid_info_t *chavoid_info;
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+#ifdef WL_CELLULAR_CHAN_AVOID
+	void *cellavoid_info;
+	struct delayed_work csa_delayed_work;
+#endif /* WL_CELLULAR_CHAN_AVOID */
 #ifdef TPUT_DEBUG_DUMP
 	struct tput_debug_cmd_config tput_dbg_cmds[TPUT_DBG_CMD_CONFIG_MAX];
 	struct delayed_work tput_debug_work;
@@ -3295,10 +3276,6 @@ s32 wl_cfg80211_config_passphrase(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, wl_config_passphrase_t *pp_config);
 chanspec_t wl_cfg80211_get_sta_chanspec(struct bcm_cfg80211 *cfg);
 
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-extern void wl_chavoid_clean_unsafe_list(struct bcm_cfg80211 *cfg, struct list_head *configs);
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
-
 #ifdef WL_UWB_COEX
 #define UWB_COEX_CH_MAP_NUM	64
 
@@ -3344,4 +3321,6 @@ extern void wl_android_roamoff_dbg_dump(struct bcm_cfg80211 *cfg);
 extern s32 wl_cfgvendor_notify_twt_event(struct bcm_cfg80211 *cfg,
 	bcm_struct_cfgdev *cfgdev, const wl_event_msg_t *e, void *data);
 #endif /* !WL_TWT && WL_TWT_HAL_IF */
+extern int wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t band,
+	chanspec_bw_t bw, chanspec_t *chspecs, int *cnt);
 #endif /* _wl_cfg80211_h_ */

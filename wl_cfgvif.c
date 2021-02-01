@@ -88,6 +88,10 @@
 #include <dhd_flowring.h>
 #endif
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+#include <wl_cfg_cellavoid.h>
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 #define	MAX_VIF_OFFSET	15
 #define MAX_WAIT_TIME 1500
 
@@ -1573,7 +1577,6 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 #if defined(SUPPORT_AP_INIT_BWCONF)
 	u32 configured_bw;
 #endif /* SUPPORT_AP_INIT_BWCONF */
-
 	dev = ndev_to_wlc_ndev(dev, cfg);
 	chspec = wl_freq_to_chanspec(chan->center_freq);
 	WL_ERR(("netdev_ifidx(%d) chspec(%x) chan_type(%d) "
@@ -1657,6 +1660,18 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	if (CHSPEC_IS5G(chspec) && (bw == WL_CHANSPEC_BW_160)) {
 		bw = WL_CHANSPEC_BW_80;
 	}
+#ifdef WL_CELLULAR_CHAN_AVOID
+	if (!CHSPEC_IS6G(chspec)) {
+		wl_cellavoid_sync_lock(cfg);
+		chspec = wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec);
+		if (chspec == INVCHANSPEC) {
+			wl_cellavoid_sync_unlock(cfg);
+			return BCME_ERROR;
+		}
+		bw = CHSPEC_BW(chspec);
+		wl_cellavoid_sync_unlock(cfg);
+	}
+#endif /* WL_CELLULAR_CHAN_AVOID */
 set_channel:
 	WL_DBG(("bw = %x, chspec =%x, chspec band = %x\n", bw, chspec, CHSPEC_BAND(chspec)));
 	cur_chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(chspec),
@@ -3831,6 +3846,12 @@ wl_cfg80211_stop_ap(
 			WL_ERR(("Set rpsnoa failed \n"));
 		}
 #endif /* SUPPORT_AP_RADIO_PWRSAVE */
+#ifdef WL_CELLULAR_CHAN_AVOID
+		wl_cellavoid_clear_requested_freq_bands(dev, cfg->cellavoid_info);
+		wl_cellavoid_sync_lock(cfg);
+		wl_cellavoid_free_csa_info(cfg->cellavoid_info, dev);
+		wl_cellavoid_sync_unlock(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID */
 	} else {
 		/* Do we need to do something here */
 		WL_DBG(("Stopping P2P GO \n"));
@@ -5201,6 +5222,11 @@ wl_ap_channel_ind(struct bcm_cfg80211 *cfg,
 		wl_cfg80211_ch_switch_notify(ndev, chanspec, bcmcfg_to_wiphy(cfg));
 #endif /* LINUX_VERSION_CODE >= (3, 5, 0) */
 		cfg->ap_oper_channel = chanspec;
+
+#ifdef WL_CELLULAR_CHAN_AVOID
+		wl_cellavoid_set_csa_done(cfg->cellavoid_info);
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 	}
 }
 
