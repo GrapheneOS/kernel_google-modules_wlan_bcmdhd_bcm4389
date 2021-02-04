@@ -95,6 +95,7 @@
 #include <dhd_debug.h>
 #if defined(WL_CFG80211)
 #include <wl_cfg80211.h>
+#include <wl_cfgvif.h>
 #endif	/* WL_CFG80211 */
 #ifdef PNO_SUPPORT
 #include <dhd_pno.h>
@@ -7607,8 +7608,9 @@ dhd_stop(struct net_device *net)
 
 #if defined(WL_STATIC_IF) && defined(WL_CFG80211)
 	/* If static if is operational, don't reset the chip */
-	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg)) {
-		DHD_ERROR(("static if operational. skip chip reset.\n"));
+	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg) ||
+		(wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) > 0)) {
+		DHD_ERROR(("static/ap if operational. skip chip reset.\n"));
 		skip_reset = true;
 		wl_cfg80211_sta_ifdown(net);
 		goto exit;
