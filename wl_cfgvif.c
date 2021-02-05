@@ -3777,7 +3777,19 @@ wl_cfg80211_stop_ap(
 	}
 
 	if (dev_role == NL80211_IFTYPE_AP) {
-
+		/* Clear the security settings on the Interface */
+		err = wldev_iovar_setint(dev, "wsec", 0);
+		if (unlikely(err)) {
+			WL_ERR(("wsec clear failed \n"));
+		}
+		err = wldev_iovar_setint(dev, "auth", 0);
+		if (unlikely(err)) {
+			WL_ERR(("auth clear failed \n"));
+		}
+		err = wldev_iovar_setint_bsscfg(dev, "wpa_auth", 0, bssidx);
+		if (unlikely(err)) {
+			WL_ERR(("set wpa_auth failed (%d)\n", err));
+		}
 #ifdef BCMDONGLEHOST
 #ifdef DISABLE_WL_FRAMEBURST_SOFTAP
 		wl_cfg80211_set_frameburst(cfg, TRUE);
