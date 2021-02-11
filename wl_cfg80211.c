@@ -6075,18 +6075,16 @@ wl_handle_assoc_hints(struct bcm_cfg80211 *cfg, struct net_device *dev,
 				info->bssid_hint = true;
 			}
 			(void)memcpy_s(info->bssid, ETH_ALEN, sme->bssid_hint, ETH_ALEN);
-#ifndef WL_FORCE_RCC_LIST
-			/* Use channel hint only for target bssid join case. In other
-			 * cases, use RCC or full scan to find better APs.
-			 */
-			if (sme->channel_hint && ((chspec = wl_freq_to_chanspec(
-				sme->channel_hint->center_freq)) != INVCHANSPEC)) {
-				info->chan_cnt = 1;
-				info->chanspecs[0] = chspec;
-				WL_INFORM_MEM(("channel_hint: chspec(%x)\n", chspec));
-			}
-#endif /* !WL_FORCE_RCC_LIST */
 		}
+#ifndef WL_FORCE_RCC_LIST
+		/* Store channel hint. If RCC is used, it will append this list */
+		if (sme->channel_hint && ((chspec = wl_freq_to_chanspec(
+			sme->channel_hint->center_freq)) != INVCHANSPEC)) {
+			info->chan_cnt = 1;
+			info->chanspecs[0] = chspec;
+			WL_INFORM_MEM(("channel_hint: chspec(%x)\n", chspec));
+		}
+#endif /* !WL_FORCE_RCC_LIST */
 	}
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0) */
 
