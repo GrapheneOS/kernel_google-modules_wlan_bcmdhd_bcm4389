@@ -21100,8 +21100,7 @@ wl_mbo_btm_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			return err;
 		}
 
-		if (status == DOT11_BSSTRANS_RESP_STATUS_ACCEPT &&
-			cfg->btmreq_token == token) {
+		if (cfg->btmreq_token == token) {
 			err = wldev_iovar_getint(ndev, "chanspec", &chan);
 			if (unlikely(err)) {
 				WL_ERR(("%s: Could not get chanspec %d\n", __FUNCTION__, err));
