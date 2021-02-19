@@ -5422,8 +5422,10 @@ wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 		}
 		ssid.SSID_len = (uint32)info->ssid_len;
 
-		if (info->targeted_join && info->chanspecs[0]) {
+		/* Utilize channel hint if availble */
+		if ((info->chan_cnt == 1) && info->chanspecs[0]) {
 			target_chspec = info->chanspecs[0];
+			WL_DBG(("channel_hint chanspec:%x\n", info->chanspecs[0]));
 		} else {
 			target_chspec = INVCHANSPEC;
 		}
