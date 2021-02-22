@@ -288,9 +288,10 @@ wl_cellavoid_free_csa_info_list(wl_cellavoid_info_t *cellavoid_info)
 }
 
 void
-wl_cellavoid_free_csa_info(wl_cellavoid_info_t *cellavoid_info, struct net_device *ndev)
+wl_cellavoid_free_csa_info(void *cai, struct net_device *ndev)
 {
 	wl_cellavoid_csa_info_t *csa_info, *next;
+	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	list_for_each_entry_safe(csa_info, next, &cellavoid_info->csa_info_list, list) {
@@ -332,8 +333,10 @@ wl_cellavoid_add_csa_info(wl_cellavoid_info_t *cellavoid_info,
 }
 
 void
-wl_cellavoid_set_csa_done(wl_cellavoid_info_t *cellavoid_info)
+wl_cellavoid_set_csa_done(void *cai)
 {
+	wl_cellavoid_info_t *cellavoid_info = cai;
+
 	if (cellavoid_info == NULL) {
 		return;
 	}
@@ -506,7 +509,7 @@ wl_cellavoid_get_chan_info_from_avail_chan_list(wl_cellavoid_info_t *cellavoid_i
 }
 
 /* Check the chanspec is whether safe or unsafe */
-cellavoid_ch_state_t
+static cellavoid_ch_state_t
 wl_cellavoid_get_chan_info(wl_cellavoid_info_t *cellavoid_info, chanspec_t chanspec)
 {
 	wl_cellavoid_chan_info_t *chan_info, *next;
@@ -523,8 +526,10 @@ wl_cellavoid_get_chan_info(wl_cellavoid_info_t *cellavoid_info, chanspec_t chans
 }
 
 bool
-wl_cellavoid_is_safe(wl_cellavoid_info_t *cellavoid_info, chanspec_t chanspec)
+wl_cellavoid_is_safe(void *cai, chanspec_t chanspec)
 {
+	wl_cellavoid_info_t *cellavoid_info = cai;
+
 	if (wl_cellavoid_get_chan_info(cellavoid_info, chanspec) == CELLAVOID_STATE_CH_UNSAFE) {
 		return FALSE;
 	} else {
@@ -533,9 +538,10 @@ wl_cellavoid_is_safe(wl_cellavoid_info_t *cellavoid_info, chanspec_t chanspec)
 }
 
 bool
-wl_cellavoid_mandatory_isset(wl_cellavoid_info_t *cellavoid_info, enum nl80211_iftype type)
+wl_cellavoid_mandatory_isset(void *cai, enum nl80211_iftype type)
 {
 	bool mandatory = FALSE;
+	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	switch (type) {
 		case NL80211_IFTYPE_P2P_GO:
@@ -558,10 +564,12 @@ wl_cellavoid_mandatory_isset(wl_cellavoid_info_t *cellavoid_info, enum nl80211_i
 
 /* Check the chanspec is whether safe or unsafe */
 bool
-wl_cellavoid_operation_allowed(wl_cellavoid_info_t *cellavoid_info, chanspec_t chanspec,
+wl_cellavoid_operation_allowed(void *cai, chanspec_t chanspec,
 	enum nl80211_iftype type)
 {
 	bool allowed = TRUE;
+	wl_cellavoid_info_t *cellavoid_info = cai;
+
 	if (wl_cellavoid_get_chan_info(cellavoid_info, chanspec) == CELLAVOID_STATE_CH_UNSAFE &&
 		wl_cellavoid_mandatory_isset(cellavoid_info, type)) {
 		allowed = FALSE;
@@ -636,7 +644,7 @@ wl_cellavoid_sort_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 /* Dump function, shows chanspec/pwrcap item both in the unsafe channel list (cellular channel list)
  * and safe channel list (avail channel list)
  */
-void
+static void
 wl_cellavoid_dump_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 {
 	wl_cellavoid_chan_info_t *chan_info, *next;
@@ -966,10 +974,11 @@ wl_cellavoid_apply_txpwrcap(struct bcm_cfg80211 *cfg, wl_cellavoid_info_t *cella
 
 int
 wl_cellavoid_set_requested_freq_bands(struct net_device *ndev,
-	wl_cellavoid_info_t *cellavoid_info, u32 *pElem_freq, u32 freq_list_len)
+	void *cai, u32 *pElem_freq, u32 freq_list_len)
 {
 	int i, j;
 	chanspec_t chanspec;
+	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	for (i = 0; i < MAX_AP_INTERFACE; i++) {
 		if (cellavoid_info->req_band[i].ndev == NULL) {
@@ -1007,10 +1016,10 @@ wl_cellavoid_set_requested_freq_bands(struct net_device *ndev,
 }
 
 void
-wl_cellavoid_clear_requested_freq_bands(struct net_device *ndev,
-	wl_cellavoid_info_t *cellavoid_info)
+wl_cellavoid_clear_requested_freq_bands(struct net_device *ndev, void *cai)
 {
 	int i;
+	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	for (i = 0; i < MAX_AP_INTERFACE; i++) {
 		if (cellavoid_info->req_band[i].ndev == ndev) {
@@ -1034,7 +1043,7 @@ wl_cellavoid_clear_requested_freq_bands(struct net_device *ndev,
 	cellavoid_info->req_band[i].req_band = WLC_BAND_INVALID;
 }
 
-int
+static int
 wl_cellavoid_find_requested_freq_bands(struct net_device *ndev, wl_cellavoid_info_t *cellavoid_info)
 {
 	int i;
@@ -1106,7 +1115,7 @@ exit:
 	return ret;
 }
 
-wl_cellavoid_chan_info_t *
+static wl_cellavoid_chan_info_t *
 wl_cellavoid_find_chinfo_fromchspec(wl_cellavoid_info_t *cellavoid_info,
 	chanspec_t chanspec)
 {
@@ -1159,7 +1168,7 @@ exit:
 }
 
 
-wl_cellavoid_chan_info_t *
+static wl_cellavoid_chan_info_t *
 wl_cellavoid_find_chinfo_fromband(wl_cellavoid_info_t *cellavoid_info, int band)
 {
 	wl_cellavoid_chan_info_t *chan_info, *next;
@@ -1205,10 +1214,11 @@ exit:
 }
 
 chanspec_t
-wl_cellavoid_find_chspec_fromband(wl_cellavoid_info_t *cellavoid_info, int band)
+wl_cellavoid_find_chspec_fromband(void *cai, int band)
 {
 	wl_cellavoid_chan_info_t* chan_info;
 	chanspec_t chanspec;
+	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	chan_info = wl_cellavoid_find_chinfo_fromband(cellavoid_info, band);
 	if (chan_info == NULL) {
@@ -1220,11 +1230,11 @@ wl_cellavoid_find_chspec_fromband(wl_cellavoid_info_t *cellavoid_info, int band)
 	return chanspec;
 }
 chanspec_t
-wl_cellavoid_find_widechspec_fromchspec(wl_cellavoid_info_t *cellavoid_info,
-	chanspec_t chanspec)
+wl_cellavoid_find_widechspec_fromchspec(void *cai, chanspec_t chanspec)
 {
 	wl_cellavoid_chan_info_t* chan_info;
 	chanspec_t wide_chanspec;
+	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	chan_info = wl_cellavoid_find_chinfo_fromchspec(cellavoid_info, chanspec);
 	if (chan_info == NULL) {
@@ -1236,7 +1246,7 @@ wl_cellavoid_find_widechspec_fromchspec(wl_cellavoid_info_t *cellavoid_info,
 	return wide_chanspec;
 }
 
-wl_cellavoid_chan_info_t *
+static wl_cellavoid_chan_info_t *
 wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, chanspec_t ap_chspec,
 	chanspec_t sta_chspec, int csa_target_band)
 {
