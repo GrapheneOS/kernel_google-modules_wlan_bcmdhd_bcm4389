@@ -118,6 +118,10 @@
 #include <linux/notifier.h>
 #endif /* CONFIG_WLAN_BEYONDX || defined(CONFIG_SEC_5GMODEL) */
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+#include <wl_cfg_cellavoid.h>
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 #if (defined(WL_FW_OCE_AP_SELECT) || defined(BCMFW_ROAM_ENABLE)) && \
 	((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)) || defined(WL_COMPAT_WIRELESS))
 uint fw_ap_select = true;
@@ -1408,6 +1412,89 @@ int wl_channel_to_frequency(u32 chan, chanspec_band_t band)
 		WL_ERR(("Invalid Frequency Band\n"));
 	}
 	return 0; /* not supported */
+}
+
+int
+wl_get_sideband_num(chanspec_bw_t bw)
+{
+	int sb_cnt;
+
+	switch (bw) {
+		case WL_CHANSPEC_BW_20:
+			sb_cnt = 1;
+			break;
+		case WL_CHANSPEC_BW_40:
+			sb_cnt = WF_NUM_SIDEBANDS_40MHZ;
+			break;
+		case WL_CHANSPEC_BW_80:
+			sb_cnt = WF_NUM_SIDEBANDS_80MHZ;
+			break;
+		case WL_CHANSPEC_BW_160:
+			sb_cnt = WF_NUM_SIDEBANDS_160MHZ;
+			break;
+		default:
+			sb_cnt = 0;
+			break;
+	}
+
+	return sb_cnt;
+}
+
+int
+wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t band,
+	chanspec_bw_t bw, chanspec_t *chspecs, int *cnt)
+{
+	wf_chanspec_iter_t iter;
+	chanspec_t chanspec;
+	int sb_cnt, ret = -EINVAL;
+
+	if (chspecs == NULL) {
+		WL_ERR(("chspecs is null\n"));
+		return ret;
+	}
+
+	if (band != WL_CHANSPEC_BAND_2G &&
+		band != WL_CHANSPEC_BAND_5G) {
+		WL_ERR(("band is not supported %x\n", band));
+		return ret;
+	}
+
+	sb_cnt = wl_get_sideband_num(bw);
+	if (sb_cnt == 0) {
+		WL_ERR(("invalid band %x\n", band));
+		goto exit;
+	}
+
+	*cnt = 0;
+
+	if (bw == WL_CHANSPEC_BW_20) {
+		chspecs[0] = wf_create_20MHz_chspec(center_channel, band);
+		if (chspecs[0] == INVCHANSPEC) {
+			WL_ERR(("chanspec fail band %x, bw %x, channel %d\n",
+				band, bw, center_channel));
+			goto exit;
+		}
+		*cnt = 1;
+	} else if (band == WL_CHANSPEC_BAND_5G) {
+		wf_chanspec_iter_init(&iter, band, bw);
+		while (wf_chanspec_iter_next(&iter, &chanspec)) {
+			if (CHSPEC_CHANNEL(chanspec) == center_channel) {
+				chspecs[(*cnt)++] = chanspec;
+			}
+			if (*cnt == sb_cnt) {
+				break;
+			}
+		}
+	} else {
+		/* 2G 40MHz case, not handled */
+	}
+
+	if (*cnt == sb_cnt) {
+		ret = BCME_OK;
+	}
+
+exit:
+	return ret;
 }
 
 u8 wl_chanspec_to_host_bw_map(chanspec_t cur_chanspec)
@@ -14895,36 +14982,6 @@ static struct sleep_monitor_ops wlan_sleep_monitor_ops = {
 };
 #endif /* CONFIG_SLEEP_MONITOR */
 
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-int
-wl_init_chavoid(struct bcm_cfg80211 *cfg)
-{
-	int err = BCME_OK;
-
-	cfg->chavoid_info = (wl_chavoid_info_t *)MALLOCZ(cfg->osh,
-			sizeof(wl_chavoid_info_t));
-	if (cfg->chavoid_info == NULL) {
-		err = BCME_NOMEM;
-		WL_ERR(("%s : failed to create chavoid_info\n", __FUNCTION__));
-		return err;
-	}
-	INIT_LIST_HEAD(&cfg->chavoid_info->configs);
-	return err;
-}
-
-int
-wl_deinit_chavoid(struct bcm_cfg80211 *cfg)
-{
-	int err = BCME_OK;
-	wl_chavoid_info_t *info = cfg->chavoid_info;
-
-	if (info) {
-		wl_chavoid_clean_unsafe_list(cfg, &info->configs);
-		MFREE(cfg->osh, info, sizeof(wl_chavoid_info_t));
-	}
-	return err;
-}
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
 static s32 wl_init_priv(struct bcm_cfg80211 *cfg)
 {
 	struct wiphy *wiphy = bcmcfg_to_wiphy(cfg);
@@ -14991,9 +15048,9 @@ static s32 wl_init_priv(struct bcm_cfg80211 *cfg)
 	cfg->pmk_list->pmkids.count = 0;
 	cfg->pmk_list->pmkids.version = PMKID_LIST_VER_3;
 
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-	wl_init_chavoid(cfg);
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+#ifdef WL_CELLULAR_CHAN_AVOID
+	wl_cellavoid_init(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID */
 
 #ifdef CONFIG_SLEEP_MONITOR
 	sleep_monitor_register_ops(cfg, &wlan_sleep_monitor_ops,
@@ -15015,9 +15072,9 @@ static void wl_deinit_priv(struct bcm_cfg80211 *cfg)
 #ifdef DHD_LOSSLESS_ROAMING
 	del_timer_sync(&cfg->roam_timeout);
 #endif
-#ifdef CHANNEL_AVOIDANCE_SUPPORT
-	wl_deinit_chavoid(cfg);
-#endif /* CHANNEL_AVOIDANCE_SUPPORT */
+#ifdef WL_CELLULAR_CHAN_AVOID
+	wl_cellavoid_deinit(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID */
 	wl_deinit_priv_mem(cfg);
 	if (wl_cfg80211_netdev_notifier_registered) {
 		wl_cfg80211_netdev_notifier_registered = FALSE;
@@ -16393,7 +16450,11 @@ static s32 __wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify)
 		}
 	}
 
-	return 0;
+#ifdef WL_CELLULAR_CHAN_AVOID
+	err = wl_cellavoid_reinit(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
+	return err;
 }
 
 s32 wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify)
@@ -21039,8 +21100,7 @@ wl_mbo_btm_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			return err;
 		}
 
-		if (status == DOT11_BSSTRANS_RESP_STATUS_ACCEPT &&
-			cfg->btmreq_token == token) {
+		if (cfg->btmreq_token == token) {
 			err = wldev_iovar_getint(ndev, "chanspec", &chan);
 			if (unlikely(err)) {
 				WL_ERR(("%s: Could not get chanspec %d\n", __FUNCTION__, err));
