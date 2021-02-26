@@ -1236,6 +1236,15 @@ typedef struct {
 					* number of bytes to be a valid 802.11 frame
 					*/
 
+	uint32	rxlegacyfrminvalid;	/* Invalid BPHY or L-OFDM reception */
+	uint32	txsifserr;		/* A frame arrived in SIFS while we were about to
+					* transmit B/ACK
+					*/
+	uint32	ooseq_macsusp;		/* Ucode is out of sequence in processing reception
+					* (especially due to macsuspend).
+					* RX MEND is seen without RX STRT
+					*/
+
 	uint16	counter_noise_request;	/* counters of requesting noise samples for noisecal */
 	uint16	counter_noise_crsbit;	/* counters of noise mmt being interrupted
 					* due to PHYCRS>
@@ -1371,6 +1380,18 @@ typedef struct phy_periodic_counters_v8 {
 	uint32	rxfrmtoolong;		/* Number of received frame that are too long */
 	uint32	rxfrmtooshrt;		/* RX frame was dropped as it did not meet minimum
 					* number of bytes to be a valid 802.11 frame
+					*/
+
+	uint32	rxlegacyfrminvalid;	/* Invalid BPHY or L-OFDM reception */
+	uint32	txsifserr;		/* A frame arrived in SIFS while we were about to
+					* transmit B/ACK
+					*/
+	uint32	ooseq_macsusp;		/* Ucode is out of sequence in processing reception
+					* (especially due to macsuspend).
+					* RX MEND is seen without RX STRT
+					*/
+	uint32	desense_reason;		/* desense paraemters to indicate reasons
+					* for bphy and ofdm_desense
 					*/
 
 	uint16	nav_cntr_l;		/* The state of the NAV */
@@ -2045,6 +2066,7 @@ typedef struct phy_periodic_log_core_v5 {
 	int8	snr_per_ant;			/* SNR Per antenna */
 	uint8	fp;
 	int8	phylog_noise_pwr_array[8];	/* noise buffer array */
+	int8	noise_dbm_ant;			/* from uCode shm read, afer converting to dBm */
 } phy_periodic_log_core_v5_t;
 
 typedef struct phy_periodic_log_core_v2 {

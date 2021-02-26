@@ -268,9 +268,6 @@ extern int dhd_iscan_in_progress(void *h);
 void dhd_iscan_lock(void);
 void dhd_iscan_unlock(void);
 extern int dhd_change_mtu(dhd_pub_t *dhd, int new_mtu, int ifidx);
-#if !defined(AP) && defined(WLP2P)
-extern int dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
-#endif
 
 #ifndef BCMDBUS
 extern int dhd_socram_dump(struct dhd_bus *bus);
@@ -11934,3 +11931,102 @@ dhd_ota_buf_clean(dhd_pub_t *dhdp)
 	return;
 }
 #endif /* SUPPORT_OTA_UPDATE */
+#if !defined(AP) && defined(WLP2P)
+/* From Android JerryBean release, the concurrent mode is enabled by default and the firmware
+ * name would be fw_bcmdhd.bin. So we need to determine whether P2P is enabled in the STA
+ * firmware and accordingly enable concurrent mode (Apply P2P settings). SoftAP firmware
+ * would still be named as fw_bcmdhd_apsta.
+ */
+uint32
+dhd_get_concurrent_capabilites(dhd_pub_t *dhd)
+{
+	int32 ret = 0;
+	char buf[WLC_IOCTL_SMLEN];
+	bool mchan_supported = FALSE;
+	/* if dhd->op_mode is already set for HOSTAP and Manufacturing
+	 * test mode, that means we only will use the mode as it is
+	 */
+	if (dhd->op_mode & (DHD_FLAG_HOSTAP_MODE | DHD_FLAG_MFG_MODE))
+		return 0;
+	if (FW_SUPPORTED(dhd, vsdb)) {
+		mchan_supported = TRUE;
+	}
+	if (!FW_SUPPORTED(dhd, p2p)) {
+		DHD_TRACE(("Chip does not support p2p\n"));
+		return 0;
+	} else {
+		/* Chip supports p2p but ensure that p2p is really implemented in firmware or not */
+		memset(buf, 0, sizeof(buf));
+		ret = dhd_iovar(dhd, 0, "p2p", NULL, 0, (char *)&buf,
+				sizeof(buf), FALSE);
+		if (ret < 0) {
+			DHD_ERROR(("%s: Get P2P failed (error=%d)\n", __FUNCTION__, ret));
+			return 0;
+		} else {
+			if (buf[0] == 1) {
+				/* By default, chip supports single chan concurrency,
+				* now lets check for mchan
+				*/
+				ret = DHD_FLAG_CONCURR_SINGLE_CHAN_MODE;
+				if (mchan_supported)
+					ret |= DHD_FLAG_CONCURR_MULTI_CHAN_MODE;
+				if (FW_SUPPORTED(dhd, rsdb)) {
+					ret |= DHD_FLAG_RSDB_MODE;
+				}
+#ifdef WL_SUPPORT_MULTIP2P
+				if (FW_SUPPORTED(dhd, mp2p)) {
+					ret |= DHD_FLAG_MP2P_MODE;
+				}
+#endif /* WL_SUPPORT_MULTIP2P */
+#if defined(WL_CFG80211_P2P_DEV_IF)
+				return ret;
+#else
+				return 0;
+#endif
+			}
+		}
+	}
+	return 0;
+}
+#endif
+
+#ifdef SUPPORT_AP_POWERSAVE
+int dhd_set_ap_powersave(dhd_pub_t *dhdp, int ifidx, int enable)
+{
+	int32 pps = RXCHAIN_PWRSAVE_PPS;
+	int32 quiet_time = RXCHAIN_PWRSAVE_QUIET_TIME;
+	int32 stas_assoc_check = RXCHAIN_PWRSAVE_STAS_ASSOC_CHECK;
+	int ret;
+
+	if (enable) {
+		ret = dhd_iovar(dhdp, 0, "rxchain_pwrsave_enable", (char *)&enable, sizeof(enable),
+				NULL, 0, TRUE);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("Failed to enable AP power save"));
+		}
+		ret = dhd_iovar(dhdp, 0, "rxchain_pwrsave_pps", (char *)&pps, sizeof(pps), NULL, 0,
+				TRUE);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("Failed to set pps"));
+		}
+		ret = dhd_iovar(dhdp, 0, "rxchain_pwrsave_quiet_time", (char *)&quiet_time,
+				sizeof(quiet_time), NULL, 0, TRUE);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("Failed to set quiet time"));
+		}
+		ret = dhd_iovar(dhdp, 0, "rxchain_pwrsave_stas_assoc_check",
+				(char *)&stas_assoc_check, sizeof(stas_assoc_check), NULL, 0, TRUE);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("Failed to set stas assoc check"));
+		}
+	} else {
+		ret = dhd_iovar(dhdp, 0, "rxchain_pwrsave_enable", (char *)&enable, sizeof(enable),
+				NULL, 0, TRUE);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("Failed to disable AP power save"));
+		}
+	}
+
+	return 0;
+}
+#endif /* SUPPORT_AP_POWERSAVE */

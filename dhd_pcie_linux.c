@@ -61,12 +61,16 @@
 
 #if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
 	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
-	defined(CONFIG_SOC_EXYNOS1000) || defined(CONFIG_SOC_GS101)
+	defined(CONFIG_SOC_EXYNOS1000)
 #include <linux/exynos-pci-ctrl.h>
 #endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
 	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
-	* CONFIG_SOC_EXYNOS1000 || CONFIG_SOC_GS101
+	* CONFIG_SOC_EXYNOS1000
 	*/
+
+#if defined(CONFIG_SOC_GS101)
+#include <linux/exynos-pci-ctrl.h>
+#endif /* CONFIG_SOC_GS101 */
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #ifndef AUTO_SUSPEND_TIMEOUT
@@ -93,6 +97,8 @@
 #if defined(WL_CFG80211)
 #include <wl_cfg80211.h>
 #endif	/* WL_CFG80211 */
+
+#include <dhd_plat.h>
 
 #define PCI_CFG_RETRY		10		/* PR15065: retry count for pci cfg accesses */
 #define OS_HANDLE_MAGIC		0x1234abcd	/* Magic # to recognize osh */
@@ -1028,7 +1034,7 @@ extern void dhd_dpc_tasklet_kill(dhd_pub_t *dhdp);
 static void
 dhdpcie_suspend_dump_cfgregs(struct dhd_bus *bus, char *suspend_state)
 {
-	DHD_ERROR(("%s: BaseAddress0(0x%x)=0x%x, "
+	DHD_PCIE_PM(("%s: BaseAddress0(0x%x)=0x%x, "
 		"BaseAddress1(0x%x)=0x%x PCIE_CFG_PMCSR(0x%x)=0x%x "
 		"PCI_BAR1_WIN(0x%x)=(0x%x)\n",
 		suspend_state,
@@ -1063,7 +1069,7 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	get_debug_dump_time(dhd_suspend_resume_time_str);
 	DHD_ERROR(("%s: Enter: TS(%s)\n", __FUNCTION__, dhd_suspend_resume_time_str));
 #else
-	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+	DHD_PCIE_PM(("%s: Enter\n", __FUNCTION__));
 #endif /* CUSTOMER_HW4_DEBUG */
 #if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
 	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
@@ -1075,7 +1081,7 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	* CONFIG_SOC_EXYNOS1000
 	*/
 #if defined(CONFIG_SOC_GS101)
-	DHD_ERROR(("%s: Disable L1ss EP side\n", __FUNCTION__));
+	DHD_PCIE_PM(("%s: Disable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
 #endif /* CONFIG_SOC_GS101 */
 
@@ -1154,7 +1160,7 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	get_debug_dump_time(dhd_suspend_resume_time_str);
 	DHD_ERROR(("%s: Enter: TS(%s)\n", __FUNCTION__, dhd_suspend_resume_time_str));
 #else
-	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+	DHD_PCIE_PM(("%s: Enter\n", __FUNCTION__));
 #endif /* CUSTOMER_HW4_DEBUG */
 	dev->state_saved = TRUE;
 	pci_restore_state(dev);
@@ -1558,12 +1564,7 @@ dhdpcie_pci_remove(struct pci_dev *pdev)
 
 	if (bus) {
 #ifdef SUPPORT_LINKDOWN_RECOVERY
-#ifdef CONFIG_ARCH_MSM
-		msm_pcie_deregister_event(&bus->pcie_event);
-#endif /* CONFIG_ARCH_MSM */
-#ifdef CONFIG_ARCH_EXYNOS
-		exynos_pcie_deregister_event(&bus->pcie_event);
-#endif /* CONFIG_ARCH_EXYNOS */
+		dhd_plat_pcie_deregister_event(bus->dhd->plat_info);
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 		bus->rc_dev = NULL;
@@ -1865,21 +1866,19 @@ void dhdpcie_dump_resource(dhd_bus_t *bus)
 	}
 
 	/* BAR0 */
-	DHD_ERROR(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_PCIE_PM(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->regs, pci_resource_start(bus->dev, 0),
 		DONGLE_REG_MAP_SIZE));
 
 	/* BAR1 */
-	DHD_ERROR(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_PCIE_PM(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->tcm, pci_resource_start(bus->dev, 2),
 		pch->bar1_size));
 }
 
 #ifdef SUPPORT_LINKDOWN_RECOVERY
-#if defined(CONFIG_ARCH_MSM) || defined(CONFIG_ARCH_EXYNOS)
-void dhdpcie_linkdown_cb(struct_pcie_notify *noti)
+void dhdpcie_linkdown_cb(struct pci_dev *pdev)
 {
-	struct pci_dev *pdev = (struct pci_dev *)noti->user;
 	dhdpcie_info_t *pch = NULL;
 
 	if (pdev) {
@@ -1915,7 +1914,6 @@ void dhdpcie_linkdown_cb(struct_pcie_notify *noti)
 	}
 
 }
-#endif /* CONFIG_ARCH_MSM || CONFIG_ARCH_EXYNOS */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 int dhdpcie_init(struct pci_dev *pdev)
@@ -2075,22 +2073,11 @@ int dhdpcie_init(struct pci_dev *pdev)
 		bus->dhd->dongle_isolation = TRUE;
 #endif /* DONGLE_ENABLE_ISOLATION */
 #ifdef SUPPORT_LINKDOWN_RECOVERY
+		dhd_plat_pcie_register_event(bus->dhd->plat_info, pdev,
+			dhdpcie_linkdown_cb);
 #ifdef CONFIG_ARCH_MSM
-		bus->pcie_event.events = MSM_PCIE_EVENT_LINKDOWN;
-		bus->pcie_event.user = pdev;
-		bus->pcie_event.mode = MSM_PCIE_TRIGGER_CALLBACK;
-		bus->pcie_event.callback = dhdpcie_linkdown_cb;
-		bus->pcie_event.options = MSM_PCIE_CONFIG_NO_RECOVERY;
-		msm_pcie_register_event(&bus->pcie_event);
 		bus->no_cfg_restore = FALSE;
 #endif /* CONFIG_ARCH_MSM */
-#ifdef CONFIG_ARCH_EXYNOS
-		bus->pcie_event.events = EXYNOS_PCIE_EVENT_LINKDOWN;
-		bus->pcie_event.user = pdev;
-		bus->pcie_event.mode = EXYNOS_PCIE_TRIGGER_CALLBACK;
-		bus->pcie_event.callback = dhdpcie_linkdown_cb;
-		exynos_pcie_register_event(&bus->pcie_event);
-#endif /* CONFIG_ARCH_EXYNOS */
 		bus->read_shm_fail = FALSE;
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
@@ -2647,6 +2634,9 @@ dhdpcie_bus_request_irq(struct dhd_bus *bus)
 #ifdef BCMPCIE_OOB_HOST_WAKE
 #ifdef CONFIG_BCMDHD_GET_OOB_STATE
 extern int dhd_get_wlan_oob_gpio(void);
+#ifdef PRINT_WAKEUP_GPIO_STATUS
+extern int dhd_get_wlan_oob_gpio_number(void);
+#endif /* PRINT_WAKEUP_GPIO_STATUS */
 #endif /* CONFIG_BCMDHD_GET_OOB_STATE */
 
 int dhdpcie_get_oob_irq_level(void)
@@ -2660,7 +2650,16 @@ int dhdpcie_get_oob_irq_level(void)
 #endif /* CONFIG_BCMDHD_GET_OOB_STATE */
 	return gpio_level;
 }
-
+#ifdef PRINT_WAKEUP_GPIO_STATUS
+int dhdpcie_get_oob_gpio_number(void)
+{
+	int gpio_number = BCME_UNSUPPORTED;
+#ifdef CONFIG_BCMDHD_GET_OOB_STATE
+	gpio_number = dhd_get_wlan_oob_gpio_number();
+#endif /* CONFIG_BCMDHD_GET_OOB_STATE */
+	return gpio_number;
+}
+#endif /* PRINT_WAKEUP_GPIO_STATUS */
 int dhdpcie_get_oob_irq_status(struct dhd_bus *bus)
 {
 	dhdpcie_info_t *pch;
@@ -3091,11 +3090,11 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			!DHD_CHECK_CFG_IN_PROGRESS(dhd) && !dhd_os_check_wakelock_all(bus->dhd)) {
 #ifdef WL_CFG80211
 			ps_mode_off_dur = dhd_ps_mode_managed_dur(dhd);
-			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
+			DHD_PCIE_PM_STATE(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
 				"PS mode off dur: %d sec \n", __FUNCTION__,
 				bus->idletime, dhd_runtimepm_ms, ps_mode_off_dur));
 #else
-			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
+			DHD_PCIE_PM_STATE(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
 				__FUNCTION__, bus->idletime, dhd_runtimepm_ms));
 #endif /* WL_CFG80211 */
 			bus->bus_wake = 0;
@@ -3160,7 +3159,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 
 			smp_wmb();
 			wake_up(&bus->rpm_queue);
-			DHD_ERROR(("%s : runtime resume ended \n", __FUNCTION__));
+			DHD_PCIE_PM_STATE(("%s : runtime resume ended \n", __FUNCTION__));
 			return TRUE;
 		} else {
 			DHD_GENERAL_UNLOCK(dhd, flags);

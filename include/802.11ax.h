@@ -1182,4 +1182,20 @@ typedef uint8 he_trig_usrinfo_set_t[HE_TRIG_USRINFO_SZ];
 #define HE_N_SERVICE			16	/* bits in service field */
 #define HE_T_MAX_PE			16	/* max Packet extension duration */
 
+/* BSS Parameters subfield (Draft D8.0 Figure 9-632a) */
+#define HE_BSS_PARMS_OCT_REC_POS	0u	/* OCT Recommended */
+#define HE_BSS_PARMS_OCT_REC_SZ		1u
+#define HE_BSS_PARMS_SAME_SSID_POS	1u	/* Same SSID */
+#define HE_BSS_PARMS_SAME_SSID_SZ	1u
+#define HE_BSS_PARMS_MULTI_BSSID_POS	2u	/* Multiple BSSID */
+#define HE_BSS_PARMS_MULTI_BSSID_SZ	1u
+#define HE_BSS_PARMS_TR_BSSID_POS	3u	/* Transmitted BSSID */
+#define HE_BSS_PARMS_TR_BSSID_SZ	1u
+#define HE_BSS_PARMS_MEM_CO_AP_POS	4u	/* Member Of ESS With 2.4/5 GHz Co-Located AP */
+#define HE_BSS_PARMS_MEM_CO_AP_SZ	1u
+#define HE_BSS_PARMS_UNSOL_PRB_RSP_POS	5u	/* Unsolicited Probe Responses Active */
+#define HE_BSS_PARMS_UNSOL_PRB_RSP_SZ	1u
+#define HE_BSS_PARMS_CO_AP_POS		6u	/* Co-Located AP */
+#define HE_BSS_PARMS_CO_AP_SZ		1u
+
 #endif /* _802_11ax_h_ */

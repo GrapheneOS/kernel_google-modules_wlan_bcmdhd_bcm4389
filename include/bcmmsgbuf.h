@@ -1173,6 +1173,10 @@ typedef union txbuf_submit_item {
 	unsigned char		check[H2DRING_TXPOST_ITEMSIZE];
 } txbuf_submit_item_t;
 
+/* metadata_len */
+#define BCMPCIE_TX_PKT_LATENCY_MASK     0xFFFu
+#define BCMPCIE_TX_PKT_LATENCY_SHIFT        0u
+
 /* D2H Txcompletion ring work items - extended for IOC rev7 */
 typedef struct host_txbuf_cmpl {
 	/** common message header */

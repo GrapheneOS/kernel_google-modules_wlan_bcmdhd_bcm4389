@@ -1448,8 +1448,8 @@ wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t band,
 	chanspec_t chanspec;
 	int sb_cnt, ret = -EINVAL;
 
-	if (chspecs == NULL) {
-		WL_ERR(("chspecs is null\n"));
+	if (chspecs == NULL || cnt == NULL) {
+		WL_ERR(("Invalid input params\n"));
 		return ret;
 	}
 
@@ -1467,26 +1467,14 @@ wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t band,
 
 	*cnt = 0;
 
-	if (bw == WL_CHANSPEC_BW_20) {
-		chspecs[0] = wf_create_20MHz_chspec(center_channel, band);
-		if (chspecs[0] == INVCHANSPEC) {
-			WL_ERR(("chanspec fail band %x, bw %x, channel %d\n",
-				band, bw, center_channel));
-			goto exit;
+	wf_chanspec_iter_init(&iter, band, bw);
+	while (wf_chanspec_iter_next(&iter, &chanspec)) {
+		if (CHSPEC_CHANNEL(chanspec) == center_channel) {
+			chspecs[(*cnt)++] = chanspec;
 		}
-		*cnt = 1;
-	} else if (band == WL_CHANSPEC_BAND_5G) {
-		wf_chanspec_iter_init(&iter, band, bw);
-		while (wf_chanspec_iter_next(&iter, &chanspec)) {
-			if (CHSPEC_CHANNEL(chanspec) == center_channel) {
-				chspecs[(*cnt)++] = chanspec;
-			}
-			if (*cnt == sb_cnt) {
-				break;
-			}
+		if (*cnt == sb_cnt) {
+			break;
 		}
-	} else {
-		/* 2G 40MHz case, not handled */
 	}
 
 	if (*cnt == sb_cnt) {
@@ -7036,7 +7024,6 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	key.algo = wl_rsn_cipher_wsec_key_algo_lookup(params->cipher);
 	val = wl_rsn_cipher_wsec_algo_lookup(params->cipher);
 	if (val == WSEC_NONE) {
-		WL_ERR(("Invalid cipher (0x%x), key.len = %d\n", params->cipher, key.len));
 #if defined(WLAN_CIPHER_SUITE_PMK)
 	/* WLAN_CIPHER_SUITE_PMK is not NL80211 standard ,but BRCM proprietary cipher suite.
 	 * so it doesn't have right algo type. Just for now, bypass this check for
@@ -7045,8 +7032,11 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	 */
 		if (params->cipher != WLAN_CIPHER_SUITE_PMK)
 #endif /* defined(WLAN_CIPHER_SUITE_PMK) */
-		err = -EINVAL;
-		goto exit;
+		{
+			WL_ERR(("Invalid cipher (0x%x), key.len = %d\n", params->cipher, key.len));
+			err = -EINVAL;
+			goto exit;
+		}
 	}
 	switch (params->cipher) {
 	case WLAN_CIPHER_SUITE_TKIP:
@@ -7068,7 +7058,6 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	case WLAN_CIPHER_SUITE_PMK:
 		sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
 
-		WL_MEM(("set_pmk: wpa_auth:%x akm:%x\n", sec->wpa_auth, params->cipher));
 		/* Avoid pmk set for SAE and OWE for external supplicant case. */
 		if (IS_AKM_SAE(sec->wpa_auth) || IS_AKM_OWE(sec->wpa_auth)) {
 			WL_INFORM_MEM(("skip pmk set for akm:%x\n", sec->wpa_auth));
@@ -7076,7 +7065,7 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 		}
 
 		if (params->key_len > sizeof(pmk.key)) {
-			WL_ERR(("Worng PMK key length:%d", params->key_len));
+			WL_ERR(("Wrong PMK key length:%d", params->key_len));
 			err = -EINVAL;
 			goto exit;
 		}
@@ -7104,7 +7093,7 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 		err = wldev_ioctl_set(dev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
 		if (err) {
 			bzero(&pmk, sizeof(pmk));
-			WL_ERR(("pmk failed, err=%d (ignore)\n", err));
+			WL_ERR(("pmk set failed. wpa_auth:0x%x, err=%d\n", sec->wpa_auth, err));
 			/* PMK failure is not fatal, the connection could still go through
 			 * by handling EAPOL at supplicant level. so print error reason and
 			 * make an attempt to proceed.
@@ -7112,7 +7101,8 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 			err = BCME_OK;
 			goto exit;
 		} else {
-			WL_DBG(("pmk set. flags:0x%x\n", pmk.flags));
+			WL_INFORM_MEM(("pmk set. len:%d flags:0x%x wpa_auth:0x%x akm:0x%x\n",
+					pmk.key_len, pmk.flags, sec->wpa_auth, params->cipher));
 		}
 		/* Clear key length to delete key */
 		key.len = 0;
@@ -12993,6 +12983,7 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 #endif /* LINUX_VERSION > 2.6.39 || WL_COMPAT_WIRELESS */
 #endif /* BCM4359 CHIP */
 
+	wl_update_prof(cfg, ndev, NULL, (const void *)(e->addr.octet), WL_PROF_BSSID);
 	if ((err = wl_get_assoc_ies(cfg, ndev)) != BCME_OK) {
 #ifdef BCMDONGLEHOST
 		DHD_STATLOG_CTRL(dhdp, ST(DISASSOC_INT_START),
@@ -13014,7 +13005,6 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		goto fail;
 	}
 
-	wl_update_prof(cfg, ndev, NULL, (const void *)(e->addr.octet), WL_PROF_BSSID);
 	curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
 	if ((err = wl_update_bss_info(cfg, ndev, true, NULL)) != BCME_OK) {
 		WL_ERR(("failed to update bss info, err=%d\n", err));
@@ -23327,3 +23317,136 @@ wl_cfg80211_get_sta_chanspec(struct bcm_cfg80211 *cfg)
 
 	return 0;
 }
+
+#ifdef WL_USABLE_CHAN
+bool wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 freq)
+{
+	int i;
+	for (i = 0; i < cur_idx; i++) {
+		if (channels[i].freq == freq) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_info)
+{
+	usable_channel_t *cur_ch = NULL;
+	void *chan_list = NULL;
+	int i, err, idx = 0, band = 0;
+	u32 mask = 0;
+	uint32 channel;
+	uint32 freq;
+	uint32 chspec, chaninfo;
+	u16 list_count;
+	bool exist = false;
+	bool ch_160mhz_5g;
+	u32 passive_channel, vlp_psc_include;
+
+	bzero(u_info->channels, sizeof(*u_info->channels) * u_info->max_size);
+	/* Get chan_info_list or chanspec from FW */
+
+	chan_list = MALLOCZ(cfg->osh, CHANINFO_LIST_BUF_SIZE);
+	if (chan_list == NULL) {
+		WL_ERR(("failed to allocate local buf\n"));
+		err = -ENOMEM;
+		goto exit;
+	}
+
+	err = wldev_iovar_getbuf_bsscfg(bcmcfg_to_prmry_ndev(cfg), "chan_info_list", NULL,
+			0, chan_list, CHANINFO_LIST_BUF_SIZE, 0, NULL);
+	if (err == BCME_UNSUPPORTED) {
+		WL_INFORM(("get chan_info_list, UNSUPPORTED\n"));
+		goto exit;
+	} else if (err != BCME_OK) {
+		WL_ERR(("get chan_info_list err(%d)\n", err));
+		goto exit;
+	}
+
+	list_count = ((wl_chanspec_list_v1_t *)chan_list)->count;
+	for (i = 0; i < list_count; i++) {
+		if (u_info->max_size <= idx) {
+			WL_ERR(("No more space to add usable channel info idx:%d max_size:%u\n",
+				idx, u_info->max_size));
+			break;
+		}
+		chspec = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chanspec);
+		chspec = wl_chspec_driver_to_host(chspec);
+		chaninfo = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chaninfo);
+		band = CHSPEC_BAND(chspec);
+		channel = CHSPEC_CHANNEL(chspec);
+		freq = wl_channel_to_frequency(channel, band);
+
+		WL_DBG(("chspec:%x chaninfo:%x freq:%u band:%u req_band:%u req_iface_mode:%u\n",
+			chspec, chaninfo, freq, band, u_info->band_mask, u_info->iface_mode_mask));
+
+		/* (36,40,44,48) / 80 have the same center freq. Avoid adding duplicated freq */
+		exist = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
+		if (exist) {
+			continue;
+		}
+
+		/* Skip if it is not interested */
+		if (!((u_info->band_mask & WLAN_MAC_2_4_BAND) && CHSPEC_IS2G(chspec)) &&
+			!((u_info->band_mask & WLAN_MAC_5_0_BAND) && CHSPEC_IS5G(chspec)) &&
+			!((u_info->band_mask & WLAN_MAC_6_0_BAND) && CHSPEC_IS6G(chspec))) {
+			continue;
+		}
+
+		passive_channel = ((chaninfo & WL_CHAN_RADAR) ||
+				(chaninfo & WL_CHAN_PASSIVE));
+		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
+				(chaninfo & WL_CHAN_BAND_6G_VLP));
+
+		/* STA can be set all cases */
+		mask = (1 << WIFI_INTERFACE_STA);
+
+		/* Only STA supported 160Mhz in 5G */
+		if (CHSPEC_IS5G(chspec) && CHSPEC_IS160(chspec)) {
+			ch_160mhz_5g = true;
+		} else {
+			ch_160mhz_5g = false;
+		}
+
+		if (!passive_channel && !ch_160mhz_5g) {
+			/* consider only VLP and PSC channel in 6g */
+			if (CHSPEC_IS6G(chspec) && !vlp_psc_include) {
+				continue;
+			}
+			if (!CHSPEC_IS6G(chspec)) {
+				mask |= ((1 << WIFI_INTERFACE_P2P_CLIENT) |
+					(1 << WIFI_INTERFACE_P2P_GO) |
+					(1 << WIFI_INTERFACE_SOFTAP) |
+					(1 << WIFI_INTERFACE_NAN));
+			} else {
+#ifdef WL_USABLE_CHAN_SUPPORT_6G_SOFTAP_NAN
+				/* SAP and NAN can be considered if it needed */
+				mask |= ((1 << WIFI_INTERFACE_SOFTAP) |
+					(1 << WIFI_INTERFACE_NAN));
+#endif /* WL_USABLE_CHAN_SUPPORT_6G_SOFTAP_NAN */
+			}
+		}
+
+		/* only channel entries matched at least a bit in iface_mode_mask are returned */
+		if ((mask & u_info->iface_mode_mask) == 0) {
+			continue;
+		}
+
+		/* Add current channel to list */
+		cur_ch = &u_info->channels[idx];
+		cur_ch->freq = freq;
+		cur_ch->width = wl_chanspec_to_host_bw_map(chspec);
+		cur_ch->iface_mode_mask = mask & u_info->iface_mode_mask;
+		WL_INFORM_MEM(("idx:%d freq:%u width:%u iface_mode_mask:%x\n",
+			idx, cur_ch->freq, cur_ch->width, cur_ch->iface_mode_mask));
+		idx++;
+	}
+	u_info->size = idx;
+exit:
+	if (chan_list) {
+		MFREE(cfg->osh, chan_list, CHANINFO_LIST_BUF_SIZE);
+	}
+	return err;
+}
+#endif /* WL_USABLE_CHAN */

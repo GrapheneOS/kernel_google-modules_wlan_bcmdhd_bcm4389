@@ -581,10 +581,208 @@ enum {
 	/* firmware encryption decryption in progress */
 	BCM_FWSIGN_E_FWENC_DECRYPT_IN_PROGRESS	= -4143,
 
+	/* signature patch tlv is missing */
+	BCM_FWSIGN_E_PATCH_TLV_MISSING		= -4144,
+
+	/* signature patch tlv invalid */
+	BCM_FWSIGN_E_PATCH_TLV_INVALID		= -4145,
+
+	/* signature patch is empty */
+	BCM_FWSIGN_E_PATCH_EMPTY		= -4146,
+
+	/* signature patch bad addr */
+	BCM_FWSIGN_E_PATCH_BAD_ADDR		= -4147,
+
+	/* signature patch unsupported version */
+	BCM_FWSIGN_E_PATCH_VERSION		= -4148,
+
+	/* signature patch cmd error */
+	BCM_FWSIGN_E_PATCH_CMD			= -4149,
+
+	/* signature patch invalid length */
+	BCM_FWSIGN_E_PATCH_INVALID_LENGTH	= -4150,
+
 	/* last error */
 	BCM_FWSIGN_E_LAST			= -5119
 };
 typedef int32 bcm_fwsign_status_t;
+
+/*
+ * Bootloader error code range: -4096...-5119
+ */
+enum {
+	/* okay */
+	BL_E_OK				= 0,
+
+	/* Operation is in progress */
+	BL_E_INPROGRESS			= -4096,
+
+	/* version mismatch */
+	BL_E_VERSION			= -4097,
+
+	/* key not found */
+	BL_E_KEY_NOT_FOUND		= -4098,
+
+	/* key found, but is not valid (revoked) */
+	BL_E_KEY_NOT_VALID		= -4099,
+
+	/* Cipher suite id mismatch for the key */
+	BL_E_CS_ID_MISMATCH		= -4100,
+
+	/* Signature does not match */
+	BL_E_SIGNATURE			= -4101,
+
+	/* Continue */
+	BL_E_CONTINUE			= -4102,
+
+	BL_E_HEAP_TOO_SMALL		= -4103,
+
+	/* Allocation of bn ctx failed */
+	BL_E_BN_CTX_ALLOC_FAILED	= -4104,
+
+	/* possible bug */
+	BL_E_BUGCHECK			= -4105,
+
+	/* chosen key is invalid */
+	BL_E_INVALID_KEY		= -4106,
+
+	/* signature is invalid */
+	BL_E_INVALID_SIGNATURE		= -4107,
+
+	/* signature tlv missing */
+	BL_E_NO_CSID_SIG		= -4108,
+
+	/* chosen key is invalid */
+	BL_E_REVOKED_KEY		= -4109,
+
+	/* signature has no matching valid key in ROM */
+	BL_E_NO_OTP_FOR_ROM_KEY		= -4110,
+
+	/* Compression not supported */
+	BL_E_COMPNOTSUP			= -4111,
+
+	/* OTP read error */
+	BL_E_OTP_READ			= -4112,
+
+	/* heap address overlaps with FW address space */
+	BL_E_HEAP_OVR_FW		= -4113,
+
+	/* heap address overlaps with bootloader data/bss region */
+	BL_E_HEAP_OVR_BSS		= -4114,
+
+	/* heap address overlaps with bootloader stack region */
+	BL_E_HEAP_OVR_STACK		= -4115,
+
+	/* firmware encryption header tlv is missing */
+	BL_E_NO_FWENC_HDR		= -4116,
+
+	/* firmware encryption algo not supported */
+	BL_E_FWENC_ALGO_NOTSUP		= -4117,
+
+	/* firmware encryption tag tlv is missing */
+	BL_E_NO_FW_TAG			= -4118,
+
+	/* firmware encryption tag tlv is not valid */
+	BL_E_FW_TAG_INVALID_TLV		= -4119,
+
+	/* firmware encryption tag verification fail */
+	BL_E_FW_TAG_MISMATCH		= -4120,
+
+	/* signature package is invalid */
+	BL_E_PACKAGE_INVALID		= -4121,
+
+	/* chip info mismatch */
+	BL_E_CHIP_INFO_MISMATCH		= -4122,
+
+	/* key use is not valid */
+	BL_E_KEY_USE_NOT_VALID		= -4123,
+
+	/* fw tag type invalid */
+	BL_E_TAG_TYPE_INVALID		= -4124,
+
+	/* fwenc header invalid */
+	BL_E_FWENC_HDR_INVALID		= -4125,
+
+	/* firmware encryption header version mismatch */
+	BL_E_FWENC_HDR_VERSION		= -4126,
+
+	/* firmware encryption cipher type not supported */
+	BL_E_FWENC_CIPHER_TYPE_UNSUPPORTED = -4127,
+
+	/* firmware encryption tlv type not supported */
+	BL_E_FWENC_TLV_TYPE_UNSUPPORTED	= -4128,
+
+	/* firmware encryption invalid kdf info */
+	BL_E_FWENC_INVALID_KDFINFO	= -4129,
+
+	/* firmware encryption invalid ec group type length */
+	BL_E_FWENC_INVALID_ECG_TYPE_LEN	= -4130,
+
+	/* firmware encryption invalid epub */
+	BL_E_FWENC_INVALID_EPUB		= -4131,
+
+	/* firmware encryption invalid iv */
+	BL_E_FWENC_INVALID_IV		= -4132,
+
+	/* firmware encryption invalid aad */
+	BL_E_FWENC_INVALID_AAD		= -4133,
+
+	/* firmware encryption invalid ROM key */
+	BL_E_FWENC_INVALID_ROMKEY	= -4134,
+
+	/* firmware encryption invalid sysmem key */
+	BL_E_FWENC_INVALID_SYSMEMKEY	= -4135,
+
+	/* firmware encryption invalid OTP key */
+	BL_E_FWENC_INVALID_OTPKEY	= -4136,
+
+	/* firmware encryption key unwrap fail */
+	BL_E_FWENC_KEY_UNWRAP_FAIL	= -4137,
+
+	/* firmware encryption generate share secret fail */
+	BL_E_FWENC_GEN_SECRET_FAIL	= -4138,
+
+	/* firmware encryption symmetric key derivation fail */
+	BL_E_FWENC_KEY_DERIVATION_FAIL	= -4139,
+
+	/* firmware encryption RNG read fail */
+	BL_E_FWENC_RNG_FAIL		= -4140,
+
+	/* firmware encryption MAC tampered during decryption */
+	BL_E_FWENC_MAC_TAMPERED		= -4141,
+
+	/* firmware encryption decryption failed */
+	BL_E_FWENC_DECRYPT_FAIL		= -4142,
+
+	/* firmware encryption decryption in progress */
+	BL_E_FWENC_DECRYPT_IN_PROGRESS	= -4143,
+
+	/* signature patch tlv is missing */
+	BL_E_PATCH_TLV_MISSING		= -4144,
+
+	/* signature patch tlv invalid */
+	BL_E_PATCH_TLV_INVALID		= -4145,
+
+	/* signature patch is empty */
+	BL_E_PATCH_EMPTY		= -4146,
+
+	/* signature patch bad addr */
+	BL_E_PATCH_BAD_ADDR		= -4147,
+
+	/* signature patch unsupported version */
+	BL_E_PATCH_VERSION		= -4148,
+
+	/* signature patch cmd error */
+	BL_E_PATCH_CMD			= -4149,
+
+	/* signature patch invalid length */
+	BL_E_PATCH_INVALID_LENGTH	= -4150,
+
+	/* last error */
+	BL_E_LAST			= -5119
+};
+
+typedef int32 bl_status_t;
 
 /* PMK manager block. Event codes from -5120 to -6143 */
 /* PSK hashing event codes */

@@ -380,6 +380,82 @@ dhd_wlan_set_carddetect(int val)
 	return 0;
 }
 
+#ifndef SUPPORT_EXYNOS7420
+#include <linux/exynos-pci-noti.h>
+extern int exynos_pcie_register_event(struct exynos_pcie_register_event *reg);
+extern int exynos_pcie_deregister_event(struct exynos_pcie_register_event *reg);
+#endif /* !SUPPORT_EXYNOS7420 */
+
+#include <dhd_plat.h>
+
+typedef struct dhd_plat_info {
+	struct exynos_pcie_register_event pcie_event;
+	struct exynos_pcie_notify pcie_notify;
+	struct pci_dev *pdev;
+} dhd_plat_info_t;
+
+static dhd_pcie_event_cb_t g_pfn = NULL;
+
+uint32 dhd_plat_get_info_size(void)
+{
+	return sizeof(dhd_plat_info_t);
+}
+
+void plat_pcie_notify_cb(struct exynos_pcie_notify *pcie_notify)
+{
+	struct pci_dev *pdev;
+
+	if (pcie_notify == NULL) {
+		pr_err("%s(): Invalid argument to Platform layer call back \r\n", __func__);
+		return;
+	}
+
+	if (g_pfn) {
+		pdev = (struct pci_dev *)pcie_notify->user;
+		pr_err("%s(): Invoking DHD call back with pdev %p \r\n",
+				__func__, pdev);
+		(*(g_pfn))(pdev);
+	} else {
+		pr_err("%s(): Driver Call back pointer is NULL \r\n", __func__);
+	}
+	return;
+}
+
+int dhd_plat_pcie_register_event(void *plat_info, struct pci_dev *pdev, dhd_pcie_event_cb_t pfn)
+{
+		dhd_plat_info_t *p = plat_info;
+
+#ifndef SUPPORT_EXYNOS7420
+		if ((p == NULL) || (pdev == NULL) || (pfn == NULL)) {
+			pr_err("%s(): Invalid argument p %p, pdev %p, pfn %p\r\n",
+				__func__, p, pdev, pfn);
+			return -1;
+		}
+		g_pfn = pfn;
+		p->pdev = pdev;
+		p->pcie_event.events = EXYNOS_PCIE_EVENT_LINKDOWN;
+		p->pcie_event.user = pdev;
+		p->pcie_event.mode = EXYNOS_PCIE_TRIGGER_CALLBACK;
+		p->pcie_event.callback = plat_pcie_notify_cb;
+		exynos_pcie_register_event(&p->pcie_event);
+		pr_err("%s(): Registered Event PCIe event pdev %p \r\n", __func__, pdev);
+		return 0;
+#else
+		return 0;
+#endif /* SUPPORT_EXYNOS7420 */
+}
+
+void dhd_plat_pcie_deregister_event(void *plat_info)
+{
+	dhd_plat_info_t *p = plat_info;
+#ifndef SUPPORT_EXYNOS7420
+	if (p) {
+		exynos_pcie_deregister_event(&p->pcie_event);
+	}
+#endif /* SUPPORT_EXYNOS7420 */
+	return;
+}
+
 #ifdef BCMSDIO
 static int dhd_wlan_get_wake_irq(void)
 {

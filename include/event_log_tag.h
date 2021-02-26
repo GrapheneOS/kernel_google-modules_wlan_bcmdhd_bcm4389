@@ -512,8 +512,26 @@
 /* EWP HW event log tags */
 #define EVENT_LOG_TAG_EWP_HW			410
 
+#define EVENT_LOG_TAG_COEXCPU_ERROR		413
+
+#ifdef WL_CHRE
+#define EVENT_LOG_TAG_CHRE_ERR                  414
+#define EVENT_LOG_TAG_CHRE_WARN                 415
+#define EVENT_LOG_TAG_CHRE_INFO                 416
+#define EVENT_LOG_TAG_CHRE_DBG                  417
+#endif /* WL_CHRE */
+
+/* QoS and SCS (Stream Classification Service) */
+#define EVENT_LOG_TAG_RAV_QOS_ERROR		418
+#define EVENT_LOG_TAG_RAV_QOS_INFO		419
+
+#define EVENT_LOG_TAG_RAV_SCS_ERROR		420
+#define EVENT_LOG_TAG_RAV_SCS_INFO		421
+
+#define EVENT_LOG_TAG_AMPDU_BARDBG              422
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			410
+#define EVENT_LOG_TAG_MAX			422
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

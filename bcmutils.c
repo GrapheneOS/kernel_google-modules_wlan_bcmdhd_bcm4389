@@ -48,18 +48,6 @@
 
 #endif /* !BCMDRIVER */
 
-#ifdef WL_UNITTEST
-/*
- * Definitions and includes needed during software unit test compilation and execution.
- */
-#include <stdio.h>
-#include <stdlib.h>
-#ifdef ASSERT
-#undef ASSERT
-#endif /* ASSERT */
-#define ASSERT(exp)
-#endif /* WL_UNITTEST */
-
 #if defined(_WIN32) || defined(NDIS)
 /* Debatable */
 #include <bcmstdlib.h>
@@ -108,17 +96,25 @@ void (*const BCMPOST_TRAP_RODATA(print_btrace_int_fn))(int depth, uint32 pc, uin
 #endif
 
 #if !defined(BCMDONGLEHOST)
-/* Forward declarations */
-char * getvar_internal(char *vars, const char *name);
-int getintvar_internal(char *vars, const char *name);
-int getintvararray_internal(char *vars, const char *name, int index);
-int getintvararraysize_internal(char *vars, const char *name);
 
-#ifndef WL_FWSIGN
+#ifndef BCM_BOOTLOADER
+/* Forward declarations */
+static int getintvararray_internal(char *vars, const char *name, int index);
+static int getintvararraysize_internal(char *vars, const char *name);
+static
+#ifndef ATE_BUILD
+const
+#endif
+char * getvar_internal(char *vars, const char *name);
+static int getintvar_internal(char *vars, const char *name);
+
 /*
  * Search the name=value vars for a specific one and return its value.
  * Returns NULL if not found.
  */
+#ifndef ATE_BUILD
+const
+#endif
 char *
 getvar(char *vars, const char *name)
 {
@@ -126,6 +122,10 @@ getvar(char *vars, const char *name)
 	return getvar_internal(vars, name);
 }
 
+static
+#ifndef ATE_BUILD
+const
+#endif
 char *
 getvar_internal(char *vars, const char *name)
 {
@@ -164,10 +164,10 @@ getintvar(char *vars, const char *name)
 	return getintvar_internal(vars, name);
 }
 
-int
+static int
 getintvar_internal(char *vars, const char *name)
 {
-	char *val;
+	const char *val;
 
 	if ((val = getvar_internal(vars, name)) == NULL)
 		return (0);
@@ -182,10 +182,11 @@ getintvararray(char *vars, const char *name, int index)
 	return getintvararray_internal(vars, name, index);
 }
 
-int
+static int
 getintvararray_internal(char *vars, const char *name, int index)
 {
-	char *buf, *endp;
+	const char *buf;
+	char *endp;
 	int i = 0;
 	int val = 0;
 
@@ -215,10 +216,11 @@ getintvararraysize(char *vars, const char *name)
 	return getintvararraysize_internal(vars, name);
 }
 
-int
+static int
 getintvararraysize_internal(char *vars, const char *name)
 {
-	char *buf, *endp;
+	const char *buf;
+	char *endp;
 	int count = 0;
 	int val = 0;
 
@@ -350,7 +352,7 @@ end:
 	*name_out = name_with_prefix;
 	return sz;
 }
-#endif /* WL_FWSIGN */
+#endif /* BCM_BOOTLOADER */
 
 #if defined(BCMNVRAMR) || defined(BCMNVRAMW)
 /* Search for token in comma separated token-string */
@@ -386,7 +388,7 @@ uint
 getgpiopin(char *vars, char *pin_name, uint def_pin)
 {
 	char name[] = "gpioXXXX";
-	char *val;
+	const char *val;
 	uint pin;
 
 	/* Go thru all possibilities till a match in pin name */
@@ -2460,6 +2462,8 @@ BCMPOSTTRAPFN(bcm_binit)(struct bcmstrbuf *b, char *buf, uint size)
 	}
 }
 
+static const char BCMPOST_TRAP_RODATA(bcm_bprintf_ptstr_1)[] = "%s";
+
 /* Buffer sprintf wrapper to guard against buffer overflow */
 int
 BCMPOSTTRAPFN(bcm_bprintf)(struct bcmstrbuf *b, const char *fmt, ...)
@@ -2471,7 +2475,7 @@ BCMPOSTTRAPFN(bcm_bprintf)(struct bcmstrbuf *b, const char *fmt, ...)
 
 	r = vsnprintf(b->buf, b->size, fmt, ap);
 	if (bcm_bprintf_bypass == TRUE) {
-		printf("%s", b->buf);
+		printf(bcm_bprintf_ptstr_1, b->buf);
 		goto exit;
 	}
 

@@ -473,45 +473,45 @@ ssize_t print_pwrstats_cum(char *buf)
 	ret += scnprintf(buf, PAGE_SIZE, "WIFI\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "AWAKE:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.awake_cnt);
+		accumstats.awake_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.awake_dur);
+		accumstats.awake_dur);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_ts,
-			laststats.awake_last_entry_us);
+		laststats.awake_last_entry_us);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "ASLEEP:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.pm_cnt);
+		accumstats.pm_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.pm_dur);
+		accumstats.pm_dur);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_ts,
-			laststats.pm_last_entry_us);
+		laststats.pm_last_entry_us);
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\nWIFI-PCIE\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "L0:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.l0_cnt);
+		accumstats.l0_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.l0_dur_us);
+		accumstats.l0_dur_us);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "L1:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.l1_cnt);
+		accumstats.l1_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.l1_dur_us);
+		accumstats.l1_dur_us);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "L1_1:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.l1_1_cnt);
+		accumstats.l1_1_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.l1_1_dur_us);
+		accumstats.l1_1_dur_us);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "L1_2:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.l1_2_cnt);
+		accumstats.l1_2_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.l1_2_dur_us);
+		accumstats.l1_2_dur_us);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "L2:\n");
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_cnt,
-			accumstats.l2_cnt);
+		accumstats.l2_cnt);
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%s 0x%0llx\n", pwrstr_dur,
-			accumstats.l2_dur_us);
+		accumstats.l2_dur_us);
 
 	return ret;
 }

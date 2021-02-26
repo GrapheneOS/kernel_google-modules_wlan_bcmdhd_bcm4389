@@ -49,6 +49,14 @@ struct wifi_platform_data {
 	void *(*get_country_code)(char *ccode);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 58)) */
 };
-#endif /* CONFIG_WIFI_CONTROL_FUNC */
+#endif
+
+#include <linux/pci.h>
+extern uint32 dhd_plat_get_info_size(void);
+
+typedef void (*dhd_pcie_event_cb_t) (struct pci_dev *pdev);
+extern int dhd_plat_pcie_register_event(void *plat_info,
+		struct pci_dev *pdev, dhd_pcie_event_cb_t pfn);
+extern void dhd_plat_pcie_deregister_event(void *plat_info);
 
 #endif /* __DHD_PLAT_H__ */

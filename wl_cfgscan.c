@@ -3575,6 +3575,10 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	bool adaptive_pno = false;
 
 #ifdef WL_DUAL_STA
+	if (!IS_INET_LINK_NDEV(cfg, dev)) {
+		WL_ERR(("Sched scan not supported on non-INET link\n"));
+		return -EOPNOTSUPP;
+	}
 	if ((wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_STA) >= 2) || cfg->latency_mode) {
 		WL_ERR(("Sched scan not supported in multi sta connected state"
 			" or latency mode %d\n", cfg->latency_mode));
@@ -5115,7 +5119,6 @@ wl_cfgscan_remain_on_channel(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 		return -EINVAL;
 	}
 
-	mutex_lock(&cfg->usr_sync);
 	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
 	target_channel = ieee80211_frequency_to_channel(channel->center_freq);
 
@@ -5185,6 +5188,8 @@ wl_cfgscan_remain_on_channel(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 		if (unlikely(err)) {
 			goto exit;
 		}
+
+		mutex_lock(&cfg->usr_sync);
 		err = wl_cfgp2p_discover_listen(cfg, target_channel, duration);
 		if (err == BCME_OK) {
 			wl_set_drv_status(cfg, REMAINING_ON_CHANNEL, ndev);
@@ -5202,6 +5207,7 @@ wl_cfgscan_remain_on_channel(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 			}
 #endif /* WL_CFG80211_VSDB_PRIORITIZE_SCAN_REQUEST */
 		}
+		mutex_unlock(&cfg->usr_sync);
 	} else if (wdev->iftype == NL80211_IFTYPE_STATION ||
 		wdev->iftype == NL80211_IFTYPE_AP) {
 		WL_DBG(("LISTEN ON CHANNEL\n"));
@@ -5227,7 +5233,6 @@ exit:
 		WL_ERR(("Fail to Set (err=%d cookie:%llu)\n", err, *cookie));
 		wl_flush_fw_log_buffer(ndev, FW_LOGSET_MASK_ALL);
 	}
-	mutex_unlock(&cfg->usr_sync);
 	return err;
 }
 
@@ -6433,9 +6438,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		MFREE(cfg->osh, chspeclist, list_size);
 		return -ENOMEM;
 	}
-#endif /* WL_CELLULAR_CHAN_AVOID */
 
-#ifdef WL_CELLULAR_CHAN_AVOID
 	wl_cellavoid_sync_lock(cfg);
 #endif /* WL_CELLULAR_CHAN_AVOID */
 
@@ -6530,8 +6533,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		goto exit;
 	}
 
-success:
 #ifdef WL_CELLULAR_CHAN_AVOID
+success:
 	if (safe_success) {
 		p_chspec_list = safe_chspeclist;
 		parameter->freq_bands = safe_param.freq_bands;

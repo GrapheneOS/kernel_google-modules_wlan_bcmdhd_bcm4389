@@ -2133,7 +2133,7 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 				/* convert to chanspec value */
 				rtt_target->chanspec =
 					dhd_rtt_convert_to_chspec(rtt_target->channel);
-				if (rtt_target->chanspec == 0) {
+				if (rtt_target->chanspec == INVCHANSPEC) {
 					WL_ERR(("Channel is not valid \n"));
 					err = -EINVAL;
 					goto exit;
@@ -9872,7 +9872,7 @@ wl_cfgvendor_custom_mapping_of_dscp_reset(struct wiphy *wiphy,
 }
 #endif /* WL_CUSTOM_MAPPING_OF_DSCP */
 
-static int
+int
 wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
 {
@@ -10875,6 +10875,93 @@ wl_cfgvendor_set_dtim_config(struct wiphy *wiphy,
 
 }
 
+#ifdef WL_USABLE_CHAN
+static int wl_cfgvendor_get_usable_channels(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void *data, int len)
+{
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	usable_channel_info_t u_info;
+	struct sk_buff *skb;
+	int ret = BCME_OK;
+	s32 type, rem_attr;
+	const struct nlattr *iter;
+
+	nla_for_each_attr(iter, data, len, rem_attr) {
+		type = nla_type(iter);
+		switch (type) {
+			case USABLECHAN_ATTRIBUTE_BAND:
+				u_info.band_mask = nla_get_u32(iter);
+				break;
+			case USABLECHAN_ATTRIBUTE_IFACE:
+				u_info.iface_mode_mask = nla_get_u32(iter);
+				break;
+			case USABLECHAN_ATTRIBUTE_FILTER:
+				u_info.filter_mask = nla_get_u32(iter);
+				break;
+			case USABLECHAN_ATTRIBUTE_MAX_SIZE:
+				u_info.max_size = nla_get_u32(iter);
+				break;
+			default:
+				WL_ERR(("Invalid usable_chan attribute type %d\n", type));
+				break;
+		}
+	}
+	WL_INFORM_MEM(("usable channel param band:%u iface:%u filter:%u max_size:%u\n",
+		u_info.band_mask, u_info.iface_mode_mask, u_info.filter_mask, u_info.max_size));
+
+	if (u_info.max_size == 0 || u_info.band_mask == 0 || u_info.iface_mode_mask == 0) {
+		WL_ERR(("Invalid param band:%u iface:%u filter:%u max_size:%u\n",
+			u_info.band_mask, u_info.iface_mode_mask,
+			u_info.filter_mask, u_info.max_size));
+		return -EINVAL;
+	}
+
+	if (u_info.max_size > USABLE_CHAN_MAX_SIZE) {
+		WL_ERR(("Too big max_size band:%u iface:%u filter:%u max_size:%u limit:%u\n",
+			u_info.band_mask, u_info.iface_mode_mask,
+			u_info.filter_mask, u_info.max_size, USABLE_CHAN_MAX_SIZE));
+		return -EINVAL;
+	}
+
+	u_info.channels = MALLOCZ(cfg->osh, sizeof(*u_info.channels) * u_info.max_size);
+	if (!u_info.channels) {
+		WL_ERR(("failed to allocate channels buffer\n"));
+		return -ENOMEM;
+	}
+
+	ret = wl_get_usable_channels(cfg, &u_info);
+	if (ret) {
+		WL_ERR(("can not get channel list from FW err:%d\n", ret));
+		goto exit;
+	}
+
+	/* Alloc the SKB for vendor_event */
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy,
+		nla_total_size(sizeof(*u_info.channels) * u_info.size) +
+		nla_total_size(sizeof(u_info.size)));
+	if (!skb) {
+		WL_ERR(("skb allocation is failed\n"));
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	(void)nla_put_u32(skb, USABLECHAN_ATTRIBUTE_SIZE, u_info.size);
+	(void)nla_put(skb, USABLECHAN_ATTRIBUTE_CHANNELS, USABLE_CHAN_SIZE * u_info.size,
+			u_info.channels);
+
+	ret = cfg80211_vendor_cmd_reply(skb);
+
+	if (ret) {
+		WL_ERR(("Vendor Command reply failed ret:%d \n", ret));
+	}
+exit:
+	if (u_info.channels) {
+		MFREE(cfg->osh, u_info.channels, sizeof(*u_info.channels) * u_info.max_size);
+	}
+
+	return ret;
+}
+#endif /* WL_USABLE_CHAN */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
 const struct nla_policy andr_wifi_attr_policy[ANDR_WIFI_ATTRIBUTE_MAX] = {
 	[ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET] = { .type = NLA_U32 },
@@ -11206,6 +11293,17 @@ const struct nla_policy cellavoid_attr_policy[CELLAVOID_ATTRIBUTE_MAX] = {
 	[CELLAVOID_ATTRIBUTE_MANDATORY] = { .type = NLA_U32 },
 };
 #endif /* WL_CELLULAR_CHAN_AVOID */
+
+#ifdef WL_USABLE_CHAN
+const struct nla_policy usable_chan_attr_policy[USABLECHAN_ATTRIBUTE_MAX] = {
+	[USABLECHAN_ATTRIBUTE_BAND] = { .type = NLA_U32 },
+	[USABLECHAN_ATTRIBUTE_IFACE] = { .type = NLA_U32 },
+	[USABLECHAN_ATTRIBUTE_FILTER] = { .type = NLA_U32 },
+	[USABLECHAN_ATTRIBUTE_MAX_SIZE] = { .type = NLA_U32 },
+	[USABLECHAN_ATTRIBUTE_SIZE] = { .type = NLA_U32 },
+	[USABLECHAN_ATTRIBUTE_CHANNELS] = { .type = NLA_BINARY },
+};
+#endif /* WL_USABLE_CHAN */
 
 #ifdef TPUT_DEBUG_DUMP
 const struct nla_policy tput_debug_dump_attr_policy[TPUT_DEBUG_ATTRIBUTE_MAX] = {
@@ -12438,6 +12536,21 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.maxattr = ANDR_WIFI_ATTRIBUTE_MAX
 #endif /* LINUX_VERSION >= 5.3 */
 	},
+#ifdef WL_USABLE_CHAN
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = WIFI_SUBCMD_USABLE_CHAN
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
+		.doit = wl_cfgvendor_get_usable_channels,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = usable_chan_attr_policy,
+		.maxattr = CELLAVOID_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+#endif /* WL_USABLE_CHAN */
+
 };
 
 static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {

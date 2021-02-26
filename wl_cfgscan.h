@@ -200,10 +200,8 @@ extern int wl_android_get_sta_channel(struct bcm_cfg80211 *cfg);
 #ifdef WL_SCHED_SCAN
 extern void wl_cfgscan_sched_scan_stop_work(struct work_struct *work);
 #endif /* WL_SCHED_SCAN */
-// MOG-ON: WL_SOFTAP_ACS
 #ifdef WL_SOFTAP_ACS
 extern bool is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec);
 extern void wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data);
 #endif /* WL_SOFTAP_ACS */
-// MOG-OFF: WL_SOFTAP_ACS
 #endif /* _wl_cfgscan_h_ */

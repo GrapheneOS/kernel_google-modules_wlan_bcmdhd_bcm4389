@@ -255,8 +255,6 @@ ifneq ($(CONFIG_BCMDHD_HTPUT),)
  $(warning : ** HTPUT build)
  DHDCFLAGS += -DDHD_HTPUT_TUNABLES
  DHDCFLAGS += -DHTPUT_RING_PREALLOC
- # SOFTAP ACS
- DHDCFLAGS += -DWL_SOFTAP_ACS
 endif
 
 ifneq ($(CONFIG_BCMDHD_PCIE),)
@@ -345,6 +343,8 @@ DHDCFLAGS += -DWBTEXT_SCORE_V2
 DHDCFLAGS += -DRRM_BCNREQ_MAX_CHAN_TIME=12
 DHDCFLAGS += -DWL_LASTEVT
 DHDCFLAGS += -DROAM_EVT_DISABLE
+# SOFTAP ACS
+DHDCFLAGS += -DWL_SOFTAP_ACS
 # Wake
 DHDCFLAGS += -DCONFIG_HAS_WAKELOCK
 DHDCFLAGS += -DDHD_WAKE_EVENT_STATUS
@@ -484,6 +484,9 @@ DHDCFLAGS += -DWL_MBO_HOST
 DHDCFLAGS += -DWL_CELLULAR_CHAN_AVOID
 DHDCFLAGS += -DWL_CELLULAR_CHAN_AVOID_DUMP
 
+#USABLE CHANNEL
+DHDCFLAGS += -DWL_USABLE_CHAN
+
 #Latency Mode
 DHDCFLAGS += -DWL_LATENCY_MODE
 DHDCFLAGS += -DSUPPORT_LATENCY_CRITICAL_DATA
@@ -610,7 +613,7 @@ DHDCFLAGS += -DWL_CAP_HE
 DHDCFLAGS += -DWL_CAP_OCE_STA
 
 # Enable RTT LCI/LCR info support
-DHDCFLAGS += -DWL_RTT_LCI -DWL_RTT_ONE_WAY
+DHDCFLAGS += -DWL_RTT_LCI -DWL_RTT_ONE_WAY -DWL_RTT_BW160
 
 # For Static Buffer
 ifeq ($(CONFIG_DHD_USE_STATIC_BUF),y)
@@ -845,6 +848,7 @@ ifneq ($(CONFIG_SOC_GS101),)
 	DHDCFLAGS += -DSUPPORT_MULTIPLE_NVRAM
 	DHDCFLAGS += -DDHD_LB_TXP_DEFAULT_ENAB
 	DHDCFLAGS += -DDHD_SSSR_COREDUMP
+	DHDCFLAGS += -DDHD_REDUCE_PM_LOG
 # LB RXP Flow control to avoid OOM
 	DHDCFLAGS += -DLB_RXP_STOP_THR=500 -DLB_RXP_STRT_THR=499
 # Dongle init fail
@@ -899,7 +903,7 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
     dhd_pno.o dhd_rtt.o dhd_linux_pktdump.o wl_cfg_btcoex.o hnd_pktq.o \
     hnd_pktpool.o wl_cfgvendor.o bcmxtlv.o bcm_app_utils.o dhd_debug.o frag.o \
     dhd_debug_linux.o wl_cfgnan.o dhd_mschdbg.o bcmbloom.o dhd_dbg_ring.o bcmstdlib_s.o \
-    dhd_linux_exportfs.o dhd_linux_tx.o
+    dhd_linux_exportfs.o dhd_linux_tx.o dhd_linux_rx.o
 
 # This file will be here only for internal builds and sets flags which may
 # affect subsequent behavior. See extended comment within it for details.

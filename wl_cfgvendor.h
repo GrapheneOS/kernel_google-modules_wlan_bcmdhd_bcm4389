@@ -181,6 +181,10 @@ typedef enum {
 	ANDROID_NL80211_SUBCMD_TWT_START	=	0x2140,
 	ANDROID_NL80211_SUBCMD_TWT_END		=	0x214F,
 
+	/* define all Usable Channel related commands between 0x2150 and 0x215F */
+	ANDROID_NL80211_SUBCMD_USABLE_CHAN_RANGE_START = 0x2150,
+	ANDROID_NL80211_SUBCMD_USABLE_CHAN_RANGE_END   = 0x215F,
+
 	/* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -287,6 +291,7 @@ enum andr_vendor_subcmd {
 	WIFI_SUBCMD_CONFIG_VOIP_MODE = ANDROID_NL80211_SUBCMD_VIOP_MODE_START,
 	WIFI_SUBCMD_GET_OTA_CURRUNT_INFO = ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_START,
 	WIFI_SUBCMD_OTA_UPDATE,
+	WIFI_SUBCMD_USABLE_CHAN = ANDROID_NL80211_SUBCMD_USABLE_CHAN_RANGE_START,
 	/* Add more sub commands here */
 	VENDOR_SUBCMD_MAX
 };
@@ -608,6 +613,19 @@ enum wifi_cellavoid_attributes {
 	CELLAVOID_ATTRIBUTE_MAX
 };
 #endif /* WL_CELLULAR_CHAN_AVOID */
+
+#ifdef WL_USABLE_CHAN
+enum wifi_usable_channel_attributes {
+	USABLECHAN_ATTRIBUTE_INVALID	= 0,
+	USABLECHAN_ATTRIBUTE_BAND	= 1,
+	USABLECHAN_ATTRIBUTE_IFACE	= 2,
+	USABLECHAN_ATTRIBUTE_FILTER	= 3,
+	USABLECHAN_ATTRIBUTE_MAX_SIZE	= 4,
+	USABLECHAN_ATTRIBUTE_SIZE	= 5,
+	USABLECHAN_ATTRIBUTE_CHANNELS	= 6,
+	USABLECHAN_ATTRIBUTE_MAX
+};
+#endif /* WL_USABLE_CHAN */
 
 #ifdef TPUT_DEBUG_DUMP
 enum tput_debug_attributes {
@@ -1114,4 +1132,6 @@ void wl_cfgdbg_tput_debug_work(struct work_struct *work);
 int wl_cfgdbg_tput_debug_get_cmd(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void *data, int len);
 #endif /* TPUT_DEBUG_DUMP */
+extern int wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void  *data, int len);
 #endif /* _wl_cfgvendor_h_ */

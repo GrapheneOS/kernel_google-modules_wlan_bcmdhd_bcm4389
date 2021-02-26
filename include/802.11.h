@@ -1751,6 +1751,11 @@ enum dot11_tag_ids {
 #define FILS_EXTID_MNG_WRAPPED_DATA_ID		8u	/* FILS Wrapped Data element */
 #define DOT11_MNG_FILS_WRAPPED_DATA		(DOT11_MNG_ID_EXT_ID + \
 						 FILS_EXTID_MNG_WRAPPED_DATA_ID)
+/* FILS wrapped data element is renamed to wrapped data element.
+ * The data will be used by FILS and PASN.
+ */
+#define EXTID_MNG_WRAPPED_DATA_ID		FILS_EXTID_MNG_WRAPPED_DATA_ID
+#define DOT11_MNG_WRAPPED_DATA			DOT11_MNG_FILS_WRAPPED_DATA
 
 #define OCE_EXTID_MNG_ESP_ID			11u	/* Estimated Service Parameters element */
 #define DOT11_MNG_ESP				(DOT11_MNG_ID_EXT_ID + OCE_EXTID_MNG_ESP_ID)

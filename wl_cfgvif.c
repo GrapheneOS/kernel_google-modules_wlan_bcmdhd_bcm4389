@@ -873,6 +873,7 @@ wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
 	WL_DBG(("%s:Mac addr" MACDBG "\n",
 			__FUNCTION__, MAC2STRDBG(mac_addr)));
 
+#if defined(SPECIFIC_MAC_GEN_SCHEME)
 	if ((wl_iftype == WL_IF_TYPE_P2P_DISC) || (wl_iftype == WL_IF_TYPE_AP) ||
 		(wl_iftype == WL_IF_TYPE_P2P_GO) || (wl_iftype == WL_IF_TYPE_P2P_GC)) {
 		/* Avoid invoking release mac addr code for interfaces using
@@ -880,6 +881,11 @@ wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
 		 */
 		return BCME_OK;
 	}
+#else
+	if (wl_iftype == WL_IF_TYPE_P2P_DISC) {
+		return BCME_OK;
+	}
+#endif /* SPECIFIC_MAC_GEN_SCHEME */
 
 	/* Fetch last two bytes of mac address */
 	org_toggle_bytes = ntoh16(*((u16 *)&ndev->dev_addr[4]));
@@ -3795,16 +3801,17 @@ wl_cfg80211_stop_ap(
 		/* Clear the security settings on the Interface */
 		err = wldev_iovar_setint(dev, "wsec", 0);
 		if (unlikely(err)) {
-			WL_ERR(("wsec clear failed \n"));
+			WL_ERR(("wsec clear failed (%d)\n", err));
 		}
 		err = wldev_iovar_setint(dev, "auth", 0);
 		if (unlikely(err)) {
-			WL_ERR(("auth clear failed \n"));
+			WL_ERR(("auth clear failed (%d)\n", err));
 		}
-		err = wldev_iovar_setint_bsscfg(dev, "wpa_auth", 0, bssidx);
+		err = wldev_iovar_setint(dev, "wpa_auth", 0);
 		if (unlikely(err)) {
 			WL_ERR(("set wpa_auth failed (%d)\n", err));
 		}
+
 #ifdef BCMDONGLEHOST
 #ifdef DISABLE_WL_FRAMEBURST_SOFTAP
 		wl_cfg80211_set_frameburst(cfg, TRUE);

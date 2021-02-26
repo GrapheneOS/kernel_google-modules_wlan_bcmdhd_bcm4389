@@ -1,7 +1,21 @@
 /*
  * Cellular channel avoidance implementation
  *
- * $ Copyright Open Broadcom $
+ * Copyright (C) 2021, Broadcom.
+ *
+ *      Unless you and Broadcom execute a separate written software license
+ * agreement governing use of this software, this software is licensed to you
+ * under the terms of the GNU General Public License version 2 (the "GPL"),
+ * available at http://www.broadcom.com/licenses/GPLv2.php, with the
+ * following added to such license:
+ *
+ *      As a special exception, the copyright holders of this software give you
+ * permission to link this software with independent modules, and to copy and
+ * distribute the resulting executable under terms of your choice, provided that
+ * you also meet, for each linked independent module, the terms and conditions of
+ * the license of that module.  An independent module is a module which is not
+ * derived from this software.  The special exception does not apply to any
+ * modifications of the software.
  *
  *
  * <<Broadcom-WL-IPTag/Dual:>>
@@ -461,9 +475,9 @@ wl_cellavoid_clear_cell_chan_list(wl_cellavoid_info_t *cellavoid_info)
 		list_del(&chan_info->list);
 		/* Restore channel info to the value of safe channel */
 		chan_info->pwr_cap = CELLAVOID_DEFAULT_TXCAP;
-		cellavoid_info->cell_chan_info_cnt--;
 		list_add(&chan_info->list, &cellavoid_info->avail_chan_info_list);
 	}
+	cellavoid_info->cell_chan_info_cnt = 0;
 	cellavoid_info->mandatory_flag = 0;
 }
 
@@ -1166,7 +1180,6 @@ exit:
 
 	return ret;
 }
-
 
 static wl_cellavoid_chan_info_t *
 wl_cellavoid_find_chinfo_fromband(wl_cellavoid_info_t *cellavoid_info, int band)

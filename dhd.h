@@ -1152,6 +1152,9 @@ typedef enum dhd_induce_error_states
 #define	RX_LAT_BIN_SCALE	500
 
 typedef struct rx_cpl_history {
+	uint32 host_time;
+	uint32 ptm_high;
+	uint32 ptm_low;
 	uint32 rx_t0;
 	uint16 latency;
 	uint8 slice;
@@ -1165,6 +1168,27 @@ typedef struct rx_cpl_lat_info {
 	uint32	rx_dur_2g[MAX_RX_LAT_PRIO][MAX_RX_LAT_HIST_BIN];
 	uint32	rx_dur_5g[MAX_RX_LAT_PRIO][MAX_RX_LAT_HIST_BIN];
 } rx_cpl_lat_info_t;
+
+#define MAX_TXCPL_HISTORY	50u
+typedef struct tx_cpl_history {
+	uint32 host_time;
+	uint32 ptm_high;
+	uint32 ptm_low;
+	uint16 flowid;
+	uint8 tid;
+} tx_cpl_history_t;
+
+typedef struct tx_cpl_info {
+	tx_cpl_history_t tx_history[MAX_TXCPL_HISTORY];
+	uint32 txcpl_hist_count;
+} tx_cpl_info_t;
+
+#define DHD_PTM_CLK_ID		0xEu		/* PTM clock ID; IDs 0-3 are used in tsync module */
+#define DHD_PTM_CLK_ID_MASK	0xF0000000u	/* Bitmask for clkid */
+#define DHD_PTM_CLK_ID_SHIFT	28u		/* Bitshift for clkid */
+
+#define DHD_PTM_GET_CLKID(ts) (((ts) & DHD_PTM_CLK_ID_MASK) >> DHD_PTM_CLK_ID_SHIFT)
+#define DHD_PTM_CLKID(ts) (DHD_PTM_GET_CLKID(ts) == DHD_PTM_CLK_ID)
 
 #if defined(SHOW_LOGTRACE) && defined(DHD_USE_KTHREAD_FOR_LOGTRACE)
 /* Timestamps to trace dhd_logtrace_thread() */
@@ -1680,7 +1704,7 @@ typedef struct dhd_pub {
 	/* True if deadman_to shall be forced to 0 */
 	bool gdb_proxy_nodeadman;
 	/* Counter incremented at each firmware stop/go transition. LSB (GDB_PROXY_STOP_MASK)
-	 * is set when firmwar eis stopped, clear when running
+	 * is set when firmware is stopped, clear when running
 	 */
 	uint32 gdb_proxy_stop_count;
 #endif /* GDB_PROXY */
@@ -1837,9 +1861,15 @@ typedef struct dhd_pub {
 	uint chip_bighammer_count;
 	bool rx_cpl_lat_capable; /* FW supports latency posting in Rx cpl ring */
 	rx_cpl_lat_info_t rxcpl_lat_info; /* Rx Cpl latency information */
+	tx_cpl_info_t txcpl_info; /* TX completion timestamp info */
 #ifdef SUPPORT_OTA_UPDATE
 	ota_update_info_t ota_update_info;
 #endif /* SUPPORT_OTA_UPDATE */
+	bool stop_in_progress;
+
+	/* Pointer to Platform Layer */
+	void *plat_info;
+	uint32 plat_info_size;
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -4234,6 +4264,8 @@ void dhd_ring_whole_unlock(void *ring);
 #define DHD_GDB_PROXY_PROBE_BOOTLOADER_MODE		0x00000008
 /** Host memory code offload present */
 #define DHD_GDB_PROXY_PROBE_HOSTMEM_CODE		0x00000010
+/** Memory dump count field present */
+#define DHD_GDB_PROXY_PROBE_MEMDUMP_COUNT		0x00000020
 
 /* Data structure, returned by "gdb_proxy_probe" iovar */
 typedef struct dhd_gdb_proxy_probe_data {
@@ -4244,7 +4276,41 @@ typedef struct dhd_gdb_proxy_probe_data {
 	uint32 hostmem_code_win_base;	/* Hostmem code window start in ARM physical address space
 					 */
 	uint32 hostmem_code_win_length;	/* Hostmem code window length */
+	uint32 mem_dump_count;		/* Number of memory dumps made so far */
 } dhd_gdb_proxy_probe_data_t;
+
+/* Timeout loop brackets */
+/* Intended usage is to keep repeating timeoutable operation (operation that expected to
+ * succeed but may fail because of timeout) while timeout may be explained by firmware
+ * stop in gdb
+ * Example:
+ *	dhd_pub_t *dhd;
+ *	...
+ *	#ifdef GDB_PROXY
+ *	GDB_PROXY_TIMEOUT_DO(dhd) {
+ *		operation_that_may_succeed_or_timeout();
+ *	} GDB_PROXY_TIMEOUT_WHILE(operation_timed_out());
+ *	#else
+ *	operation_that_may_succeed_or_timeout();
+ *	#endif
+ *	...
+ *	if (operation_timed_out()) {
+ *		bang_memdump_crash_horror();
+ *	}
+ */
+/* Argument is pointer to dhd_pub_t structure */
+#define GDB_PROXY_TIMEOUT_DO(dhd)				\
+{								\
+	uint32 gdb_prev_stop_count;				\
+	dhd_pub_t *gdb_dhd = dhd;				\
+	do {							\
+		gdb_prev_stop_count = gdb_dhd->gdb_proxy_stop_count;
+
+/* Argument should evaluate to true if operation failed because of timeout */
+#define GDB_PROXY_TIMEOUT_WHILE(timeout_cond)							\
+	} while ((timeout_cond) && ((gdb_dhd->gdb_proxy_stop_count != gdb_prev_stop_count) ||	\
+				(gdb_dhd->gdb_proxy_stop_count & GDB_PROXY_STOP_MASK)));	\
+}
 #endif /* GDB_PROXY */
 
 #ifdef DHD_EFI
@@ -4499,6 +4565,12 @@ void dhd_rx_pktpool_create(struct dhd_info *dhd, uint16 len);
 void * BCMFASTPATH(dhd_rxpool_pktget)(osl_t *osh, struct dhd_info *dhd, uint16 len);
 #endif /* RX_PKT_POOL */
 
+int dhd_rxf_thread(void *data);
+void dhd_sched_rxf(dhd_pub_t *dhdp, void *skb);
+int dhd_os_wake_lock_rx_timeout_enable(dhd_pub_t *pub, int val);
+
+void dhd_event_logtrace_enqueue(dhd_pub_t *dhdp, int ifidx, void *pktbuf);
+
 #if defined(__linux__)
 #ifdef DHD_SUPPORT_VFS_CALL
 static INLINE struct file *dhd_filp_open(const char *filename, int flags, int mode)
@@ -4665,4 +4737,7 @@ extern void dhd_dbg_ring_write(int type, char *binary_data,
 #define DHD_PKTID_UNMAP_LOG_HDR "\n------------------ PKTID UNMAP log -----------------------\n"
 #define PKTID_LOG_DUMP_FMT "\nIndex(Current=%d) Timestamp Pktaddr(PA) Pktid Size\n"
 #endif /* DHD_LOG_DUMP */
+#if !defined(AP) && defined(WLP2P)
+extern uint32 dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
+#endif
 #endif /* _dhd_h_ */

@@ -5281,8 +5281,13 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 			dhd->rx_pktgetfail++;
 			DHD_ERROR_RLMT(("%s:%d: PKTGET for rxbuf failed, rx_pktget_fail :%lu\n",
 				__FUNCTION__, __LINE__, dhd->rx_pktgetfail));
+			/* Try to get pkt from Rx reserve pool if monitor mode is not enabled as
+			 * the buffer size for monitor mode is larger(4k) than normal rx pkt(1920)
+			 */
 #if defined(WL_MONITOR)
-			if (!dhd_monitor_enabled(dhd, 0))
+			if (dhd_monitor_enabled(dhd, 0)) {
+				break;
+			} else
 #endif /* WL_MONITOR */
 			{
 #ifdef RX_PKT_POOL
@@ -7386,6 +7391,8 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 #endif /* AGG_H2D_DB */
 	flow_ring_node_t *flow_ring_node;
 	uint16 flowid;
+	tx_cpl_info_t *txcpl_info = &dhd->txcpl_info;
+	ts_timestamp_t *ts;
 	txstatus = (host_txbuf_cmpl_t *)msg;
 
 	flowid = txstatus->compl_hdr.flow_ring_id;
@@ -7556,10 +7563,25 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 	}
 #endif /* DHD_DBG_SHOW_METADATA */
 
+	/* Store PTM timestamps */
+	ts = (ts_timestamp_t *)&txstatus->ts;
+	if (DHD_PTM_CLKID(ts->high)) {
+		bzero(&txcpl_info->tx_history[txcpl_info->txcpl_hist_count],
+			sizeof(tx_cpl_history_t));
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_high = ts->high;
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_low = ts->low;
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].host_time =
+			(uint32)OSL_SYSUPTIME_US();
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tid =
+			flow_ring_node->flow_info.tid;
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].flowid = flowid;
+		txcpl_info->txcpl_hist_count =
+			(txcpl_info->txcpl_hist_count +1) % MAX_TXCPL_HISTORY;
+	}
+
 #ifdef DHD_TIMESYNC
 	if (dhd->prot->tx_ts_log_enabled) {
 		dhd_pkt_parse_t parse;
-		ts_timestamp_t *ts = (ts_timestamp_t *)&(txstatus->ts);
 
 		memset(&parse, 0, sizeof(parse));
 		dhd_parse_proto(PKTDATA(dhd->osh, pkt), &parse);
@@ -9470,17 +9492,12 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 	}
 #ifdef GDB_PROXY
 	/* Loop while timeout is caused by firmware stop in GDB */
-	{
-		uint32 prev_stop_count;
-		do {
-			prev_stop_count = dhd->gdb_proxy_stop_count;
+	GDB_PROXY_TIMEOUT_DO(dhd) {
 			timeleft = dhd_os_ioctl_resp_wait(dhd, (uint *)&prot->ioctl_received);
-		} while ((timeleft == 0) && ((dhd->gdb_proxy_stop_count != prev_stop_count) ||
-			(dhd->gdb_proxy_stop_count & GDB_PROXY_STOP_MASK)));
-	}
-#else
+	} GDB_PROXY_TIMEOUT_WHILE(timeleft == 0);
+#else /* GDB_PROXY */
 	timeleft = dhd_os_ioctl_resp_wait(dhd, (uint *)&prot->ioctl_received);
-#endif /* GDB_PROXY */
+#endif /* else GDB_PROXY */
 
 #ifdef DHD_RECOVER_TIMEOUT
 	if (prot->ioctl_received == 0) {
@@ -14251,6 +14268,8 @@ dhd_update_rxstats(dhd_pub_t *dhd, host_rxbuf_cmpl_t *rxstatus)
 	int8 rssi;
 	uint32 rx_t0;
 
+	ts_timestamp_t *ts = (ts_timestamp_t *)&rxstatus->ts;
+
 	rxcpl_info = &dhd->rxcpl_lat_info;
 	rssi = (marker & BCMPCIE_RX_PKT_RSSI_MASK);
 	rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].rssi = rssi;
@@ -14270,8 +14289,17 @@ dhd_update_rxstats(dhd_pub_t *dhd, host_rxbuf_cmpl_t *rxstatus)
 	rx_t0 = rxstatus->rx_status_1;
 	rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].rx_t0 = rx_t0;
 
-	DHD_INFO(("%s:0x%x t0:0x%x band:%s, prio:%d, rssi:%d, dur:%d useconds\n",
-		__FUNCTION__, marker, rx_t0, slice ? "5G":"2G", prio, rssi, dur));
+	/* store PTM timestamps */
+	if (DHD_PTM_CLKID(ts->high)) {
+		rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].ptm_high = ts->high;
+		rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].ptm_low = ts->low;
+		rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].host_time =
+			(uint32)OSL_SYSUPTIME_US();
+	}
+
+	DHD_INFO(("%s:0x%x ptm_high:0x%x, ptm_low:0x%x, t0:0x%x band:%s, prio:%d, rssi:%d, "
+		"dur:%d useconds\n", __FUNCTION__, marker, ts->high, ts->low, rx_t0,
+		slice ? "5G":"2G", prio, rssi, dur));
 	rxcpl_info->rxcpl_hist_count =
 		(rxcpl_info->rxcpl_hist_count +1) % MAX_RXCPL_HISTORY;
 

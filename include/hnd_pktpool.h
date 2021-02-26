@@ -59,6 +59,13 @@ extern "C" {
 #define FREE_ALL_PKTS		0
 #define FREE_ALL_FRAG_PKTS	1
 
+/* PKTPOOL_ALLOC ISSUES */
+#define PKT_ALLOC_SUCCESS		0
+#define PKT_ALLOC_FAIL_GENERIC		-1
+#define PKT_ALLOC_FAIL_NOPKT		-2
+#define PKT_ALLOC_FAIL_NOCMPLID		-3
+#define PKT_ALLOC_FAIL_NOHOSTADDR	-4
+
 /* forward declaration */
 struct pktpool;
 
@@ -216,6 +223,9 @@ extern int pktpool_avail(pktpool_t *pktpool);
 #define PKTID_POOL		    (PKT_MAXIMUM_ID - 32u)
 #endif /* PKTID_POOL */
 extern uint32 total_pool_pktid_count;
+
+extern int pktpool_get_last_err(pktpool_t *pktp);
+#define PKTPOOL_ERR_TYPE_SPLIT_SUPPORTED
 
 #ifdef BCMDBG_POOL
 extern int pktpool_dbg_register(pktpool_t *pktp, pktpool_cb_t cb, void *arg);

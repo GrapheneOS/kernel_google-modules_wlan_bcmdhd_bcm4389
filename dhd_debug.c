@@ -178,28 +178,33 @@ static uint32
 dhd_dbg_urgent_pull(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 {
 	uint32 pending_len = 0;
-	unsigned long flags = 0;
+	struct dhd_pktlog_ring *pktlog_ring;
 
 	if (ring->id != PACKET_LOG_RING_ID) {
 		return pending_len;
 	}
 
-	DHD_PKT_LOG_LOCK(dhd_os_get_pktlog_lock(dhdp), flags);
-	{
-		if (ring->stat.written_bytes > ring->stat.read_bytes) {
-			pending_len = ring->stat.written_bytes - ring->stat.read_bytes;
-		} else {
-			pending_len = 0;
-		}
+	if (ring->stat.written_bytes > ring->stat.read_bytes) {
+		pending_len = ring->stat.written_bytes - ring->stat.read_bytes;
+	} else {
+		pending_len = 0;
 	}
-	if (pending_len >= (ring->threshold * 6u / 5u)) {
-		/* Flow control is required */
-		dhd_txflowcontrol(dhdp, ALL_INTERFACES, ON);
-		DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), flags);
+
+	pktlog_ring = dhdp->pktlog->pktlog_ring;
+	if (pktlog_ring->pktcount >= DHD_PACKET_LOG_RING_SUSPEND_THRESHOLD) {
+		dhd_pktlog_suspend(dhdp);
+	}
+
+	if (pending_len > ring->threshold) {
+		DHD_INFO(("%s: pending_len(%d) is exceeded threshold(%d), pktcount(%d)\n",
+			__FUNCTION__, pending_len, ring->threshold, pktlog_ring->pktcount));
+	}
+
+	if (!dhd_pktlog_is_enabled(dhdp)) {
 		dhd_os_dbg_urgent_pullreq(dhdp->dbg->private, ring->id);
 		return 0;
 	}
-	DHD_PKT_LOG_UNLOCK(dhd_os_get_pktlog_lock(dhdp), flags);
+
 	return pending_len;
 }
 #endif /* DHD_PKT_LOGGING_DBGRING */
@@ -275,15 +280,6 @@ dhd_dbg_push_to_ring(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_entry_t *hdr, vo
 	if (pending_len == 0) {
 		pending_len = dhd_dbg_ring_get_pending_len(ring);
 	}
-#ifdef DHD_PKT_LOGGING_DBGRING
-	else {
-		/* Entered here only PACKET_LOG_RING_ID */
-		if (pending_len <= (ring->threshold * 3u / 5u)) {
-			/* Flow control is required */
-			dhd_txflowcontrol(dhdp, ALL_INTERFACES, OFF);
-		}
-	}
-#endif /* DHD_PKT_LOGGING_DBGRING */
 	dhd_dbg_ring_sched_pull(ring, pending_len, dhdp->dbg->pullreq,
 		dhdp->dbg->private, ring->id);
 

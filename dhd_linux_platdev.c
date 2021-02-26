@@ -35,10 +35,9 @@
 #include <dhd_bus.h>
 #include <dhd_linux.h>
 #include <wl_android.h>
+#include <dhd_plat.h>
 #if defined(CONFIG_WIFI_CONTROL_FUNC)
 #include <linux/wlan_plat.h>
-#else
-#include <dhd_plat.h>
 #endif /* CONFIG_WIFI_CONTROL_FUNC */
 #ifdef BCMDBUS
 #include <dbus.h>
@@ -942,4 +941,21 @@ end:
 		wl_android_post_init();
 
 	return err;
+}
+
+/* Weak functions that can be overridden in Platform specific implementation */
+uint32 __attribute__ ((weak)) dhd_plat_get_info_size(void)
+{
+	return 0;
+}
+
+int __attribute__ ((weak)) dhd_plat_pcie_register_event(void *plat_info,
+		struct pci_dev *pdev, dhd_pcie_event_cb_t pfn)
+{
+	return 0;
+}
+
+void __attribute__ ((weak)) dhd_plat_pcie_deregister_event(void *plat_info)
+{
+	return;
 }

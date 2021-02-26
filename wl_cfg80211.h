@@ -1743,6 +1743,25 @@ typedef struct {
 	u32 bw_cap;
 } wl_bw_cap_t;
 
+#ifdef WL_USABLE_CHAN
+#define USABLE_CHAN_MAX_SIZE 400
+typedef struct usable_channel {
+	wifi_channel freq;
+	wifi_channel_width_t width;
+	u32 iface_mode_mask;
+} usable_channel_t;
+
+typedef struct usable_channel_info {
+	u32 band_mask;
+	u32 iface_mode_mask;
+	u32 filter_mask;
+	u32 max_size;
+	u32 size;
+	usable_channel_t *channels;
+} usable_channel_info_t;
+#define USABLE_CHAN_SIZE sizeof(usable_channel_t)
+#endif /* WL_USABLE_CHAN */
+
 #ifdef TPUT_DEBUG_DUMP
 struct tput_debug_cmd_config {
 	char cmd[WLC_IOCTL_SMLEN];
@@ -3323,4 +3342,8 @@ extern s32 wl_cfgvendor_notify_twt_event(struct bcm_cfg80211 *cfg,
 #endif /* !WL_TWT && WL_TWT_HAL_IF */
 extern int wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t band,
 	chanspec_bw_t bw, chanspec_t *chspecs, int *cnt);
+
+#ifdef WL_USABLE_CHAN
+int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_info);
+#endif /* WL_USABLE_CHAN */
 #endif /* _wl_cfg80211_h_ */

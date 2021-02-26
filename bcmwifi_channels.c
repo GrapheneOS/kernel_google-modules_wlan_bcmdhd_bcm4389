@@ -791,7 +791,8 @@ wf_chspec_malformed(chanspec_t chanspec)
 				return TRUE;
 			}
 		} else if (chspec_bw == WL_CHANSPEC_BW_20 || chspec_bw == WL_CHANSPEC_BW_40 ||
-		           chspec_bw == WL_CHANSPEC_BW_80 || chspec_bw == WL_CHANSPEC_BW_160) {
+			chspec_bw == WL_CHANSPEC_BW_80 || chspec_bw == WL_CHANSPEC_BW_8080 ||
+			chspec_bw == WL_CHANSPEC_BW_160) {
 
 			/* check for invalid channel number */
 			if (CHSPEC_CHANNEL(chanspec) == INVCHANNEL) {
@@ -821,7 +822,7 @@ wf_chspec_malformed(chanspec_t chanspec)
 	} else if (chspec_bw == WL_CHANSPEC_BW_40) {
 		if (chspec_sb > WL_CHANSPEC_CTL_SB_LLU)
 			return TRUE;
-	} else if (chspec_bw == WL_CHANSPEC_BW_80) {
+	} else if (chspec_bw == WL_CHANSPEC_BW_80 || chspec_bw == WL_CHANSPEC_BW_8080) {
 		/* both 80MHz and 80+80MHz use 80MHz side bands.
 		 * 80+80 SB info is relative to the primary 80MHz sub-band.
 		 */
@@ -2360,6 +2361,29 @@ wf_chspec_primary40_chspec(chanspec_t chspec)
 	}
 
 	return chspec40;
+}
+
+/**
+ * Return the chanspec band for a given frequency.
+ *
+ * @param  freq		frequency in MHz of the channel center
+ *
+ * @return  Returns chanspec band of frequency (chanspec_band_t)
+ */
+chanspec_band_t
+wf_mhz2chanspec_band(uint freq)
+{
+	chanspec_band_t band = INVCHANSPEC;
+
+	if (freq >= 2400u && freq <= 2500u) {
+		band = WL_CHANSPEC_BAND_2G;
+	} else if (freq >= 5000u && freq < 5935u) {
+		band = WL_CHANSPEC_BAND_5G;
+	} else if (freq >= 5935u && freq <= 7205u) {
+		band = WL_CHANSPEC_BAND_6G;
+	}
+
+	return band;
 }
 
 /**

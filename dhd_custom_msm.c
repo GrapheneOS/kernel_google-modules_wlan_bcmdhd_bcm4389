@@ -40,6 +40,12 @@
 #include <linux/of_gpio.h>
 #include <linux/wlan_plat.h>
 
+#if IS_ENABLED(CONFIG_PCI_MSM)
+#include <linux/msm_pcie.h>
+#else
+#include <mach/msm_pcie.h>
+#endif /* CONFIG_PCI_MSM */
+
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern void dhd_exit_wlan_mem(void);
 extern int dhd_init_wlan_mem(void);
@@ -72,6 +78,71 @@ static int wlan_host_wake_irq = 0;
 #define WIFI_WLAN_HOST_WAKE_PROPNAME    "wlan-host-wake-gpio"
 #endif /* CUSTOMER_HW2 */
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
+
+#include <dhd_plat.h>
+typedef struct dhd_plat_info {
+	struct msm_pcie_register_event pcie_event;
+	struct msm_pcie_notify pcie_notify;
+	struct pci_dev *pdev;
+} dhd_plat_info_t;
+
+static dhd_pcie_event_cb_t g_pfn = NULL;
+
+uint32 dhd_plat_get_info_size(void)
+{
+	return sizeof(dhd_plat_info_t);
+}
+
+void plat_pcie_notify_cb(struct msm_pcie_notify *pcie_notify)
+{
+	struct pci_dev *pdev;
+
+	if (pcie_notify == NULL) {
+		pr_err("%s(): Invalid argument to Platform layer call back \r\n", __func__);
+		return;
+	}
+
+	if (g_pfn) {
+		pdev = (struct pci_dev *)pcie_notify->user;
+		pr_err("%s(): Invoking DHD call back with pdev %p \r\n",
+				__func__, pdev);
+		(*(g_pfn))(pdev);
+	} else {
+		pr_err("%s(): Driver Call back pointer is NULL \r\n", __func__);
+	}
+	return;
+}
+
+int dhd_plat_pcie_register_event(void *plat_info, struct pci_dev *pdev, dhd_pcie_event_cb_t pfn)
+{
+		dhd_plat_info_t *p = plat_info;
+
+		if ((p == NULL) || (pdev == NULL) || (pfn == NULL)) {
+			pr_err("%s(): Invalid argument p %p, pdev %p, pfn %p\r\n",
+				__func__, p, pdev, pfn);
+			return -1;
+		}
+
+		g_pfn = pfn;
+		p->pdev = pdev;
+		p->pcie_event.events = MSM_PCIE_EVENT_LINKDOWN;
+		p->pcie_event.user = pdev;
+		p->pcie_event.mode = MSM_PCIE_TRIGGER_CALLBACK;
+		p->pcie_event.callback = plat_pcie_notify_cb;
+		p->pcie_event.options = MSM_PCIE_CONFIG_NO_RECOVERY;
+		msm_pcie_register_event(&p->pcie_event);
+		pr_err("%s(): Registered Event PCIe event pdev %p \r\n", __func__, pdev);
+		return 0;
+}
+
+void dhd_plat_pcie_deregister_event(void *plat_info)
+{
+	dhd_plat_info_t *p = plat_info;
+	if (p) {
+		msm_pcie_deregister_event(&p->pcie_event);
+	}
+	return;
+}
 
 int
 dhd_wifi_init_gpio(void)
@@ -198,6 +269,14 @@ dhd_get_wlan_oob_gpio(void)
 		gpio_get_value(wlan_host_wake_up) : -1;
 }
 EXPORT_SYMBOL(dhd_get_wlan_oob_gpio);
+int
+dhd_get_wlan_oob_gpio_number(void)
+{
+	return gpio_is_valid(wlan_host_wake_up) ?
+		wlan_host_wake_up : -1;
+}
+EXPORT_SYMBOL(dhd_get_wlan_oob_gpio_number);
+
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE && CONFIG_BCMDHD_GET_OOB_STATE */
 
 struct resource dhd_wlan_resources = {

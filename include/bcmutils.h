@@ -289,17 +289,13 @@ extern bool _nvram_reclaim_enb;
 #define NVRAM_RECLAIM_CHECK(name)
 #endif /* BCM_RECLAIM */
 
-#ifdef WL_FWSIGN
-#define getvar(vars, name)			(NULL)
-#define getintvar(vars, name)			(0)
-#define getintvararray(vars, name, index)	(0)
-#define getintvararraysize(vars, name)		(0)
-#else /* WL_FWSIGN */
-extern char *getvar(char *vars, const char *name);
-extern int getintvar(char *vars, const char *name);
-extern int getintvararray(char *vars, const char *name, int index);
-extern int getintvararraysize(char *vars, const char *name);
-#endif /* WL_FWSIGN */
+#ifndef ATE_BUILD
+const
+#endif /* ATE_BUILD */
+char *getvar(char *vars, const char *name);
+int getintvar(char *vars, const char *name);
+int getintvararray(char *vars, const char *name, int index);
+int getintvararraysize(char *vars, const char *name);
 
 /* Read an array of values from a possibly slice-specific nvram string */
 extern int get_uint8_vararray_slicespecific(osl_t *osh, char *vars, char *vars_table_accessor,
@@ -1601,13 +1597,6 @@ extern void (*const print_btrace_fn)(int depth);
 #define PRINT_BACKTRACE(depth) if (print_btrace_fn) print_btrace_fn(depth)
 #define PRINT_BACKTRACE_INT(depth, pc, lr, sp) \
 	if (print_btrace_int_fn) print_btrace_int_fn(depth, pc, lr, sp)
-
-/* FW Signing - only in bootloader builds, never in dongle FW builds */
-#ifdef WL_FWSIGN
-	#define FWSIGN_ENAB()		(1)
-#else
-	#define FWSIGN_ENAB()		(0)
-#endif /* WL_FWSIGN */
 
 /* Utilities for reading SROM/SFlash vars */
 

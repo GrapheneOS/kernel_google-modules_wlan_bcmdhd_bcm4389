@@ -130,6 +130,14 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 #define OSL_CPU_COUNTS_PER_US_NOT_DEFINED 1
 #endif /* !defined(OSL_CPU_COUNTS_PER_US) */
 
+#if !defined(OSL_GET_PMU_ACCU_TICK_US)
+#define OSL_GET_PMU_ACCU_TICK_US(val) (0)
+#endif /* !OSL_GET_PMU_ACCU_TICK_US */
+
+#if !defined(OSL_GET_PMU_ACCU_TICK64_US)
+#define OSL_GET_PMU_ACCU_TICK64_US(val) (0)
+#endif /* !OSL_GET_PMU_ACCU_TICK64_US */
+
 #ifndef OSL_SYS_HALT
 #ifdef __COVERITY__
 /*

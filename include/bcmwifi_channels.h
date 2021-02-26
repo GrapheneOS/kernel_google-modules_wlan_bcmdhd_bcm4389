@@ -667,6 +667,11 @@ chanspec_t wf_chspec_primary20_chspec(chanspec_t chspec);
 chanspec_t wf_chspec_primary40_chspec(chanspec_t chspec);
 
 /**
+ * Return the chanspec band for a given frequency.
+ */
+chanspec_band_t wf_mhz2chanspec_band(uint freq);
+
+/**
  * Return the channel number for a given frequency and base frequency
  */
 int wf_mhz2channel(uint freq, uint start_factor);

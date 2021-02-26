@@ -98,6 +98,8 @@ uint32 total_pool_pktid_count = PKTID_POOL;
 uint32 total_pool_pktid_count = 0U;
 #endif /* DONGLEBUILD */
 
+int last_alloc_err = 0;	/* Error reported during last alloc failure */
+
 #if defined(BCMPKTIDMAP) || defined(BCMPKTIDMAP_MIN)
 #define TOTAL_POOL_PKTID_CNT_INC(pktp) \
 	do { \
@@ -1198,6 +1200,12 @@ BCMPOSTTRAPFASTPATH(pktpool_update_freelist)(pktpool_t *pktp, void *p, uint pkts
 }
 #endif /* APP_RX */
 
+int
+BCMFASTPATH(pktpool_get_last_err)(pktpool_t *pktp)
+{
+	return last_alloc_err;
+}
+
 /** Gets an empty packet from the caller provided pool */
 void *
 BCMPOSTTRAPFASTPATH(pktpool_get_ext)(pktpool_t *pktp, uint8 type, uint *pktcnt)
@@ -1236,6 +1244,7 @@ BCMPOSTTRAPFASTPATH(pktpool_get_ext)(pktpool_t *pktp, uint8 type, uint *pktcnt)
 		if (pktp->avail < pkts_requested) {
 			pktpool_emptycb_disable(pktp, FALSE);
 			if (pktp->avail == 0) {
+				last_alloc_err = PKT_ALLOC_FAIL_NOPKT;
 				goto done;
 			}
 		}
@@ -1275,7 +1284,8 @@ BCMPOSTTRAPFASTPATH(pktpool_get_ext)(pktpool_t *pktp, uint8 type, uint *pktcnt)
 		 * (*pktcnt) and the pktpool freelist head is updated accordingly.
 		 */
 		ASSERT_FP(pktp->cbext.cb != NULL);
-		if (pktp->cbext.cb(pktp, pktp->cbext.arg, p, rxcpl, &pkts_avail)) {
+		if ((last_alloc_err = pktp->cbext.cb(pktp, pktp->cbext.arg, p,
+			rxcpl, &pkts_avail))) {
 			pktpool_enq(pktp, p);
 			p = NULL;
 		}
@@ -1287,6 +1297,7 @@ BCMPOSTTRAPFASTPATH(pktpool_get_ext)(pktpool_t *pktp, uint8 type, uint *pktcnt)
 		ASSERT_FP(pktp->rxcplidfn.cb != NULL);
 		/* If rxcplblock is allocated */
 		if (pktp->rxcplidfn.cb(pktp, pktp->rxcplidfn.arg, p, TRUE, NULL)) {
+			last_alloc_err = PKT_ALLOC_FAIL_NOCMPLID;
 			pktpool_enq(pktp, p);
 			p = NULL;
 		}

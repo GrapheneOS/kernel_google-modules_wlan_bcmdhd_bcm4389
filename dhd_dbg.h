@@ -694,6 +694,14 @@ do {	\
 
 #define DHD_BLOG(cp, size)
 
+#ifdef DHD_REDUCE_PM_LOG
+#define DHD_PCIE_PM(args)       DHD_INFO(args)
+#define DHD_PCIE_PM_STATE(args) DHD_CONS_ONLY(args)
+#else
+#define DHD_PCIE_PM(args)       DHD_ERROR(args)
+#define DHD_PCIE_PM_STATE(args) DHD_ERROR(args)
+#endif /* DHD_REDUCE_PM_LOG */
+
 #define DHD_NONE(args)
 extern int dhd_msg_level;
 extern int dhd_log_level;

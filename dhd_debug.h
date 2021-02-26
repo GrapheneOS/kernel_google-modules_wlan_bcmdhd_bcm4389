@@ -99,7 +99,13 @@ enum {
 /* Packet log ring, ring id 7 */
 #ifdef DHD_PKT_LOGGING_DBGRING
 #define DHD_PACKET_LOG_RING_NAME	"packet_log"
-#define DHD_PACKET_LOG_RING_SIZE	(MIN_PKTLOG_LEN * sizeof(dhd_pktlog_ring_info_t))
+#define DHD_PACKET_LOG_RING_PKTS	MIN_PKTLOG_LEN
+#define DHD_PACKET_LOG_RING_SUSPEND_THRESHOLD	\
+	(DHD_PACKET_LOG_RING_PKTS * 8u / 10u)
+#define DHD_PACKET_LOG_RING_RESUME_THRESHOLD	\
+	(DHD_PACKET_LOG_RING_PKTS * 2u / 10u)
+#define DHD_PACKET_LOG_RING_SIZE	\
+	(DHD_PACKET_LOG_RING_PKTS * sizeof(dhd_pktlog_ring_info_t))
 #endif /* DHD_PKT_LOGGING_DBGRING */
 
 #define TLV_LOG_SIZE(tlv) ((tlv) ? (sizeof(tlv_log) + (tlv)->len) : 0)

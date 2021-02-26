@@ -185,7 +185,8 @@ enum desc_cmd_ids {
 	DSEC_CMD_ALL			= 0u,
 	DSEC_CMD_TRANSUNLOCK		= 1u,
 	DSEC_CMD_SBOOT			= 2u,
-	DSEC_CMD_RGNLOCK		= 3u
+	DSEC_CMD_RGNLOCK		= 3u,
+	DSEC_CMD_SBOOT_DATA		= 4u
 };
 
 /* TRANSIENT unlock command */
@@ -223,9 +224,10 @@ typedef struct {
 #define DSEC_LOCK_RGN_HW_SW		7u
 #define DSEC_LOCK_RGN_BT		8u
 #define DSEC_LOCK_RGN_SECURE		9u
-#define DSEC_LOCK_RGN_SECURE_V		10u
-#define DSEC_LOCK_RGN_SECURE_VI_0	11u
-#define DSEC_LOCK_RGN_SECURE_VI_1	12u
+#define DSEC_LOCK_RGN_SECURE_IV		10u
+#define DSEC_LOCK_RGN_SECURE_V		11u
+#define DSEC_LOCK_RGN_SECURE_VI_0	12u
+#define DSEC_LOCK_RGN_SECURE_VI_1	13u
 
 /* SECURE OTP command */
 #define DSEC_OTP_VER_V1			1u

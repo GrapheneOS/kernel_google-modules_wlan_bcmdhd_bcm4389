@@ -319,9 +319,14 @@ extern void spktq_flush_ext(osl_t *osh, struct spktq *spq, bool dir,
 extern void pktq_pflush(osl_t *osh, struct pktq *pq, int prec, bool dir);
 
 typedef void (*spktq_cb_t)(void *arg, struct spktq *spq);
+typedef uint32 (*spktq_suppress_cb_t)(void *arg, struct spktq *spq);
 extern void spktq_free_register(spktq_cb_t cb, void *arg);
 extern void spktq_cb(void *spq);
+uint32 spktq_suppress_cb(void *spq);
+void spktq_suppress_register(spktq_suppress_cb_t cb, void *arg);
+void *(spktq_delete_node)(struct spktq *spq, void *prev, void *cur);
 #define SPKTQFREE	spktq_cb
+#define SPKTQFREE_SUPPRESS	spktq_suppress_cb
 
 #ifdef __cplusplus
 }

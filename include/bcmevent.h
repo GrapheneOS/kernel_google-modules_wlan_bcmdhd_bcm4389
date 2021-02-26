@@ -306,9 +306,9 @@ typedef union bcm_event_msg_u {
 #define WLC_E_TWT			195	/* TWT event */
 #define WLC_E_AMT			196	/* Address Management Table (AMT) */
 #define WLC_E_ROAM_SCAN_RESULT		197	/* roam/reassoc scan result event */
-#define WLC_E_LAST			199	/* highest val + 1 for range checking */
-#if (WLC_E_LAST > 199)
-#error "WLC_E_LAST: Invalid value for last event; must be <= 198."
+#define WLC_E_LAST			200	/* highest val + 1 for range checking */
+#if (WLC_E_LAST > 200)
+#error "WLC_E_LAST: Invalid value for last event; must be <= 199."
 #endif /* WLC_E_LAST */
 
 /* define an API for getting the string name of an event */
@@ -1571,4 +1571,5 @@ typedef struct wl_csa_event {
 	wl_csa_switch_event_t csa;	/**< Channel Switch Announcement parameters */
 	uint32 switch_time;		/**< csa switch time: TSF + BI * count, msec */
 } wl_csa_event_t;
+
 #endif /* _BCMEVENT_H_ */
