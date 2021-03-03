@@ -3542,6 +3542,7 @@ wl_cfg80211_start_ap(
 	struct parsed_ies ies;
 	s32 bssidx = 0;
 	u32 dev_role = 0;
+	u32 hidden_ssid = 0;
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST */
@@ -3676,10 +3677,10 @@ wl_cfg80211_start_ap(
 	}
 
 	/* Configure hidden SSID */
-	if (info->hidden_ssid != NL80211_HIDDEN_SSID_NOT_IN_USE) {
-		if ((err = wldev_iovar_setint(dev, "closednet", 1)) < 0)
-			WL_ERR(("failed to set hidden : %d\n", err));
-		WL_DBG(("hidden_ssid_enum_val: %d \n", info->hidden_ssid));
+	hidden_ssid = (info->hidden_ssid == NL80211_HIDDEN_SSID_NOT_IN_USE) ? 0 : 1;
+	WL_DBG(("hidden_ssid: %d \n", hidden_ssid));
+	if ((err = wldev_iovar_setint(dev, "closednet", hidden_ssid)) < 0) {
+		WL_ERR(("failed to set hidden : %d\n", err));
 	}
 
 #ifdef SUPPORT_AP_RADIO_PWRSAVE
