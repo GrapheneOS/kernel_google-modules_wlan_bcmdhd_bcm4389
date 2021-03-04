@@ -849,6 +849,7 @@ wl_cellavoid_verify_avail_chan_list(struct bcm_cfg80211 *cfg, wl_cellavoid_info_
 			MFREE(cfg->osh, chan_info, sizeof(*chan_info));
 		}
 	}
+	MFREE(cfg->osh, dngl_chan_list, LOCAL_BUF_LEN);
 #undef LOCAL_BUF_LEN
 
 	return BCME_OK;
