@@ -3200,7 +3200,7 @@ bool dhd_runtime_bus_wake(dhd_bus_t *bus, bool wait, void *func_addr)
 
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
 
-			DHD_ERROR_RLMT(("Runtime Resume is called in %pf\n", func_addr));
+			DHD_ERROR_RLMT(("Runtime Resume is called in %ps\n", func_addr));
 			smp_wmb();
 			wake_up(&bus->rpm_queue);
 		/* No need to wake up the RPM state thread */
