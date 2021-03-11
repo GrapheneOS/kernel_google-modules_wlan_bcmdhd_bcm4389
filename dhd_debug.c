@@ -120,28 +120,35 @@ struct map_table event_tag_map[] = {
 	{TRACE_TAG_RATE_MBPS, WIFI_TAG_RATE_MBPS, "RATE"},
 };
 
+struct event_log_table {
+	int log_level;
+	uint16 tag;
+	uint8 set;
+	char *desc;
+};
+
 /* define log level per ring type */
-struct log_level_table fw_verbose_level_map[] = {
-	{1, EVENT_LOG_TAG_PCI_ERROR, "PCI_ERROR"},
-	{1, EVENT_LOG_TAG_PCI_WARN, "PCI_WARN"},
-	{2, EVENT_LOG_TAG_PCI_INFO, "PCI_INFO"},
-	{3, EVENT_LOG_TAG_PCI_DBG, "PCI_DEBUG"},
-	{3, EVENT_LOG_TAG_BEACON_LOG, "BEACON_LOG"},
-	{1, EVENT_LOG_TAG_WL_ASSOC_LOG, "ASSOC_LOG"},
-	{1, EVENT_LOG_TAG_WL_ROAM_LOG, "ROAM_LOG"},
-	{1, EVENT_LOG_TAG_TRACE_WL_INFO, "WL INFO"},
-	{1, EVENT_LOG_TAG_TRACE_BTCOEX_INFO, "BTCOEX INFO"},
+struct event_log_table fw_verbose_level_map[] = {
+	{1, EVENT_LOG_TAG_PCI_ERROR, EVENT_LOG_SET_BUS, "PCI_ERROR"},
+	{1, EVENT_LOG_TAG_PCI_WARN, EVENT_LOG_SET_PRSRV_BUS, "PCI_WARN"},
+	{1, EVENT_LOG_TAG_PCI_INFO, EVENT_LOG_SET_BUS, "PCI_INFO"},
+	{3, EVENT_LOG_TAG_PCI_DBG, EVENT_LOG_SET_BUS, "PCI_DEBUG"},
+	{2, EVENT_LOG_TAG_BEACON_LOG, EVENT_LOG_SET_PRSRV_CHATTY, "BEACON_LOG"},
+	{1, EVENT_LOG_TAG_WL_ASSOC_LOG, EVENT_LOG_SET_PRSRV, "ASSOC_LOG"},
+	{1, EVENT_LOG_TAG_WL_ROAM_LOG, EVENT_LOG_SET_PRSRV, "ROAM_LOG"},
+	{1, EVENT_LOG_TAG_TRACE_WL_INFO, EVENT_LOG_SET_WL, "WL INFO"},
+	{1, EVENT_LOG_TAG_TRACE_BTCOEX_INFO, EVENT_LOG_SET_WL, "BTCOEX INFO"},
 #ifdef DHD_RANDMAC_LOGGING
-	{1, EVENT_LOG_TAG_RANDMAC_ERR, "RANDMAC_ERR"},
+	{1, EVENT_LOG_TAG_RANDMAC_ERR, EVENT_LOG_SET_PRSRV, "RANDMAC_ERR"},
 #endif /* DHD_RANDMAC_LOGGING */
 #ifdef CUSTOMER_HW4_DEBUG
-	{3, EVENT_LOG_TAG_SCAN_WARN, "SCAN_WARN"},
+	{3, EVENT_LOG_TAG_SCAN_WARN, EVENT_LOG_SET_PRSRV_CHATTY, "SCAN_WARN"},
 #else
-	{1, EVENT_LOG_TAG_SCAN_WARN, "SCAN_WARN"},
+	{1, EVENT_LOG_TAG_SCAN_WARN, EVENT_LOG_SET_PRSRV_CHATTY, "SCAN_WARN"},
 #endif /* CUSTOMER_HW4_DEBUG */
-	{1, EVENT_LOG_TAG_SCAN_ERROR, "SCAN_ERROR"},
-	{2, EVENT_LOG_TAG_SCAN_TRACE_LOW, "SCAN_TRACE_LOW"},
-	{2, EVENT_LOG_TAG_SCAN_TRACE_HIGH, "SCAN_TRACE_HIGH"},
+	{2, EVENT_LOG_TAG_SCAN_ERROR, EVENT_LOG_SET_ERROR, "SCAN_ERROR"},
+	{1, EVENT_LOG_TAG_SCAN_TRACE_LOW, EVENT_LOG_SET_PRSRV, "SCAN_TRACE_LOW"},
+	{1, EVENT_LOG_TAG_SCAN_TRACE_HIGH, EVENT_LOG_SET_WL, "SCAN_TRACE_HIGH"},
 };
 
 /* reference tab table */
@@ -1336,7 +1343,7 @@ dhd_dbg_bt_log_handler(dhd_pub_t *dhdp, void *data, uint datalen)
  * dhd_dbg_set_event_log_tag : modify the state of an event log tag
  */
 void
-dhd_dbg_set_event_log_tag(dhd_pub_t *dhdp, uint16 tag, uint8 set)
+dhd_dbg_set_event_log_tag(dhd_pub_t *dhdp, uint16 tag, uint8 set_num, uint8 is_set)
 {
 	wl_el_tag_params_t pars;
 	char *cmd = "event_log_tag_control";
@@ -1345,8 +1352,8 @@ dhd_dbg_set_event_log_tag(dhd_pub_t *dhdp, uint16 tag, uint8 set)
 
 	memset(&pars, 0, sizeof(pars));
 	pars.tag = tag;
-	pars.set = set;
-	pars.flags = EVENT_LOG_TAG_FLAG_LOG;
+	pars.set = set_num;
+	pars.flags = (is_set) ? EVENT_LOG_TAG_FLAG_LOG : EVENT_LOG_TAG_FLAG_NONE;
 
 	if (!bcm_mkiovar(cmd, (char *)&pars, sizeof(pars), iovbuf, sizeof(iovbuf))) {
 		DHD_ERROR(("%s mkiovar failed\n", __FUNCTION__));
@@ -1365,7 +1372,7 @@ dhd_dbg_set_configuration(dhd_pub_t *dhdp, int ring_id, int log_level, int flags
 	dhd_dbg_ring_t *ring;
 	uint8 set = 1;
 	int i, array_len = 0;
-	struct log_level_table *log_level_tbl = NULL;
+	struct event_log_table *log_level_tbl = NULL;
 	if (!dhdp || !dhdp->dbg)
 		return BCME_BADADDR;
 
@@ -1396,7 +1403,8 @@ dhd_dbg_set_configuration(dhd_pub_t *dhdp, int ring_id, int log_level, int flags
 		set = (ref_tag_tbl[log_level_tbl[i].tag])? 1 : 0;
 		DHD_DBGIF(("%s TAG(%s) is %s for the ring(%s)\n", __FUNCTION__,
 			log_level_tbl[i].desc, (set)? "SET" : "CLEAR", ring->name));
-		dhd_dbg_set_event_log_tag(dhdp, log_level_tbl[i].tag, set);
+		dhd_dbg_set_event_log_tag(dhdp, log_level_tbl[i].tag,
+			log_level_tbl[i].set, set);
 	}
 	return BCME_OK;
 }
