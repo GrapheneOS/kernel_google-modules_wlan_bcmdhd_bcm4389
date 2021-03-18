@@ -647,6 +647,7 @@ typedef struct nan_hal_capabilities {
 	uint32 max_sdea_service_specific_info_len;
 	uint32 max_subscribe_address;
 	uint32 ndpe_attr_supported;
+	bool is_instant_mode_supported;
 } nan_hal_capabilities_t;
 
 typedef struct _nan_hal_resp {
