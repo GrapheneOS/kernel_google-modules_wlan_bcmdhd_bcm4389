@@ -9001,6 +9001,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			DHD_ERROR(("%s: resumed on timeout for D3 ACK%s d3_inform_cnt %d\n",
 				__FUNCTION__, bus->dhd->is_sched_error ?
 				" due to scheduling problem" : "", bus->dhd->d3ackcnt_timeout));
+			// DEBUG ONLY: Trigger D-state dump
+			handle_sysrq('w');
 #if defined(DHD_KERNEL_SCHED_DEBUG) && defined(DHD_FW_COREDUMP)
 			/* XXX DHD triggers Kernel panic if the resumed on timeout occurrs
 			 * due to tasklet or workqueue scheduling problems in the Linux Kernel.
