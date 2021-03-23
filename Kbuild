@@ -235,6 +235,14 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Perform Backplane Reset else FLR will happen
 #	DHDCFLAGS += -DDHD_USE_BP_RESET_SS_CTRL
 
+# Adjustments for improving TCP handling
+    DHDCFLAGS += -DTSQ_MULTIPLIER=10
+    DHDCFLAGS += -DDHD_TCP_LIMIT_OUTPUT
+    DHDCFLAGS += -DTCP_DEFAULT_LIMIT_OUTPUT=262144
+
+    DHDCFLAGS += -DDHD_TCP_PACING_SHIFT
+    DHDCFLAGS += -DDHD_DEFAULT_TCP_PACING_SHIFT=7
+
 # Memory consumed by DHD
 DHDCFLAGS += -DDHD_MEM_STATS
 # Check trap in the case of ROT
