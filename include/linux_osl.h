@@ -379,7 +379,6 @@ extern char* osl_get_rtctime(void);
 
 #if defined(DHD_PCIE_L1_EXIT_DURING_IO)
 extern int pcie_ch_num;
-extern int exynos_pcie_l1_exit(int ch_num);
 #endif /* DHD_PCIE_L1_EXIT */
 
 /* register access macros */
@@ -438,7 +437,6 @@ extern uint64 regs_addr;
 	SELECT_BUS_READ(osh, \
 		({ \
 			__typeof(*(r)) __osl_v = 0; \
-			exynos_pcie_l1_exit(pcie_ch_num); \
 			BCM_REFERENCE(osh);	\
 			switch (sizeof(*(r))) { \
 				case sizeof(uint8):	__osl_v = \
@@ -501,7 +499,6 @@ extern uint64 regs_addr;
 #define W_REG(osh, r, v) do { \
 	SELECT_BUS_WRITE(osh, \
 		({ \
-			exynos_pcie_l1_exit(pcie_ch_num); \
 			switch (sizeof(*(r))) { \
 				case sizeof(uint8):	writeb((uint8)(v), \
 						(volatile uint8*)(r)); break; \
