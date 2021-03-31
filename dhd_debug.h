@@ -450,6 +450,12 @@ typedef enum {
 	/* Packet free by firmware. */
 	TX_PKT_FATE_FW_PKT_FREE,
 
+	/* Firmware dropped the frame after suppress retries reached max */
+	TX_PKT_FATE_FW_MAX_SUP_RETR,
+
+	/* Firmware forced packet lifetime expiry */
+	TX_PKT_FATE_FW_FORCED_EXPIRED,
+
 #ifdef DHD_PKT_LOGGING_DBGRING
 	/* Indicate to wait for updating txfate. */
 	TX_PKT_FATE_DRV_WAIT_UPDATE = 0x80000000,

@@ -7073,6 +7073,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 {
 	static char iovar_buf[WLC_IOCTL_MAXLEN];
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	struct net_device *inet_ndev = wdev_to_ndev(wdev);
 	int err = 0, ret = 0, i;
 	wifi_radio_stat *radio;
 	wifi_radio_stat_h radio_h;
@@ -7126,7 +7127,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	BCM_REFERENCE(dhdp);
 
 	/* Limit link stats query only on primary interface */
-	if (!IS_INET_LINK_NDEV(cfg, wdev_to_ndev(wdev))) {
+	if (!IS_INET_LINK_NDEV(cfg, inet_ndev)) {
 		WL_ERR(("link stats query requested on non primary interface\n"));
 		return BCME_UNSUPPORTED;
 	}
@@ -7148,7 +7149,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	bzero(outdata, WLC_IOCTL_MAXLEN);
 	output = outdata;
 
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "radiostat", NULL, 0,
+	err = wldev_iovar_getbuf(inet_ndev, "radiostat", NULL, 0,
 		iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 	if (err != BCME_OK && err != BCME_UNSUPPORTED) {
 		WL_ERR(("error (%d) - size = %zu\n", err, sizeof(wifi_radio_stat)));
@@ -7171,7 +7172,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	scan_query.length = 1;
 	scan_query.type[0] = WL_PWRSTATS_TYPE_SCAN;
 
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "pwrstats", &scan_query,
+	err = wldev_iovar_getbuf(inet_ndev, "pwrstats", &scan_query,
 		sizeof(scan_query), iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 	if (err != BCME_OK && err != BCME_UNSUPPORTED) {
 		WL_ERR(("error (%d) - size = %zu\n", err, sizeof(wl_pwrstats_t)));
@@ -7186,7 +7187,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		goto exit;
 	}
 
-	scan_time_len = dtoh16(((uint16 *)pwrstats->data)[1]);
+	scan_time_len = dtoh16(*(((uint16 *)pwrstats->data) + 1));
 
 	if (scan_time_len < sizeof(wl_pwr_scan_stats_t)) {
 		WL_ERR(("WL_PWRSTATS_TYPE_SCAN IOVAR info short len :  %d < %d\n",
@@ -7231,7 +7232,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		tot_pno_dur,
 		dtoh32(scan_stats.other_scans.dur)));
 
-	err = wldev_iovar_getint(bcmcfg_to_prmry_ndev(cfg), "chanspec", (int*)&cur_chansp);
+	err = wldev_iovar_getint(inet_ndev, "chanspec", (int*)&cur_chansp);
 	if (err != BCME_OK) {
 		WL_ERR(("error (%d) \n", err));
 		goto exit;
@@ -7261,7 +7262,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	/* Option to get all channel statistics */
 	all_chan_req.num_of_entries = 0;
 	all_chan_req.ver = WL_CCA_EXT_REQ_VER_V3;
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "cca_get_stats_ext",
+	err = wldev_iovar_getbuf(inet_ndev, "cca_get_stats_ext",
 		&all_chan_req, sizeof(all_chan_req), iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 
 	if (err != BCME_OK && err != BCME_UNSUPPORTED) {
@@ -7326,7 +7327,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	cca_v3_req.per_chan_stats->chanspec =
 		wl_chspec_host_to_driver(wf_chspec_primary20_chspec(cur_chanspec));
 
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "cca_get_stats_ext", &cca_v3_req,
+	err = wldev_iovar_getbuf(inet_ndev, "cca_get_stats_ext", &cca_v3_req,
 		sizeof(cca_v3_req), iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 
 	if (err != BCME_OK && err != BCME_UNSUPPORTED) {
@@ -7355,7 +7356,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		cca_v2_req.chanspec =
 			wl_chspec_host_to_driver(wf_chspec_primary20_chspec(cur_chanspec));
 
-		err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "cca_get_stats_ext",
+		err = wldev_iovar_getbuf(inet_ndev, "cca_get_stats_ext",
 			&cca_v2_req, sizeof(cca_v2_req), iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 
 		if (err != BCME_OK) {
@@ -7384,7 +7385,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		cca_req.num_secs = NUM_CCA_SAMPLING_SECS;
 		cca_req.chanspec = wl_chspec_host_to_driver(cur_chanspec);
 
-		err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "cca_get_stats", &cca_req,
+		err = wldev_iovar_getbuf(inet_ndev, "cca_get_stats", &cca_req,
 			sizeof(cca_req), iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 
 		if (err != BCME_OK && err != BCME_UNSUPPORTED) {
@@ -7447,7 +7448,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].ac, WIFI_AC_BE);
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BK].ac, WIFI_AC_BK);
 
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "counters", NULL, 0,
+	err = wldev_iovar_getbuf(inet_ndev, "counters", NULL, 0,
 		iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 	if (unlikely(err)) {
 		WL_ERR(("error (%d) - size = %zu\n", err, sizeof(wl_cnt_wlc_t)));
@@ -7488,7 +7489,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	}
 
 	if (FW_SUPPORTED(dhdp, ifst)) {
-		err = wl_cfg80211_if_infra_enh_ifstats_counters(bcmcfg_to_prmry_ndev(cfg),
+		err = wl_cfg80211_if_infra_enh_ifstats_counters(inet_ndev,
 				if_infra_enh_stats);
 		if (!err) {
 			rxbeaconmbss =	if_infra_enh_stats->rxbeaconmbss;
@@ -7496,9 +7497,9 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	}
 
 	if (FW_SUPPORTED(dhdp, ifst)) {
-		err = wl_cfg80211_ifstats_counters(bcmcfg_to_prmry_ndev(cfg), if_stats);
+		err = wl_cfg80211_ifstats_counters(inet_ndev, if_stats);
 	} else {
-		err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "if_counters",
+		err = wldev_iovar_getbuf(inet_ndev, "if_counters",
 			NULL, 0, (char *)if_stats, sizeof(*if_stats), NULL);
 	}
 
@@ -7527,7 +7528,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].retries, wlc_cnt->txretrans);
 	}
 
-	err = wldev_get_rssi(bcmcfg_to_prmry_ndev(cfg), &scbval);
+	err = wldev_get_rssi(inet_ndev, &scbval);
 	if (unlikely(err)) {
 		WL_ERR(("get_rssi error (%d)\n", err));
 		goto exit;
@@ -7539,7 +7540,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	COMPAT_ASSIGN_VALUE(iface, peer_info->num_rate, NUM_RATE);
 
 #ifdef LINKSTAT_EXT_SUPPORT
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "bssload_report", NULL,
+	err = wldev_iovar_getbuf(inet_ndev, "bssload_report", NULL,
 		0, iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 
 	if (err == BCME_OK) {
@@ -7557,7 +7558,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 #endif /* LINKSTAT_EXT_SUPPORT */
 	COMPAT_MEMCOPY_IFACE(output, total_len, wifi_iface_stat, iface, wifi_rate_stat);
 
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "ratestat", NULL, 0,
+	err = wldev_iovar_getbuf(inet_ndev, "ratestat", NULL, 0,
 		iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 	if (err != BCME_OK && err != BCME_UNSUPPORTED) {
 		WL_ERR(("error (%d) - size = %zu\n", err, NUM_RATE*sizeof(wifi_rate_stat)));
@@ -9357,7 +9358,6 @@ static int wl_cfgvendor_set_pmk(struct wiphy *wiphy,
 	int rem, type;
 	struct net_device *ndev = wdev_to_ndev(wdev);
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	struct wl_security *sec;
 
 	bzero(&pmk, sizeof(pmk));
 	nla_for_each_attr(iter, data, len, rem) {
@@ -9380,17 +9380,7 @@ static int wl_cfgvendor_set_pmk(struct wiphy *wiphy,
 				goto exit;
 		}
 	}
-
-	sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
-	if ((sec->wpa_auth == WLAN_AKM_SUITE_8021X) ||
-		(sec->wpa_auth == WL_AKM_SUITE_SHA256_1X)) {
-		ret = wldev_iovar_setbuf(ndev, "okc_info_pmk", pmk.key, pmk.key_len, cfg->ioctl_buf,
-			WLC_IOCTL_SMLEN,  &cfg->ioctl_buf_sync);
-		if (ret) {
-			/* could fail in case that 'okc' is not supported */
-			WL_INFORM_MEM(("okc_info_pmk failed, err=%d (ignore)\n", ret));
-		}
-	}
+	wl_cfg80211_set_okc_pmkinfo(cfg, ndev, pmk, TRUE);
 
 	ret = wldev_ioctl_set(ndev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
 	WL_INFORM_MEM(("IOVAR set_pmk ret:%d", ret));
@@ -12546,7 +12536,7 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.doit = wl_cfgvendor_get_usable_channels,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
 		.policy = usable_chan_attr_policy,
-		.maxattr = CELLAVOID_ATTRIBUTE_MAX
+		.maxattr = USABLECHAN_ATTRIBUTE_MAX
 #endif /* LINUX_VERSION >= 5.3 */
 	},
 #endif /* WL_USABLE_CHAN */

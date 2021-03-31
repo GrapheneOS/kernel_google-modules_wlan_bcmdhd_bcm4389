@@ -159,7 +159,6 @@ static bool _si_clkctl_cc(si_info_t *sii, uint mode);
 static bool si_ispcie(const si_info_t *sii);
 static uint sysmem_banksize(const si_info_t *sii, sysmemregs_t *r, uint8 idx);
 static uint socram_banksize(const si_info_t *sii, sbsocramregs_t *r, uint8 idx, uint8 mtype);
-static void si_gci_get_chipctrlreg_ringidx_base4(uint32 pin, uint32 *regidx, uint32 *pos);
 static uint8 si_gci_get_chipctrlreg_ringidx_base8(uint32 pin, uint32 *regidx, uint32 *pos);
 static void si_gci_gpio_chipcontrol(si_t *si, uint8 gpoi, uint8 opt);
 static void si_gci_enable_gpioint(si_t *sih, bool enable);
@@ -168,6 +167,7 @@ static chipcregs_t * seci_set_core(si_t *sih, uint32 *origidx, bool *fast);
 #endif
 #endif /* !defined(BCMDONGLEHOST) */
 
+static void si_gci_get_chipctrlreg_ringidx_base4(uint32 pin, uint32 *regidx, uint32 *pos);
 static bool si_pmu_is_ilp_sensitive(uint32 idx, uint regoff);
 
 static void si_oob_war_BT_F1(si_t *sih);
@@ -2439,6 +2439,24 @@ si_gci_uart_init(si_t *sih, osl_t *osh, uint8 seci_mode)
 #endif	/* HNDGCI */
 }
 
+/* input: pin number
+* output: chipcontrol reg(ring_index base) and
+* bits to shift for pin first regbit.
+* eg: gpio9 will give regidx: 2 and pos 16
+*/
+static uint8
+BCMPOSTTRAPFN(si_gci_get_chipctrlreg_ringidx_base8)(uint32 pin, uint32 *regidx, uint32 *pos)
+{
+	*regidx = (pin / 4);
+	*pos = (pin % 4)*8;
+
+	SI_MSG(("si_gci_get_chipctrlreg_ringidx_base8:%d:%d:%d\n", pin, *regidx, *pos));
+
+	return 0;
+}
+
+#endif /* !defined(BCMDONGLEHOST) */
+
 /**
  * A given GCI pin needs to be converted to a GCI FunctionSel register offset and the bit position
  * in this register.
@@ -2455,22 +2473,6 @@ BCMPOSTTRAPFN(si_gci_get_chipctrlreg_ringidx_base4)(uint32 pin, uint32 *regidx, 
 	*pos = (pin % 8) * 4; // each pin occupies 4 FunctionSel register bits
 
 	SI_MSG(("si_gci_get_chipctrlreg_ringidx_base4:%d:%d:%d\n", pin, *regidx, *pos));
-}
-
-/* input: pin number
-* output: chipcontrol reg(ring_index base) and
-* bits to shift for pin first regbit.
-* eg: gpio9 will give regidx: 2 and pos 16
-*/
-static uint8
-BCMPOSTTRAPFN(si_gci_get_chipctrlreg_ringidx_base8)(uint32 pin, uint32 *regidx, uint32 *pos)
-{
-	*regidx = (pin / 4);
-	*pos = (pin % 4)*8;
-
-	SI_MSG(("si_gci_get_chipctrlreg_ringidx_base8:%d:%d:%d\n", pin, *regidx, *pos));
-
-	return 0;
 }
 
 /** setup a given pin for fnsel function */
@@ -2510,7 +2512,6 @@ si_gci_clear_functionsel(si_t *sih, uint8 fnsel)
 	}
 }
 
-#endif /* !defined(BCMDONGLEHOST) */
 /** write 'val' to the gci chip control register indexed by 'reg' */
 uint32
 BCMPOSTTRAPFN(si_gci_chipcontrol)(si_t *sih, uint reg, uint32 mask, uint32 val)
@@ -2547,19 +2548,21 @@ sflash_gpio_config(si_t *sih)
 {
 	ASSERT(sih);
 
-	/* config sflash gpio by setting gci
-	 * chip control register with mask and value
-	 */
+	if (!si_is_sflash_available(sih)) {
+		return;
+	}
 
-	si_gci_chipcontrol(sih, CC_GCI_CHIPCTRL_01,
-		(1 << CC_PIN_GPIO_19) | (1 << CC_PIN_GPIO_23) | (1 << CC_PIN_GPIO_31),
-		(1 << CC_PIN_GPIO_19) | (1 << CC_PIN_GPIO_23) | (1 << CC_PIN_GPIO_31));
-
-	si_gci_chipcontrol(sih, CC_GCI_CHIPCTRL_02,
-		((1 << CC_PIN_GPIO_03) | (1 << CC_PIN_GPIO_07) |
-		(1 << CC_PIN_GPIO_11) | (1<< CC_PIN_GPIO_15)),
-		((1 << CC_PIN_GPIO_03) | (1 << CC_PIN_GPIO_07) |
-		(1 << CC_PIN_GPIO_11) | (1<< CC_PIN_GPIO_15)));
+	switch (CHIPID((sih)->chip)) {
+	case BCM4387_CHIP_GRPID:
+		/* config 4387 sflash gpio lines 12,15,18,19 */
+		si_gci_set_functionsel(sih, CC_PIN_GPIO_12, CC4387_FNSEL_SFLASH);
+		si_gci_set_functionsel(sih, CC_PIN_GPIO_15, CC4387_FNSEL_SFLASH);
+		si_gci_set_functionsel(sih, CC_PIN_GPIO_18, CC4387_FNSEL_SFLASH);
+		si_gci_set_functionsel(sih, CC_PIN_GPIO_19, CC4387_FNSEL_SFLASH);
+		break;
+	default:
+		break;
+	}
 
 	return;
 }
@@ -8289,12 +8292,7 @@ si_is_sprom_available(si_t *sih)
 bool
 si_is_sflash_available(const si_t *sih)
 {
-	switch (CHIPID(sih->chip)) {
-	case BCM4387_CHIP_ID:
-		return (sih->chipst & CST4387_SFLASH_PRESENT) != 0;
-	default:
-		return FALSE;
-	}
+	return (sih->chipst & CST_SFLASH_PRESENT) != 0;
 }
 
 #if !defined(BCMDONGLEHOST)

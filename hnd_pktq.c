@@ -322,6 +322,13 @@ BCMFASTPATH(spktq_delete_node)(struct spktq *spq, void *prev, void *cur)
 		goto done;
 	}
 
+	if ((cur == NULL) || (prev == NULL)) {
+		ASSERT(0);
+		next = NULL;
+		goto done;
+	}
+
+	ASSERT_FP(PKTLINK(prev) == cur);
 	next = PKTLINK(cur);
 	PKTSETLINK(prev, next);
 	PKTSETLINK(cur, NULL);
@@ -1040,9 +1047,9 @@ spktq_filter(struct spktq *spq, pktq_filter_t fltr, void* fltr_ctx,
 }
 
 bool
-pktq_init(struct pktq *pq, int num_prec, uint max_pkts)
+pktq_init(struct pktq *pq, uint num_prec, uint max_pkts)
 {
-	int prec;
+	uint prec;
 
 	ASSERT(num_prec > 0 && num_prec <= PKTQ_MAX_PREC);
 

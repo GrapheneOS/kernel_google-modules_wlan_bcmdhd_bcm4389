@@ -196,7 +196,7 @@ getintvararray_internal(char *vars, const char *name, int index)
 
 	/* table values are always separated by "," or " " */
 	while (*buf != '\0') {
-		val = bcm_strtoul(buf, &endp, 0);
+		val = (int)bcm_strtoul(buf, &endp, 0);
 		if (i == index) {
 			return val;
 		}
@@ -230,7 +230,7 @@ getintvararraysize_internal(char *vars, const char *name)
 
 	/* table values are always separated by "," or " " */
 	while (*buf != '\0') {
-		val = bcm_strtoul(buf, &endp, 0);
+		val = (int)bcm_strtoul(buf, &endp, 0);
 		buf = endp;
 		/* delimiter is ',' */
 		if (*buf == ',')
@@ -1813,7 +1813,7 @@ BCMFASTPATH(bcm_mwbmap_alloc)(struct bcm_mwbmap * mwbmap_hdl)
 			MWBMAP_ASSERT(count >= 0);
 
 			/* clear wd_bitmap bit if id_map count is 0 */
-			bitmap = (count == 0) << bitix;
+			bitmap = (uint32)(count == 0) << bitix;
 
 			MWBMAP_DBG((
 			    "Lvl1: bitix<%02u> wordix<%02u>: %08x ^ %08x = %08x wfree %d",
@@ -1899,7 +1899,7 @@ bcm_mwbmap_force(struct bcm_mwbmap * mwbmap_hdl, uint32 bitix)
 #endif /* ! BCM_MWBMAP_USE_CNTSETBITS */
 	MWBMAP_ASSERT(count >= 0);
 
-	bitmap   = (count == 0) << BCM_MWBMAP_MODOP(bitix);
+	bitmap   = (uint32)(count == 0) << BCM_MWBMAP_MODOP(bitix);
 
 	MWBMAP_DBG(("Lvl1: bitix<%02lu> wordix<%02u>: %08x ^ %08x = %08x wfree %d",
 	            BCM_MWBMAP_MODOP(bitix), wordix, *bitmap_p, bitmap,
@@ -1983,7 +1983,7 @@ bcm_mwbmap_free_cnt(struct bcm_mwbmap * mwbmap_hdl)
 
 	ASSERT(mwbmap_p->ifree >= 0);
 
-	return mwbmap_p->ifree;
+	return (uint32)mwbmap_p->ifree;
 }
 
 /* Determine whether an index is inuse or free */
@@ -2619,7 +2619,7 @@ bcm_find_vendor_ie(const  void *tlvs, uint tlvs_len, const char *voui, uint8 *ty
 		{
 			/* compare optional type */
 			if (type_len == 0 ||
-			    !bcmp(&ie->data[DOT11_OUI_LEN], type, type_len)) {
+			    !bcmp(((const char *)ie->data) + DOT11_OUI_LEN, type, type_len)) {
 
 				COV_TAINTED_DATA_ARG(ie);
 
@@ -2654,7 +2654,7 @@ bcm_format_ssid(char* buf, const uchar ssid[], uint ssid_len)
 		} else if (bcm_isprint((uchar)c)) {
 			*p++ = (char)c;
 		} else {
-			p += snprintf(p, (endp - p), "\\x%02X", c);
+			p += snprintf(p, (size_t)(endp - p), "\\x%02X", c);
 		}
 	}
 	*p = '\0';
@@ -2909,7 +2909,7 @@ bcm_strtoull(const char *cp, char **endp, uint base)
 	result = 0;
 
 	while (bcm_isxdigit(*cp) &&
-	       (value = bcm_isdigit(*cp) ? *cp-'0' : bcm_toupper(*cp)-'A'+10) < base) {
+	       (value = (uint64)(bcm_isdigit(*cp) ? *cp-'0' : bcm_toupper(*cp)-'A'+10)) < base) {
 		result = result*base + value;
 		/* Detected overflow */
 		if (result < last_result && !minus) {
@@ -4256,7 +4256,9 @@ bcm_parse_tlvs(const void *buf, uint buflen, uint key)
 			break;
 		}
 		/* did we find the ID? */
-		if ((elt->id == key)) {
+		if ((elt->id == key) ||
+		    (elt->id == DOT11_MNG_ID_EXT_ID && len > 0 &&
+		     elt->data[0] + (uint)DOT11_MNG_ID_EXT_ID == key)) {
 			COV_TAINTED_DATA_ARG(elt);
 
 			GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
@@ -4647,12 +4649,12 @@ prhex(const char *msg, const uchar *buf, uint nbytes)
 		if (i % 16 == 0) {
 			nchar = snprintf(p, len, "  %04x: ", i);	/* line prefix */
 			p += nchar;
-			len -= nchar;
+			len -= (uint)nchar;
 		}
 		if (len > 0) {
 			nchar = snprintf(p, len, "%02x ", buf[i]);
 			p += nchar;
-			len -= nchar;
+			len -= (uint)nchar;
 		}
 
 		if (i % 16 == 15) {
@@ -4771,8 +4773,9 @@ uint
 bcmdumpfields(bcmutl_rdreg_rtn read_rtn, void *arg0, uint arg1, struct fielddesc *fielddesc_array,
 	char *buf, uint32 bufsize)
 {
-	uint  filled_len;
-	int len;
+	int ret;
+	uint filled_len;
+	uint len;
 	struct fielddesc *cur_ptr;
 
 	filled_len = 0;
@@ -4781,11 +4784,16 @@ bcmdumpfields(bcmutl_rdreg_rtn read_rtn, void *arg0, uint arg1, struct fielddesc
 	while (bufsize > 1) {
 		if (cur_ptr->nameandfmt == NULL)
 			break;
-		len = snprintf(buf, bufsize, cur_ptr->nameandfmt,
-		               read_rtn(arg0, arg1, cur_ptr->offset));
 		/* check for snprintf overflow or error */
-		if (len < 0 || (uint32)len >= bufsize)
-			len = bufsize - 1;
+		ret = snprintf(buf, bufsize, cur_ptr->nameandfmt,
+		               read_rtn(arg0, arg1, cur_ptr->offset));
+		if (ret < 0 || ret >= (int)bufsize) {
+			/* encoding error from snprintf */
+			len = bufsize - 1u;
+		} else {
+			len = (uint32)ret;
+		}
+
 		buf += len;
 		bufsize -= len;
 		filled_len += len;
@@ -4874,8 +4882,8 @@ bcm_mw_to_qdbm(uint16 mw)
 {
 	uint8 qdbm;
 	int offset;
-	uint mw_uint = mw;
-	uint boundary;
+	uint16 mw_uint = mw;
+	uint16 boundary;
 
 	/* handle boundary case */
 	if (mw_uint <= 1)
@@ -5173,13 +5181,13 @@ uint16
 bcm_ip_cksum(uint8 *buf, uint32 len, uint32 sum)
 {
 	while (len > 1) {
-		sum += (buf[0] << 8) | buf[1];
+		sum += ((uint32)buf[0] << 8) | buf[1];
 		buf += 2;
 		len -= 2;
 	}
 
 	if (len > 0) {
-		sum += (*buf) << 8;
+		sum += ((uint32)*buf) << 8;
 	}
 
 	while (sum >> 16) {
@@ -5513,7 +5521,7 @@ getbits(const uint8 *addr, uint size, uint stbit, uint nbits)
 	/* all bits are in the same byte */
 	if (fbyte == lbyte) {
 		mask = ((1u << nbits) - 1u) << fbit;
-		val = (addr[fbyte] & mask) >> fbit;
+		val = ((uint32)addr[fbyte] & mask) >> fbit;
 		return val;
 	}
 
@@ -5521,14 +5529,14 @@ getbits(const uint8 *addr, uint size, uint stbit, uint nbits)
 	if (fbit > 0) {
 		bits = 8u - fbit;
 		mask = (0xffu << fbit);
-		val |= (addr[fbyte] & mask) >> fbit;
+		val |= ((uint32)addr[fbyte] & mask) >> fbit;
 		fbyte ++;	/* first full byte */
 	}
 
 	/* last partial byte */
 	if (rbits > 0) {
 		mask = (1u << rbits) - 1u;
-		val |= (addr[lbyte] & mask) << (nbits - rbits);
+		val |= ((uint32)addr[lbyte] & mask) << (nbits - rbits);
 		lbyte --;	/* last full byte */
 	}
 
@@ -5971,7 +5979,7 @@ varbuf_append(varbuf_t *b, const char *fmt, ...)
 
 	/* skip over this string's null termination */
 	r++;
-	b->size -= r;
+	b->size -= (uint)r;
 	b->buf += r;
 
 	return r;
@@ -5986,7 +5994,7 @@ int
 initvars_table(osl_t *osh, char *start, char *end, char **vars,
 	uint *count)
 {
-	int c = (int)(end - start);
+	uint c = (uint)(end - start);
 
 	/* do it only when there is more than just the null string */
 	if (c > 1) {

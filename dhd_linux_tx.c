@@ -917,7 +917,7 @@ __dhd_txflowcontrol(dhd_pub_t *dhdp, struct net_device *net, bool state)
 
 	if (state == ON) {
 		if (!netif_queue_stopped(net)) {
-			DHD_ERROR(("%s: Stop Netif Queue\n", __FUNCTION__));
+			DHD_TXFLOWCTL(("%s: Stop Netif Queue\n", __FUNCTION__));
 			netif_stop_queue(net);
 		} else {
 			DHD_LOG_MEM(("%s: Netif Queue already stopped\n", __FUNCTION__));
@@ -926,7 +926,7 @@ __dhd_txflowcontrol(dhd_pub_t *dhdp, struct net_device *net, bool state)
 
 	if (state == OFF) {
 		if (netif_queue_stopped(net)) {
-			DHD_ERROR(("%s: Start Netif Queue\n", __FUNCTION__));
+			DHD_TXFLOWCTL(("%s: Start Netif Queue\n", __FUNCTION__));
 			netif_wake_queue(net);
 		} else {
 			DHD_LOG_MEM(("%s: Netif Queue already started\n", __FUNCTION__));

@@ -106,15 +106,8 @@ extern char fw_version[];
 
 #define RETRIES 2		/* # of retries to retrieve matching ioctl response */
 
-#if defined(DHD_HTPUT_TUNABLES)
-#define DEFAULT_RX_BUFFERS_TO_POST		1024
-#define RX_BUF_BURST				64 /* Rx buffers for MSDU Data */
-#define RXBUFPOST_THRESHOLD			64 /* Rxbuf post threshold */
-#else
-#define DEFAULT_RX_BUFFERS_TO_POST		256
-#define RX_BUF_BURST				32 /* Rx buffers for MSDU Data */
-#define RXBUFPOST_THRESHOLD			32 /* Rxbuf post threshold */
-#endif /* DHD_HTPUT_TUNABLES */
+/* For legacy firmware where pcie shared structure does not have max_host_rxbufs, use this */
+#define LEGACY_MAX_RXBUFPOST		256u
 
 /* Read index update Magic sequence */
 #define DHD_DMA_INDX_SEQ_H2D_DB_MAGIC	0xDDDDDDDDAu
@@ -517,13 +510,98 @@ typedef struct rxchain_info {
 } rxchain_info_t;
 #endif /* BCM_ROUTER_DHD && HNDCTF */
 
-/* This can be overwritten by module parameter defined in dhd_linux.c
- * or by dhd iovar h2d_max_txpost.
- */
-int h2d_max_txpost = H2DRING_TXPOST_MAX_ITEM;
-#if defined(DHD_HTPUT_TUNABLES)
-int h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_MAX_ITEM;
+/* Legacy ring sizes for 1Gbps and lesser */
+#define H2DRING_TXPOST_SIZE_V1		512u
+#define H2DRING_HTPUT_TXPOST_SIZE_V1	512u	/* Keep it same as H2DRING_TXPOST_SIZE_V1 */
+#define D2HRING_TXCPL_SIZE_V1		1024u
+
+#define H2DRING_RXPOST_SIZE_V1		512u
+#define D2HRING_RXCPL_SIZE_V1		512u
+
+#define H2DRING_CTRLPOST_SIZE_V1	64u
+#define D2HRING_CTRLCPL_SIZE_V1		64u
+
+#define RX_BUF_BURST_V1			32u	/* Rx buffers for MSDU Data */
+#define RX_BUFPOST_THRESHOLD_V1		32u	/* Rxbuf post threshold */
+
+/* Ring sizes version 2 for 2Gbps */
+#define H2DRING_TXPOST_SIZE_V2		512u
+#define H2DRING_HTPUT_TXPOST_SIZE_V2	2048u	/* ONLY for 4 160 MHz BE flowrings */
+#define D2HRING_TXCPL_SIZE_V2		2048u
+
+#define H2DRING_RXPOST_SIZE_V2		2048u
+#define D2HRING_RXCPL_SIZE_V2		1024u
+
+#define H2DRING_CTRLPOST_SIZE_V2	128u
+#define D2HRING_CTRLCPL_SIZE_V2		64u
+
+#define RX_BUF_BURST_V2			64u	/* Rx buffers for MSDU Data */
+#define RX_BUFPOST_THRESHOLD_V2		64u	/* Rxbuf post threshold */
+
+#ifdef DHD_HTPUT_TUNABLES
+#define RING_SIZE_VERSION		2u
+#else
+#define RING_SIZE_VERSION		1u
 #endif /* DHD_HTPUT_TUNABLES */
+
+int ring_size_version;
+int ring_size_alloc_version;
+
+uint16 h2d_max_txpost;
+uint16 h2d_htput_max_txpost;
+uint16 d2h_max_txcpl;
+
+uint16 h2d_max_rxpost;
+uint16 d2h_max_rxcpl;
+
+uint16 h2d_max_ctrlpost;
+uint16 d2h_max_ctrlcpl;
+
+uint16 rx_buf_burst;
+uint16 rx_bufpost_threshold;
+
+void
+dhd_prot_set_ring_size_ver(dhd_pub_t *dhd, int version)
+{
+	if (ring_size_alloc_version < version) {
+		DHD_ERROR(("%s: Ring alloced version(%d) is lesser than requested(%d), ABORT\n",
+			__FUNCTION__, ring_size_alloc_version, version));
+		return;
+	}
+	ring_size_version = version;
+	switch (version) {
+		case 1:
+			h2d_max_txpost = H2DRING_TXPOST_SIZE_V1;
+			h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_SIZE_V1;
+			d2h_max_txcpl = D2HRING_TXCPL_SIZE_V1;
+
+			h2d_max_rxpost = H2DRING_RXPOST_SIZE_V1;
+			d2h_max_rxcpl = D2HRING_RXCPL_SIZE_V1;
+
+			h2d_max_ctrlpost = H2DRING_CTRLPOST_SIZE_V1;
+			d2h_max_ctrlcpl = D2HRING_CTRLCPL_SIZE_V1;
+
+			rx_buf_burst = RX_BUF_BURST_V1;
+			rx_bufpost_threshold = RX_BUFPOST_THRESHOLD_V1;
+			break;
+		case 2:
+			h2d_max_txpost = H2DRING_TXPOST_SIZE_V2;
+			h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_SIZE_V2;
+			d2h_max_txcpl = D2HRING_TXCPL_SIZE_V2;
+
+			h2d_max_rxpost = H2DRING_RXPOST_SIZE_V2;
+			d2h_max_rxcpl = D2HRING_RXCPL_SIZE_V2;
+
+			h2d_max_ctrlpost = H2DRING_CTRLPOST_SIZE_V2;
+			d2h_max_ctrlcpl = D2HRING_CTRLCPL_SIZE_V2;
+
+			rx_buf_burst = RX_BUF_BURST_V2;
+			rx_bufpost_threshold = RX_BUFPOST_THRESHOLD_V2;
+			break;
+		default:
+			DHD_ERROR(("%s: invalid override version:%d", __FUNCTION__, version));
+	}
+}
 
 #ifdef AGG_H2D_DB
 bool agg_h2d_db_enab = TRUE;
@@ -558,6 +636,8 @@ typedef struct dhd_prot {
 	osl_t *osh;		/* OSL handle */
 	uint16 rxbufpost_sz;
 	uint16 rxbufpost;
+	uint16 rx_buf_burst;
+	uint16 rx_bufpost_threshold;
 	uint16 max_rxbufpost;
 	uint32 tot_rxbufpost;
 	uint32 tot_rxcpl;
@@ -1018,7 +1098,7 @@ dhd_prot_get_h2d_rx_post_active(dhd_pub_t *dhd)
 	wr = flow_ring->wr;
 
 	if (dhd->dma_d2h_ring_upd_support) {
-		rd = dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_RD_UPD, flow_ring->idx);
+		rd = dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_RD_UPD, flow_ring->idx);
 	} else {
 		dhd_bus_cmn_readshared(dhd->bus, &rd, RING_RD_UPD, flow_ring->idx);
 	}
@@ -1065,6 +1145,32 @@ dhd_prot_is_cmpl_ring_empty(dhd_pub_t *dhd, void *prot_info)
 	return ret;
 }
 
+/* returns TRUE if there are pending ctrl completions to be processed at host */
+bool
+dhd_prot_check_pending_ctrl_cmpls(dhd_pub_t *dhd)
+{
+	msgbuf_ring_t *ring = &dhd->prot->d2hring_ctrl_cpln;
+	uint16 wr, host_rd;
+	bool ret;
+
+	if (dhd->dma_d2h_ring_upd_support) {
+		wr = ring->wr;
+	} else {
+		dhd_bus_cmn_readshared(dhd->bus, &wr, RING_WR_UPD, ring->idx);
+	}
+
+	if (wr > ring->max_items) {
+		DHD_ERROR(("%s(): ring %p, ring->name %s, wr %d ring->max_items %d\n",
+			__FUNCTION__, ring, ring->name, wr, ring->max_items));
+		return FALSE;
+	}
+
+	host_rd = ring->rd;
+	/* Consider the ring as processed if host rd and dongle wr are same */
+	ret = (host_rd != wr) ? TRUE : FALSE;
+	return ret;
+}
+
 void
 dhd_prot_dump_ring_ptrs(void *prot_info)
 {
@@ -1073,29 +1179,6 @@ dhd_prot_dump_ring_ptrs(void *prot_info)
 		ring->curr_rd, ring->rd, ring->wr));
 }
 
-uint16
-dhd_prot_get_h2d_max_txpost(dhd_pub_t *dhd)
-{
-	return (uint16)h2d_max_txpost;
-}
-void
-dhd_prot_set_h2d_max_txpost(dhd_pub_t *dhd, uint16 max_txpost)
-{
-	h2d_max_txpost = max_txpost;
-}
-#if defined(DHD_HTPUT_TUNABLES)
-uint16
-dhd_prot_get_h2d_htput_max_txpost(dhd_pub_t *dhd)
-{
-	return (uint16)h2d_htput_max_txpost;
-}
-void
-dhd_prot_set_h2d_htput_max_txpost(dhd_pub_t *dhd, uint16 htput_max_txpost)
-{
-	h2d_htput_max_txpost = htput_max_txpost;
-}
-
-#endif /* DHD_HTPUT_TUNABLES */
 /**
  * D2H DMA to completion callback handlers. Based on the mode advertised by the
  * dongle through the PCIE shared region, the appropriate callback will be
@@ -3227,11 +3310,14 @@ static int
 dhd_prot_allocate_bufs(dhd_pub_t *dhd, dhd_prot_t *prot)
 {
 
+	ring_size_alloc_version = RING_SIZE_VERSION;
+	dhd_prot_set_ring_size_ver(dhd, RING_SIZE_VERSION);
+
 	/* Common Ring Allocations */
 
 	/* Ring  0: H2D Control Submission */
 	if (dhd_prot_ring_attach(dhd, &prot->h2dring_ctrl_subn, "h2dctrl",
-	        H2DRING_CTRL_SUB_MAX_ITEM, H2DRING_CTRL_SUB_ITEMSIZE,
+	        h2d_max_ctrlpost, H2DRING_CTRL_SUB_ITEMSIZE,
 	        BCMPCIE_H2D_MSGRING_CONTROL_SUBMIT) != BCME_OK) {
 		DHD_ERROR(("%s: dhd_prot_ring_attach H2D Ctrl Submission failed\n",
 			__FUNCTION__));
@@ -3240,7 +3326,7 @@ dhd_prot_allocate_bufs(dhd_pub_t *dhd, dhd_prot_t *prot)
 
 	/* Ring  1: H2D Receive Buffer Post */
 	if (dhd_prot_ring_attach(dhd, &prot->h2dring_rxp_subn, "h2drxp",
-	        H2DRING_RXPOST_MAX_ITEM, H2DRING_RXPOST_ITEMSIZE,
+	        h2d_max_rxpost, H2DRING_RXPOST_ITEMSIZE,
 	        BCMPCIE_H2D_MSGRING_RXPOST_SUBMIT) != BCME_OK) {
 		DHD_ERROR(("%s: dhd_prot_ring_attach H2D RxPost failed\n",
 			__FUNCTION__));
@@ -3249,7 +3335,7 @@ dhd_prot_allocate_bufs(dhd_pub_t *dhd, dhd_prot_t *prot)
 
 	/* Ring  2: D2H Control Completion */
 	if (dhd_prot_ring_attach(dhd, &prot->d2hring_ctrl_cpln, "d2hctrl",
-	        D2HRING_CTRL_CMPLT_MAX_ITEM, D2HRING_CTRL_CMPLT_ITEMSIZE,
+	        d2h_max_ctrlcpl, D2HRING_CTRL_CMPLT_ITEMSIZE,
 	        BCMPCIE_D2H_MSGRING_CONTROL_COMPLETE) != BCME_OK) {
 		DHD_ERROR(("%s: dhd_prot_ring_attach D2H Ctrl Completion failed\n",
 			__FUNCTION__));
@@ -3258,7 +3344,7 @@ dhd_prot_allocate_bufs(dhd_pub_t *dhd, dhd_prot_t *prot)
 
 	/* Ring  3: D2H Transmit Complete */
 	if (dhd_prot_ring_attach(dhd, &prot->d2hring_tx_cpln, "d2htxcpl",
-	        D2HRING_TXCMPLT_MAX_ITEM, D2HRING_TXCMPLT_ITEMSIZE,
+	        d2h_max_txcpl, D2HRING_TXCMPLT_ITEMSIZE,
 	        BCMPCIE_D2H_MSGRING_TX_COMPLETE) != BCME_OK) {
 		DHD_ERROR(("%s: dhd_prot_ring_attach D2H Tx Completion failed\n",
 			__FUNCTION__));
@@ -3268,7 +3354,7 @@ dhd_prot_allocate_bufs(dhd_pub_t *dhd, dhd_prot_t *prot)
 
 	/* Ring  4: D2H Receive Complete */
 	if (dhd_prot_ring_attach(dhd, &prot->d2hring_rx_cpln, "d2hrxcpl",
-	        D2HRING_RXCMPLT_MAX_ITEM, D2HRING_RXCMPLT_ITEMSIZE,
+	        d2h_max_rxcpl, D2HRING_RXCMPLT_ITEMSIZE,
 	        BCMPCIE_D2H_MSGRING_RX_COMPLETE) != BCME_OK) {
 		DHD_ERROR(("%s: dhd_prot_ring_attach D2H Rx Completion failed\n",
 			__FUNCTION__));
@@ -3881,6 +3967,29 @@ dhd_prot_clearcounts(dhd_pub_t *dhd)
 	prot->tx_h2d_db_cnt = 0;
 }
 
+void
+dhd_prot_update_rings_size(dhd_prot_t *prot)
+{
+	uint16 max_items;
+
+	/* Update ring max_items to MIN of allocated vs iovar overridden */
+	max_items = MIN(d2h_max_txcpl, prot->d2hring_tx_cpln.max_items);
+	d2h_max_txcpl = prot->d2hring_tx_cpln.max_items = max_items;
+
+	max_items = MIN(h2d_max_rxpost, prot->h2dring_rxp_subn.max_items);
+	h2d_max_rxpost = prot->h2dring_rxp_subn.max_items = max_items;
+
+	max_items = MIN(d2h_max_rxcpl, prot->d2hring_rx_cpln.max_items);
+	d2h_max_rxcpl = prot->d2hring_rx_cpln.max_items = max_items;
+
+	max_items = MIN(h2d_max_ctrlpost, prot->h2dring_ctrl_subn.max_items);
+	h2d_max_ctrlpost = prot->h2dring_ctrl_subn.max_items = max_items;
+
+	max_items = MIN(d2h_max_ctrlcpl, prot->d2hring_ctrl_cpln.max_items);
+	d2h_max_ctrlcpl = prot->d2hring_ctrl_cpln.max_items = max_items;
+
+}
+
 /**
  * dhd_prot_init - second stage of dhd_prot_attach. Now that the dongle has
  * completed it's initialization of the pcie_shared structure, we may now fetch
@@ -3920,9 +4029,15 @@ dhd_prot_init(dhd_pub_t *dhd)
 	if (prot->max_rxbufpost == 0) {
 		/* This would happen if the dongle firmware is not */
 		/* using the latest shared structure template */
-		prot->max_rxbufpost = DEFAULT_RX_BUFFERS_TO_POST;
+		prot->max_rxbufpost = LEGACY_MAX_RXBUFPOST;
 	}
-	DHD_ERROR(("%s:%d: MAX_RXBUFPOST = %d\n", __FUNCTION__, __LINE__, prot->max_rxbufpost));
+	prot->rx_buf_burst = rx_buf_burst;
+	prot->rx_bufpost_threshold = rx_bufpost_threshold;
+	DHD_ERROR(("%s: max_rxbufpost:%d rx_buf_burst:%d rx_bufpost_threshold:%d\n",
+		__FUNCTION__, prot->max_rxbufpost, prot->rx_buf_burst, prot->rx_bufpost_threshold));
+
+	/* Update static rings sizes if overridden by iovar */
+	dhd_prot_update_rings_size(prot);
 
 	/* Initialize.  bzero() would blow away the dma pointers. */
 	max_eventbufpost = (uint16)dhdpcie_get_max_eventbufpost(dhd->bus);
@@ -5212,9 +5327,9 @@ BCMFASTPATH(dhd_msgbuf_rxbuf_post)(dhd_pub_t *dhd, bool use_rsv_pktid)
 	int retcount = 0;
 
 	fillbufs = prot->max_rxbufpost - prot->rxbufpost;
-	while (fillbufs >= RX_BUF_BURST) {
+	while (fillbufs >= prot->rx_buf_burst) {
 		/* Post in a burst of 32 buffers at a time */
-		fillbufs = MIN(fillbufs, RX_BUF_BURST);
+		fillbufs = MIN(fillbufs, prot->rx_buf_burst);
 
 		/* Post buffers */
 		retcount = dhd_prot_rxbuf_post(dhd, fillbufs, use_rsv_pktid);
@@ -5259,7 +5374,7 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 #endif /* PCIE_INB_DW */
 	/* allocate a local buffer to store pkt buffer va, pa and length */
 	lcl_buf_size = (sizeof(void *) + sizeof(dmaaddr_t) + sizeof(uint32)) *
-		RX_BUF_BURST;
+		prot->rx_buf_burst;
 	lcl_buf = MALLOC(dhd->osh, lcl_buf_size);
 	if (!lcl_buf) {
 		DHD_ERROR(("%s: local scratch buffer allocation failed\n", __FUNCTION__));
@@ -5269,8 +5384,8 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 		return 0;
 	}
 	pktbuf = lcl_buf;
-	pktbuf_pa = (dmaaddr_t *)((uint8 *)pktbuf + sizeof(void *) * RX_BUF_BURST);
-	pktlen = (uint32 *)((uint8 *)pktbuf_pa + sizeof(dmaaddr_t) * RX_BUF_BURST);
+	pktbuf_pa = (dmaaddr_t *)((uint8 *)pktbuf + sizeof(void *) * prot->rx_buf_burst);
+	pktlen = (uint32 *)((uint8 *)pktbuf_pa + sizeof(dmaaddr_t) * prot->rx_buf_burst);
 
 	for (i = 0; i < count; i++) {
 		/* First try to dequeue from emergency queue which will be filled
@@ -7502,7 +7617,7 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 		dhd_bus_start_queue(dhd->bus);
 	}
 
-	DMA_UNMAP(dhd->osh, pa, (uint) len, DMA_RX, 0, dmah);
+	DMA_UNMAP(dhd->osh, pa, (uint) len, DMA_TX, 0, dmah);
 
 #ifdef TX_STATUS_LATENCY_STATS
 	/* update the tx status latency for flowid */
@@ -7565,19 +7680,25 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 
 	/* Store PTM timestamps */
 	ts = (ts_timestamp_t *)&txstatus->ts;
+	bzero(&txcpl_info->tx_history[txcpl_info->txcpl_hist_count],
+		sizeof(tx_cpl_history_t));
 	if (DHD_PTM_CLKID(ts->high)) {
-		bzero(&txcpl_info->tx_history[txcpl_info->txcpl_hist_count],
-			sizeof(tx_cpl_history_t));
 		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_high = ts->high;
 		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_low = ts->low;
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].host_time =
-			(uint32)OSL_SYSUPTIME_US();
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tid =
-			flow_ring_node->flow_info.tid;
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].flowid = flowid;
-		txcpl_info->txcpl_hist_count =
-			(txcpl_info->txcpl_hist_count +1) % MAX_TXCPL_HISTORY;
 	}
+	/* Tx Latency for successful xmission of non HPP packet */
+	if ((txstatus->tx_status == 0) &&
+		(ring == &dhd->prot->d2hring_tx_cpln)) {
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].latency =
+			txstatus->metadata_len & BCMPCIE_TX_PKT_LATENCY_MASK;
+	}
+	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].host_time =
+		(uint32)OSL_SYSUPTIME_US();
+	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tid =
+		flow_ring_node->flow_info.tid;
+	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].flowid = flowid;
+	txcpl_info->txcpl_hist_count =
+		(txcpl_info->txcpl_hist_count +1) % MAX_TXCPL_HISTORY;
 
 #ifdef DHD_TIMESYNC
 	if (dhd->prot->tx_ts_log_enabled) {
@@ -8375,7 +8496,7 @@ BCMFASTPATH(dhd_prot_return_rxbuf)(dhd_pub_t *dhd, msgbuf_ring_t *ring, uint32 p
 		prot->rxbufpost = 0;
 	}
 
-	if (prot->rxbufpost <= (prot->max_rxbufpost - RXBUFPOST_THRESHOLD)) {
+	if (prot->rxbufpost <= (prot->max_rxbufpost - prot->rx_bufpost_threshold)) {
 		dhd_msgbuf_rxbuf_post(dhd, FALSE); /* alloc pkt ids */
 	} else if (dhd->dma_h2d_ring_upd_support && !IDMA_ACTIVE(dhd)) {
 		/* Ring DoorBell after processing the rx packets,
@@ -9506,15 +9627,21 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 		int host_irq_disbled = dhdpcie_irq_disabled(dhd->bus);
 		if ((intstatus) && (intstatus != (uint32)-1) &&
 			(timeleft == 0) && (!dhd_query_bus_erros(dhd))) {
-			DHD_ERROR(("%s: iovar timeout trying again intstatus=%x"
+			DHD_ERROR(("%s: resumed on timeout for IOVAR happened. intstatus=%x"
 				" host_irq_disabled=%d\n",
 				__FUNCTION__, intstatus, host_irq_disbled));
 			dhd_pcie_intr_count_dump(dhd);
 			dhd_print_tasklet_status(dhd);
-			dhd_schedule_delayed_dpc_on_dpc_cpu(dhd, 0);
-			timeleft = dhd_os_ioctl_resp_wait(dhd, (uint *)&prot->ioctl_received);
+			dhd_prot_ctrl_info_print(dhd);
 			/* Clear Interrupts */
 			dhdpcie_bus_clear_intstatus(dhd->bus);
+			if (dhd_prot_check_pending_ctrl_cmpls(dhd)) {
+				DHD_ERROR(("##### %s: iovar timeout trying again #####\n",
+					__FUNCTION__));
+				dhd_schedule_delayed_dpc_on_dpc_cpu(dhd, 0);
+				timeleft = dhd_os_ioctl_resp_wait(dhd,
+						(uint *)&prot->ioctl_received);
+			}
 		}
 	}
 #endif /* DHD_RECOVER_TIMEOUT */
@@ -12802,9 +12929,8 @@ copy_hang_info_linkdown(dhd_pub_t *dhd)
 
 }
 #endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
-
 void
-dhd_prot_debug_ring_info(dhd_pub_t *dhd)
+dhd_prot_ctrl_info_print(dhd_pub_t *dhd)
 {
 	dhd_prot_t *prot = dhd->prot;
 	msgbuf_ring_t *ring;
@@ -12812,8 +12938,6 @@ dhd_prot_debug_ring_info(dhd_pub_t *dhd)
 	uint32 dma_buf_len;
 	ulong ring_tcm_rd_addr; /* dongle address */
 	ulong ring_tcm_wr_addr; /* dongle address */
-
-	DHD_ERROR(("\n ------- DUMPING IOCTL RING RD WR Pointers ------- \r\n"));
 
 	ring = &prot->h2dring_ctrl_subn;
 	dma_buf_len = ring->max_items * ring->item_len;
@@ -12863,6 +12987,22 @@ dhd_prot_debug_ring_info(dhd_pub_t *dhd)
 		DHD_ERROR(("CtrlCpl: From Shared Mem: RD: %d WR %d \r\n", rd, wr));
 	}
 	DHD_ERROR(("CtrlCpl: Expected seq num: %d \r\n", ring->seqnum % H2D_EPOCH_MODULO));
+
+}
+
+void
+dhd_prot_debug_ring_info(dhd_pub_t *dhd)
+{
+	dhd_prot_t *prot = dhd->prot;
+	msgbuf_ring_t *ring;
+	uint16 rd, wr, drd, dwr;
+	uint32 dma_buf_len;
+	ulong ring_tcm_rd_addr; /* dongle address */
+	ulong ring_tcm_wr_addr; /* dongle address */
+
+	DHD_ERROR(("\n ------- DUMPING IOCTL RING RD WR Pointers ------- \r\n"));
+
+	dhd_prot_ctrl_info_print(dhd);
 
 	ring = prot->h2dring_info_subn;
 	if (ring) {
@@ -13053,8 +13193,9 @@ dhd_prot_debug_info_print(dhd_pub_t *dhd)
 		prot->device_ipc_version,
 		prot->host_ipc_version,
 		prot->active_ipc_version));
-	DHD_ERROR(("d2h_intr_method -> %s\n",
-			dhd->bus->d2h_intr_method ? "PCIE_MSI" : "PCIE_INTX"));
+	DHD_ERROR(("d2h_intr_method -> %s d2h_intr_control -> %s\n",
+			dhd->bus->d2h_intr_method ? "PCIE_MSI" : "PCIE_INTX",
+			dhd->bus->d2h_intr_control ? "HOST_IRQ" : "D2H_INTMASK"));
 	DHD_ERROR(("max Host TS bufs to post: %d, posted %d\n",
 		prot->max_tsbufpost, prot->cur_ts_bufs_posted));
 	DHD_ERROR(("max INFO bufs to post: %d, posted %d\n",
@@ -14262,7 +14403,7 @@ dhd_update_rxstats(dhd_pub_t *dhd, host_rxbuf_cmpl_t *rxstatus)
 	uint32 marker = rxstatus->marker;
 	uint16 flags = rxstatus->flags;
 	rx_cpl_lat_info_t *rxcpl_info;
-	uint16 dur;
+	uint32 dur;
 	uint8 slice;
 	uint8 prio;
 	int8 rssi;

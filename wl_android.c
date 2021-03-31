@@ -166,6 +166,7 @@
 #define CMD_TEST_GET_TX_POWER		"TEST_GET_TX_POWER"
 #endif /* TEST_TX_POWER_CONTROL */
 #define CMD_SARLIMIT_TX_CONTROL		"SET_TX_POWER_CALLING"
+#define CMD_SARLIMIT_NR_SUB6_BANDINFO	"SET_TX_POWER_NRSUB6_BAND"
 #ifdef SUPPORT_SET_TID
 #define CMD_SET_TID		"SET_TID"
 #define CMD_GET_TID		"GET_TID"
@@ -7541,6 +7542,8 @@ wl_android_get_tx_power(struct net_device *dev, char *command, int total_len)
 }
 #endif /* TEST_TX_POWER_CONTROL */
 
+#define NRSUB6_SAR_ENABLE "6"
+
 static int
 wl_android_set_sarlimit_txctrl(struct net_device *dev, const char* string_num)
 {
@@ -7595,6 +7598,57 @@ wl_android_set_sarlimit_txctrl(struct net_device *dev, const char* string_num)
 	err = wldev_iovar_setint(dev, "sar_enable", setval);
 	if (unlikely(err)) {
 		DHD_ERROR(("%s: Failed to set sar_enable - error (%d)\n", __FUNCTION__, err));
+		goto error;
+	}
+	err = BCME_OK;
+error:
+	return err;
+}
+
+static int
+wl_android_set_tx_power_nrsub6_band(struct net_device *dev, const char* string_num)
+{
+	int err = BCME_ERROR;
+	s32 bandinfo = bcm_atoi(string_num);
+
+	/* As Samsung specific and their requirement,
+	 * the bandinfo set as the following form.
+	 * -1 : Disabled bandinfo control
+	 *  2 : NR Sub6 band2 tx power backoff
+	 *  25 : NR Sub6 band25 tx power backoff
+	 *  41 : NR Sub6 band41 tx power backoff
+	 *  44 : NR Sub6 band44 tx power backoff
+	 *  66 : NR Sub6 band66 tx power backoff
+	 *  77 : NR Sub6 band77 tx power backoff
+	 */
+
+	if ((bandinfo < SAR_NR_SUB6_BANDINFO_DISABLE) ||
+			(bandinfo > SAR_NR_SUB6_BANDINFO_BAND77)) {
+		DHD_ERROR(("%s: Request for Unsupported:%d\n",
+			__FUNCTION__, bcm_atoi(string_num)));
+		err = BCME_RANGE;
+		goto error;
+	}
+
+	//Set SAR_ENABLE as Sub6
+	err = wl_android_set_sarlimit_txctrl(dev, NRSUB6_SAR_ENABLE);
+	if (unlikely(err)) {
+		DHD_ERROR(("%s: Failed to set sar_enable as 6(NR_Sub6 enable) - error (%d)\n",
+			__FUNCTION__, err));
+		goto error;
+	}
+
+	if (bandinfo == SAR_NR_SUB6_BANDINFO_DISABLE) {
+		DHD_ERROR(("%s: SAR NR Sub6 bandinfo disable!\n", __FUNCTION__));
+	} else {
+		DHD_ERROR(("%s: SAR NR Sub6 bandinfo set band%d\n",
+			__FUNCTION__, bandinfo));
+	}
+
+	err = wldev_iovar_setint(dev, "sar_nrsub6_bandinfo", bandinfo);
+	if (unlikely(err)) {
+		DHD_ERROR(("%s: Failed to set sar_nrsub6_bandinfo - error (%d)\n",
+			__FUNCTION__, err));
 		goto error;
 	}
 	err = BCME_OK;
@@ -10026,7 +10080,7 @@ exit:
 		*/
 		if (
 #ifdef WL_TWT
-			!((ret == BCME_BUSY) &&
+			!((ret == -EBUSY) &&
 			((strnicmp(command, CMD_TWT_SETUP, strlen(CMD_TWT_SETUP)) == 0) ||
 			(strnicmp(command, CMD_TWT_TEARDOWN, strlen(CMD_TWT_TEARDOWN)) == 0) ||
 			(strnicmp(command, CMD_TWT_INFO, strlen(CMD_TWT_INFO)) == 0))) &&
@@ -10206,6 +10260,7 @@ _wl_android_bcnrecv_start(struct bcm_cfg80211 *cfg, struct net_device *ndev, boo
 {
 	s32 err = BCME_OK;
 	struct net_device *pdev = bcmcfg_to_prmry_ndev(cfg);
+	dhd_pub_t *dhd = cfg->pub;
 
 	/* check any scan is in progress before beacon recv scan trigger IOVAR */
 	if (wl_get_drv_status_all(cfg, SCANNING)) {
@@ -10246,6 +10301,17 @@ _wl_android_bcnrecv_start(struct bcm_cfg80211 *cfg, struct net_device *ndev, boo
 		goto exit;
 	}
 #endif /* WL_NAN */
+
+	if (dhd->early_suspended) {
+		/* Set BEACON_RECV in suspend mode */
+		WL_INFORM_MEM(("Already suspend mode, Aborting beacon recv start\n"));
+		cfg->bcnrecv_info.bcnrecv_state = BEACON_RECV_SUSPENDED;
+		if ((err = wl_android_bcnrecv_event(pdev, BCNRECV_ATTR_STATUS,
+			WL_BCNRECV_SUSPENDED, WL_BCNRECV_SUSPEND, NULL, 0)) != BCME_OK) {
+			WL_ERR(("failed to send bcnrecv event, error:%d\n", err));
+		}
+		goto exit;
+	}
 
 	/* Triggering an sendup_bcn iovar */
 	err = wldev_iovar_setint(pdev, "sendup_bcn", 1);
@@ -10989,6 +11055,71 @@ exit :
 
 #ifdef WL_TWT
 static int
+wl_android_twt_bcmerr_to_kernel_err(int bcm_err)
+{
+	int ret = 0;
+
+	switch (bcm_err) {
+		case BCME_OK:
+			ret = 0;
+			break;
+		case BCME_ERROR:
+			ret = -EAGAIN;
+			break;
+		case BCME_BADARG: /* Bad Argument */
+			ret = -EINVAL;
+			break;
+		case BCME_RANGE: /* TWT parameter value provided is not in allowed range */
+			ret = -ERANGE;
+			break;
+		case BCME_BUSY:
+			/* Busy
+			* 1. STA is in off-channel/Scan in progress
+			* 2. STA is in allTWT Suspend mode
+			* 3. Other TWT Action frame transmission is not completed yet
+			*/
+			ret = -EBUSY;
+			break;
+		case BCME_NOTASSOCIATED: /* STA Not Associated */
+			ret = -ENOTCONN;
+			break;
+		case BCME_EPERM: /* Not Permitted because of
+			* 1. More than one TWT
+			* 2. More than one concurrent connection is active.
+			* 3. BT is active
+			*/
+			ret = -EPERM;
+			break;
+		case BCME_NOTFOUND: /* Not Found. Peer not found for given mac address */
+		case BCME_NORESOURCE: /* Not Enough resources to establish new TWT session */
+			ret = -ENODEV;
+			break;
+		case BCME_NOMEM:
+			ret = -ENOMEM;
+			break;
+		case BCME_UNSUPPORTED: /* Unsupported.
+			* 1. No TWT support
+			* 2. TWT capabilities is not set by device or peer device
+			*/
+			ret = -EOPNOTSUPP;
+			break;
+		case BCME_VERSION:
+			ret = -ENOEXEC;
+			break;
+		case BCME_BUFTOOSHORT:
+			ret = -ENOBUFS;
+			break;
+		default:
+			ret = -EAGAIN;
+			break;
+	}
+
+	WL_DBG(("twt wifi_error ret:%d\n", ret));
+
+	return ret;
+}
+
+static int
 wl_android_twt_setup(struct net_device *ndev, char *command, int total_len)
 {
 	wl_twt_config_t val;
@@ -11175,7 +11306,7 @@ wl_android_twt_setup(struct net_device *ndev, char *command, int total_len)
 		WL_ERR(("twt config set failed. ret:%d\n", bw));
 	}
 exit:
-	return bw;
+	return wl_android_twt_bcmerr_to_kernel_err(bw);
 }
 
 static int
@@ -11519,10 +11650,10 @@ wl_android_twt_info(struct net_device *ndev, char *command, int total_len)
 	bw = wldev_iovar_setbuf(ndev, "twt",
 		mybuf, sizeof(mybuf) - rem_len, res_buf, WLC_IOCTL_SMLEN, NULL);
 	if (bw < 0) {
-		WL_ERR(("twt teardown failed. ret:%d\n", bw));
+		WL_ERR(("twt info failed. ret:%d\n", bw));
 	}
 exit:
-	return bw;
+	return wl_android_twt_bcmerr_to_kernel_err(bw);
 
 }
 
@@ -11585,7 +11716,7 @@ wl_android_twt_teardown(struct net_device *ndev, char *command, int total_len)
 		WL_ERR(("twt teardown failed. ret:%d\n", bw));
 	}
 exit:
-	return bw;
+	return wl_android_twt_bcmerr_to_kernel_err(bw);
 }
 
 /* wl twt stats result display version 2 */
@@ -12241,6 +12372,11 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		strlen(CMD_SARLIMIT_TX_CONTROL)) == 0) {
 		int skip = strlen(CMD_SARLIMIT_TX_CONTROL) + 1;
 		bytes_written = wl_android_set_sarlimit_txctrl(net, (const char*)command+skip);
+	}
+	else if (strnicmp(command, CMD_SARLIMIT_NR_SUB6_BANDINFO,
+		strlen(CMD_SARLIMIT_NR_SUB6_BANDINFO)) == 0) {
+		int skip = strlen(CMD_SARLIMIT_NR_SUB6_BANDINFO) + 1;
+		bytes_written = wl_android_set_tx_power_nrsub6_band(net, (const char*)command+skip);
 	}
 #ifdef SUPPORT_SET_TID
 	else if (strnicmp(command, CMD_SET_TID, strlen(CMD_SET_TID)) == 0) {

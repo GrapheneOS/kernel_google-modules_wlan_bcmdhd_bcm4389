@@ -652,7 +652,8 @@ typedef uint32 ratespec_t;
 #define WLC_IOCTL_MAXLEN            8192u   /* "max" length ioctl buffer */
 #endif /* MACOSX */
 
-#define WLC_IOCTL_MEDLEN            1912u   /* "med" length ioctl buffer */
+#define WLC_IOCTL_MEDLEN            1936u   /* "med" length ioctl buffer */
+
 #define WLC_IOCTL_SMLEN              256u   /* "small" length ioctl buffer */
 
 #define WLC_SAMPLECOLLECT_MAXLEN   10240u   /* Max Sample Collect buffer for two cores */

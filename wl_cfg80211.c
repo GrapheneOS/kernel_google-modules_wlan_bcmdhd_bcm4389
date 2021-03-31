@@ -2903,9 +2903,15 @@ exit:
 		}
 		wl_cfg80211_iface_state_ops(primary_ndev->ieee80211_ptr,
 				WL_IF_DELETE_DONE, wl_iftype, wl_mode);
+		if (
 #ifdef WL_NAN
-		if (!((cfg->nancfg->mac_rand) && (wl_iftype == WL_IF_TYPE_NAN)))
+			(!((cfg->nancfg->mac_rand) && (wl_iftype == WL_IF_TYPE_NAN))) &&
 #endif /* WL_NAN */
+#if defined(WL_STATIC_IF) && (defined(DHD_USE_RANDMAC) || defined(WL_SOFTAP_RAND))
+			/* interface delete is invalid for static interface */
+			(!IS_CFG80211_STATIC_IF(cfg, wdev_to_ndev(wdev))) &&
+#endif /* WL_STATIC_IF && (DHD_USE_RANDMAC || WL_SOFTAP_RAND) */
+			(TRUE))
 		{
 			wl_release_vif_macaddr(cfg, wdev->netdev->dev_addr, wl_iftype);
 		}
@@ -5862,6 +5868,33 @@ wl_config_assoc_security(struct bcm_cfg80211 *cfg,
 	}
 #endif /* WL_FILS */
 
+#ifdef WL_PSK_OFFLOAD
+	/* Add pmk for psk in connect path */
+	if (sme->crypto.psk) {
+		wsec_pmk_t pmk = {0};
+
+		pmk.key_len = WL_SUPP_PMK_LEN;
+		if (pmk.key_len > sizeof(pmk.key)) {
+			err = -EINVAL;
+			goto exit;
+		}
+		pmk.flags = 0;
+		err = memcpy_s(&pmk.key, sizeof(pmk.key), sme->crypto.psk, pmk.key_len);
+		if (err) {
+			err = -EINVAL;
+			goto exit;
+		}
+
+		err = wldev_ioctl_set(dev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
+		if (err) {
+			WL_ERR(("pmk set with WLC_SET_WSEC_PMK failed, error:%d", err));
+			goto exit;
+		} else {
+			WL_DBG(("pmk added succesfully\n"));
+		}
+	}
+#endif /* WL_PSK_OFFLOAD */
+
 exit:
 	return err;
 }
@@ -7074,21 +7107,7 @@ wl_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 		pmk.key_len = params->key_len;
 		pmk.flags = 0; /* 0:PMK, WSEC_PASSPHRASE:PSK, WSEC_SAE_PASSPHRASE:SAE_PSK */
 
-		if ((sec->wpa_auth == WLAN_AKM_SUITE_8021X) ||
-			(sec->wpa_auth == WL_AKM_SUITE_SHA256_1X)) {
-			err = wldev_iovar_setbuf_bsscfg(dev, "okc_info_pmk", pmk.key, pmk.key_len,
-				iov_buf, WLC_IOCTL_SMLEN, bssidx, NULL);
-			if (err) {
-				/* could fail in case that 'okc' is not supported */
-				if (err == BCME_UNSUPPORTED) {
-					WL_DBG_MEM(("okc_info_pmk not supported. Ignore.\n"));
-				} else {
-					WL_INFORM_MEM(("okc_info_pmk failed (%d). Ignore.\n", err));
-				}
-				/* OKC failure is not fatal */
-				err = BCME_OK;
-			}
-		}
+		wl_cfg80211_set_okc_pmkinfo(cfg, dev, pmk, TRUE);
 
 		err = wldev_ioctl_set(dev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
 		if (err) {
@@ -8401,6 +8420,35 @@ wl_update_pmklist(struct net_device *dev, struct wl_pmk_list *pmk_list,
 	return err;
 }
 
+void
+wl_cfg80211_set_okc_pmkinfo(struct bcm_cfg80211 *cfg, struct net_device *dev,
+	wsec_pmk_t pmk, bool validate_sec)
+{
+	struct wl_security *sec;
+	uint8 iov_buf[WLC_IOCTL_SMLEN] = {0};
+	s32 err = 0;
+
+	sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
+	if (validate_sec && !(sec->wpa_auth == WLAN_AKM_SUITE_8021X) &&
+		!(sec->wpa_auth == WL_AKM_SUITE_SHA256_1X)) {
+		return;
+	}
+
+	err = wldev_iovar_setbuf(dev, "okc_info_pmk", pmk.key, pmk.key_len, iov_buf,
+			WLC_IOCTL_SMLEN,  NULL);
+	if (err) {
+		/* could fail in case that 'okc' is not supported */
+		if (err == BCME_UNSUPPORTED) {
+			WL_DBG_MEM(("okc_info_pmk not supported. Ignore.\n"));
+		} else {
+			WL_INFORM_MEM(("okc_info_pmk failed (%d). Ignore.\n", err));
+		}
+	} else {
+		WL_DBG_MEM(("set okc_info_pmk complete\n"));
+	}
+	return;
+}
+
 /* TODO: remove temporal cfg->pmk_list list, and call wl_cfg80211_update_pmksa for single
  * entry operation.
  */
@@ -8517,6 +8565,9 @@ static s32 wl_cfg80211_update_pmksa(struct wiphy *wiphy, struct net_device *dev,
 	s32 err = 0;
 	pmkid_list_v3_t *pmk_list;
 	uint32 alloc_len;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
+	wsec_pmk_t pmk = {0};
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0) */
 
 	RETURN_EIO_IF_NOT_UP(cfg);
 
@@ -8562,6 +8613,16 @@ static s32 wl_cfg80211_update_pmksa(struct wiphy *wiphy, struct net_device *dev,
 				goto exit;
 			}
 			pmk_list->pmkid->pmk_len = pmksa->pmk_len;
+			pmk.key_len = pmksa->pmk_len;
+			err = memcpy_s(&pmk.key, sizeof(pmk.key), pmksa->pmk, pmksa->pmk_len);
+			if (err) {
+				goto exit;
+			}
+			/* Call wl_cfg80211_set_okc_pmkinfo() with validate_sec
+			 * as false, since sec->wpa_auth is not available in the
+			 * Wi-Fi toggle context.
+			 */
+			wl_cfg80211_set_okc_pmkinfo(cfg, dev, pmk, FALSE);
 		}
 		if (pmksa->ssid) {
 			err = memcpy_s(&pmk_list->pmkid->ssid, sizeof(pmk_list->pmkid->ssid),
@@ -12886,7 +12947,7 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	tim = bcm_parse_tlvs(ie, ie_len, WLAN_EID_TIM);
 	if (tim) {
-		dtim_period = tim->data[1];
+		dtim_period = *(tim->data + 1);
 	} else {
 		/*
 		* active scan was done so we could not get dtim
@@ -19480,7 +19541,6 @@ static int wl_cfg80211_set_pmk(struct wiphy *wiphy, struct net_device *dev,
 	int ret = 0;
 	wsec_pmk_t pmk = {0};
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	struct wl_security *sec;
 	s32 bssidx;
 
 	pmk.key_len = conf->pmk_len;
@@ -19501,16 +19561,7 @@ static int wl_cfg80211_set_pmk(struct wiphy *wiphy, struct net_device *dev,
 		return ret;
 	}
 
-	sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
-	if ((sec->wpa_auth == WLAN_AKM_SUITE_8021X) ||
-		(sec->wpa_auth == WL_AKM_SUITE_SHA256_1X)) {
-		ret = wldev_iovar_setbuf_bsscfg(dev, "okc_info_pmk", pmk.key, pmk.key_len,
-			cfg->ioctl_buf, WLC_IOCTL_SMLEN, bssidx, &cfg->ioctl_buf_sync);
-		if (ret) {
-			/* could fail in case that 'okc' is not supported */
-			WL_INFORM_MEM(("okc_info_pmk failed, err=%d (ignore)\n", ret));
-		}
-	}
+	wl_cfg80211_set_okc_pmkinfo(cfg, dev, pmk, TRUE);
 
 	ret = wldev_ioctl_set(dev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
 	if (ret) {
@@ -20937,16 +20988,13 @@ wl_cfg80211_sup_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgde
 
 	if ((status == WLC_SUP_KEYED || status == WLC_SUP_KEYXCHANGE_WAIT_G1) &&
 	    reason == WLC_E_SUP_OTHER) {
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 14, 0)) || defined(WL_VENDOR_EXT_SUPPORT)
-		/* TODO: above kernel 4.15.0, we should use native NL80211_CMD_PORT_AUTHORIZED
-		 * API rather than vendor-specific one. However it's not working yet, we may need to
-		 * check nl80211 initializing routine get it work. Until then, let use legacy
-		 * vendor-specific method.
-		 */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+		cfg80211_port_authorized(ndev, (const u8 *)&event->addr, GFP_KERNEL);
+#elif (LINUX_VERSION_CODE > KERNEL_VERSION(3, 14, 0)) || defined(WL_VENDOR_EXT_SUPPORT)
 		err = wl_cfgvendor_send_async_event(bcmcfg_to_wiphy(cfg), ndev,
 			BRCM_VENDOR_EVENT_PORT_AUTHORIZED, NULL, 0);
-		WL_INFORM_MEM(("4way HS finished. port authorized event sent\n"));
 #endif /* LINUX_VERSION_CODE > KERNEL_VERSION(3, 14, 0) || WL_VENDOR_EXT_SUPPORT */
+		WL_INFORM_MEM(("4way HS finished. port authorized event sent\n"));
 		/* Post SCB authorize actions */
 		wl_cfg80211_post_scb_auth(cfg, ndev);
 	} else if (status < WLC_SUP_KEYXCHANGE_WAIT_G1 && (reason != WLC_E_SUP_OTHER &&
@@ -21738,8 +21786,8 @@ bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len)
 	}
 
 	if (ie && (ie->len >= WL_GAS_MIN_LEN) &&
-		(memcmp(&ie->data[WL_GAS_WFA_OFFSET], WFA_OUI, 3) == 0) &&
-		(ie->data[WL_GAS_STYPE_OFFSET] == WL_GAS_WFA_STYPE_DPP)) {
+		(memcmp(ie->data + WL_GAS_WFA_OFFSET, WFA_OUI, 3) == 0) &&
+		(*(ie->data + WL_GAS_STYPE_OFFSET) == WL_GAS_WFA_STYPE_DPP)) {
 		WL_DBG(("DPP GAS FRAME. type:%d\n", act_frm->action));
 		return true;
 	}

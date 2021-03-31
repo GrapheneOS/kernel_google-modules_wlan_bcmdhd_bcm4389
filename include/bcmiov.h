@@ -163,7 +163,7 @@ struct bcm_iov_batch_subcmd {
 		uint32 options;
 		uint32 status;
 	} u;
-	uint8 data[1];
+	uint8 data[BCM_FLEX_ARRAY];
 };
 
 struct bcm_iov_batch_buf {
@@ -210,9 +210,9 @@ struct bcm_iov_batch_buf {
  */
 struct bcm_iov_buf {
 	uint16 version;
-	uint16 len;     /* length of data, after id */
+	uint16 len;                  /* length of data, after id */
 	bcm_iov_cmd_id_t id;
-	uint16 data[1]; /* 32 bit alignment may be repurposed by the command */
+	uint16 data[BCM_FLEX_ARRAY]; /* 32 bit alignment may be repurposed by the command */
 	/* command specific data follows */
 };
 

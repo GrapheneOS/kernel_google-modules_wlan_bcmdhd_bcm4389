@@ -254,12 +254,5 @@ int dhd_get_hscb_buff(dhd_pub_t *dhd, uint32 offset, uint32 length, void * buff)
 extern void dhd_prot_smmu_fault_dump(dhd_pub_t *dhdp);
 #endif /* DHD_MAP_LOGGING */
 
-extern uint16 dhd_prot_get_h2d_max_txpost(dhd_pub_t *dhd);
-extern void dhd_prot_set_h2d_max_txpost(dhd_pub_t *dhd, uint16 max_txpost);
-
-#if defined(DHD_HTPUT_TUNABLES)
-extern uint16 dhd_prot_get_h2d_htput_max_txpost(dhd_pub_t *dhd);
-extern void dhd_prot_set_h2d_htput_max_txpost(dhd_pub_t *dhd, uint16 max_txpost);
-#endif /* DHD_HTPUT_TUNABLES */
-
+void dhd_prot_set_ring_size_ver(dhd_pub_t *dhd, int version);
 #endif /* _dhd_proto_h_ */

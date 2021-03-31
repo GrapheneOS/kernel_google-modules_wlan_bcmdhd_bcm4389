@@ -287,7 +287,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_ibss_attr_s {
 	*/
 	uint8 map_ctrl;
 	/* avail. intervals bitmap, var len  */
-	uint8 avail_bmp[1];
+	uint8 avail_bmp[BCM_FLEX_ARRAY];
 } BWL_POST_PACKED_STRUCT wifi_nan_ibss_attr_t;
 
 /* Country code attribute  */
@@ -309,7 +309,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_favail_attr_s {
 	/* MAP id: val [0..15], values[16-255] reserved */
 	uint8 map_id;
 	/*  availibility entry, var len */
-	uint8 avil_entry[1];
+	uint8 avil_entry[BCM_FLEX_ARRAY];
 } BWL_POST_PACKED_STRUCT wifi_nan_favail_attr_t;
 
 /* Further Availability MAP attr  */
@@ -325,7 +325,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_avail_entry_s {
 	/* channel number */
 	uint8 chan;
 	/*  avail bmp, var len */
-	uint8 avail_bmp[1];
+	uint8 avail_bmp[BCM_FLEX_ARRAY];
 } BWL_POST_PACKED_STRUCT wifi_nan_avail_entry_t;
 
 /* Map control Field */
@@ -342,10 +342,10 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_avail_entry_s {
 /* TODO remove */
 typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_vendor_attr_s {
 	uint8	id;			/* 0xDD */
-	uint16	len;		/* IE length */
-	uint8	oui[DOT11_OUI_LEN]; /* 00-90-4C */
-	uint8	type;		/* attribute type */
-	uint8	attr[1];	/* var len attributes */
+	uint16	len;			/* IE length */
+	uint8	oui[DOT11_OUI_LEN]; 	/* 00-90-4C */
+	uint8	type;			/* attribute type */
+	uint8	attr[BCM_FLEX_ARRAY];	/* var len attributes */
 } BWL_POST_PACKED_STRUCT wifi_nan_vendor_attr_t;
 
 #define NAN_VENDOR_HDR_SIZE	(OFFSETOF(wifi_nan_vendor_attr_t, attr))
@@ -377,7 +377,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_p2p_op_attr_s {
 	*/
 	uint8 map_ctrl;
 	/* avail. intervals bitmap */
-	uint8 avail_bmp[1];
+	uint8 avail_bmp[BCM_FLEX_ARRAY];
 } BWL_POST_PACKED_STRUCT wifi_nan_p2p_op_attr_t;
 
 /* ranging attribute */
@@ -557,7 +557,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_container_attr_s {
 	uint8 id;	/* id - 0x20 */
 	uint16 len;	/* Total length of following IEs */
 	uint8 map_id;	/* map id */
-	uint8 data[1];	/* Data pointing to one or more IEs */
+	uint8 data[BCM_FLEX_ARRAY];	/* Data pointing to one or more IEs */
 } BWL_POST_PACKED_STRUCT wifi_nan_container_attr_t;
 
 /* NAN 2.0 NAN avail attribute */
@@ -568,7 +568,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_avail_attr_s {
 	uint16 len;	/* total length */
 	uint8 seqid;	/* sequence id */
 	uint16 ctrl;	/* attribute control */
-	uint8 entry[1];	/* availability entry list */
+	uint8 entry[BCM_FLEX_ARRAY];	/* availability entry list */
 } BWL_POST_PACKED_STRUCT wifi_nan_avail_attr_t;
 
 /* for processing/building time bitmap info in nan_avail_entry */
@@ -669,7 +669,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_channel_entry_s {
 
 typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_channel_entry_list_s {
 	uint8 chan_info;
-	uint8 var[0];
+	uint8 var[];
 } BWL_POST_PACKED_STRUCT wifi_nan_channel_entry_list_t;
 
 /* define for chan_info */

@@ -246,6 +246,8 @@ typedef struct dhd_bus {
 #if !defined(NDIS)
 	struct pci_dev  *rc_dev;	/* pci RC device handle */
 	struct pci_dev  *dev;		/* pci device handle */
+	uint32 aspm_enab_during_suspend;	/* aspm enab flag during suspend */
+	uint32 l1ss_enab_during_suspend;	/* l1ss enab flag during suspend */
 #endif /* !defined(NDIS) */
 #ifdef DHD_EFI
 	void *pcie_dev;
@@ -367,6 +369,7 @@ typedef struct dhd_bus {
 #endif /* PCIE_OOB */
 	bool	irq_registered;
 	bool	d2h_intr_method;
+	bool	d2h_intr_control;
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	uint8 no_cfg_restore;
 	bool read_shm_fail;
@@ -440,6 +443,7 @@ typedef struct dhd_bus {
 	uint64 dpc_exit_time;
 	uint64 resched_dpc_time;
 	uint64 last_d3_inform_time;
+	uint64 last_d3_ack_time;
 	uint64 last_process_ctrlbuf_time;
 	uint64 last_process_flowring_time;
 	uint64 last_process_txcpl_time;
@@ -548,6 +552,8 @@ typedef struct dhd_bus {
 	uint32 hwa_mem_base;
 	uint32 hwa_mem_size;
 	dhd_pcie_link_state_type_t link_state;
+	bool dar_err_set;
+	uint32 ptm_ctrl_reg;
 } dhd_bus_t;
 
 #ifdef DHD_MSI_SUPPORT
@@ -557,6 +563,11 @@ extern uint enable_msi;
 enum {
 	PCIE_INTX = 0,
 	PCIE_MSI = 1
+};
+
+enum {
+	PCIE_D2H_INTMASK_CTRL = 0,
+	PCIE_HOST_IRQ_CTRL = 1
 };
 
 static INLINE bool

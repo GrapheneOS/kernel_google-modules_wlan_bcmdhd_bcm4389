@@ -3532,6 +3532,7 @@ wl_cfg80211_scan_mac_disable(struct net_device *dev)
 #define PNO_REPEAT_MAX              100u
 #define PNO_FREQ_EXPO_MAX           2u
 #define PNO_ADAPTIVE_SCAN_LIMIT     60u
+#define ADP_PNO_REPEAT_DEFAULT      1u
 static bool
 is_ssid_in_list(struct cfg80211_ssid *ssid, struct cfg80211_ssid *ssid_list, int count)
 {
@@ -3616,6 +3617,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		/* Run adaptive PNO */
 		pno_time = PNO_TIME;
 		pno_freq_expo_max = PNO_FREQ_EXPO_MAX;
+		pno_repeat = ADP_PNO_REPEAT_DEFAULT;
 	} else {
 		/* use host provided values */
 		pno_time = request->scan_plans->interval;

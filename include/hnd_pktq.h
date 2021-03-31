@@ -292,7 +292,7 @@ extern bool spktq_full(struct spktq *spq);
 
 #define spktqfilter(spq, fltr, fltr_ctx, defer, defer_ctx, flush, flush_ctx) \
 	spktq_filter((spq), (fltr), (fltr_ctx), (defer), (defer_ctx), (flush), (flush_ctx))
-extern bool pktq_init(struct pktq *pq, int num_prec, uint max_pkts);
+extern bool pktq_init(struct pktq *pq, uint num_prec, uint max_pkts);
 extern bool pktq_deinit(struct pktq *pq);
 extern bool spktq_init(struct spktq *spq, uint max_pkts);
 extern bool spktq_init_list(struct spktq *spq, uint max_pkts,

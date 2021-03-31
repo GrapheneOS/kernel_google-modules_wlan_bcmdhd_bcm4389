@@ -1062,6 +1062,14 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 		return -ENODEV;
 	}
 
+#ifdef WL_STATIC_IF
+	/* interface delete is invalid for static interface */
+	if (IS_CFG80211_STATIC_IF(cfg, wdev_to_ndev(wdev))) {
+		WL_ERR(("Invalid request to delete static interface %s\n", wdev->netdev->name));
+		return -EINVAL;
+	}
+#endif /* WL_STATIC_IF */
+
 	WL_DBG(("Enter  wdev:%p iftype: %d\n", wdev, wdev->iftype));
 	if (cfg80211_to_wl_iftype(wdev->iftype, &wl_iftype, &wl_mode) < 0) {
 		WL_ERR(("Wrong iftype: %d\n", wdev->iftype));
@@ -1669,12 +1677,18 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 #ifdef WL_CELLULAR_CHAN_AVOID
 	if (!CHSPEC_IS6G(chspec)) {
 		wl_cellavoid_sync_lock(cfg);
-		chspec = wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec);
-		if (chspec == INVCHANSPEC) {
+		cur_chspec = wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec);
+		if (cur_chspec == INVCHANSPEC) {
 			wl_cellavoid_sync_unlock(cfg);
 			return BCME_ERROR;
 		}
-		bw = CHSPEC_BW(chspec);
+		/* Limit the configured bw to the bw from the safe channel list */
+		if (bw > CHSPEC_BW(cur_chspec)) {
+			WL_INFORM_MEM(("cellular avoidance update org_bw %x to bw %x\n",
+				bw, CHSPEC_BW(cur_chspec)));
+			bw = CHSPEC_BW(cur_chspec);
+		}
+
 		wl_cellavoid_sync_unlock(cfg);
 	}
 #endif /* WL_CELLULAR_CHAN_AVOID */

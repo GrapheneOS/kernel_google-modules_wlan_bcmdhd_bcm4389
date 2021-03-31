@@ -129,11 +129,11 @@
 /* For EWP HW Init logging */
 #define EVENT_LOG_SET_EWP_HW_INIT_LOG	(32u)
 
-#ifdef WL_CHRE
+#ifdef CHRE
 /* CHRE related logging */
 #define EVENT_LOG_SET_CHRE              (33u)
 #define EVENT_LOG_SET_CHRE_CHATTY       (34u)
-#endif /* WL_CHRE */
+#endif /* CHRE */
 
 #ifndef NUM_EVENT_LOG_SETS
 /* Set a maximum number of sets here.  It is not dynamic for

@@ -39,6 +39,9 @@
 #if defined(BCMDONGLEHOST)
 #include <dngl_stats.h>
 #include <dhd.h>
+#ifdef DHD_LOG_DUMP
+#include <dhd_log_dump.h>
+#endif
 #endif /* BCMDONGLEHOST */
 
 #define WL_CFG_DRV_LOCK(lock, flags)	(flags) = osl_spin_lock(lock)
@@ -1673,6 +1676,16 @@ typedef enum
 	SAR_HOTSPOT = 32		/* bit 5 */
 } sar_advance_modes;
 
+typedef enum wl_sar_sub6_bandinfo {
+	SAR_NR_SUB6_BANDINFO_DISABLE = -1,
+	SAR_NR_SUB6_BANDINFO_BAND2 = 2,
+	SAR_NR_SUB6_BANDINFO_BAND25 = 25,
+	SAR_NR_SUB6_BANDINFO_BAND41 = 41,
+	SAR_NR_SUB6_BANDINFO_BAND48 = 48,
+	SAR_NR_SUB6_BANDINFO_BAND66 = 66,
+	SAR_NR_SUB6_BANDINFO_BAND77 = 77
+} wl_sar_sub6_bandinfo_t;
+
 /* Pre selected Power scenarios to be applied from BDF file */
 typedef enum {
 	WIFI_POWER_SCENARIO_INVALID = -2,
@@ -2869,6 +2882,12 @@ wl_iftype_to_str(int wl_iftype)
 #define STA_INFO_BIT(info) (STATION_ ## info)
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)) */
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && defined(BCMSUP_4WAY_HANDSHAKE)
+/* Enable PSK key mgmt offload */
+#define WL_PSK_OFFLOAD
+#define WL_SUPP_PMK_LEN				32u
+#endif /* LINUX_VERSION_CODE >= 4, 13, 0 && OEM_ANDROID && BCMSUP_4WAY_HANDSHAKE */
+
 extern s32 wl_cfg80211_attach(struct net_device *ndev, void *context);
 extern void wl_cfg80211_detach(struct bcm_cfg80211 *cfg);
 
@@ -3266,6 +3285,9 @@ extern s32 wl_handle_auth_event(struct bcm_cfg80211 *cfg, struct net_device *nde
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 extern int wl_cfg80211_alert(struct net_device *dev);
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
+extern void
+wl_cfg80211_set_okc_pmkinfo(struct bcm_cfg80211 *cfg, struct net_device *dev,
+	wsec_pmk_t pmk, bool validate_sec);
 
 #ifdef AUTH_ASSOC_STATUS_EXT
 typedef enum auth_assoc_status_ext {

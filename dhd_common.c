@@ -65,6 +65,9 @@
 #include <dhd_dbg.h>
 #include <802.1d.h>
 #include <dhd_debug.h>
+#ifdef DHD_LOG_DUMP
+#include <dhd_log_dump.h>
+#endif
 #include <dhd_dbg_ring.h>
 #include <dhd_mschdbg.h>
 #include <msgtrace.h>
@@ -153,8 +156,12 @@ int dhd_msg_level = DHD_ERROR_VAL | DHD_EVENT_VAL
 #ifdef BOARD_HIKEY
 		| DHD_FWLOG_VAL
 #endif /* BOARD_HIKEY */
+#ifndef DHD_REDUCE_PM_LOG
+		| DHD_RPM_VAL
+#endif /* REDUCE_PM_LOG */
 	        | DHD_PKT_MON_VAL;
 int dhd_log_level = DHD_ERROR_VAL | DHD_EVENT_VAL
+		| DHD_RPM_VAL
 		| DHD_PKT_MON_VAL | DHD_FWLOG_VAL | DHD_IOVAR_MEM_VAL;
 #else
 /* For CUSTOMER_HW4/Hikey do not enable DHD_ERROR_MEM_VAL by default */
@@ -163,6 +170,7 @@ int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 #if !defined(DHD_EFI) && !defined(BOARD_HIKEY)
 	| DHD_IOVAR_MEM_VAL
 #endif
+	| DHD_RPM_VAL
 	| DHD_PKT_MON_VAL;
 
 int dhd_log_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
@@ -170,6 +178,7 @@ int dhd_log_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 #if !defined(DHD_EFI) && !defined(BOARD_HIKEY)
 	| DHD_IOVAR_MEM_VAL
 #endif
+	| DHD_RPM_VAL
 	| DHD_PKT_MON_VAL;
 
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
@@ -737,6 +746,12 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 		ret = TRUE;
 	}
 
+	if (dhdp->p2p_disc_busy_occurred) {
+		DHD_ERROR_RLMT(("%s: p2p_disc_busy_occurred, cannot proceed\n",
+			__FUNCTION__));
+		ret = TRUE;
+	}
+
 #ifdef DNGL_AXI_ERROR_LOGGING
 	if (dhdp->axi_error) {
 		DHD_ERROR_RLMT(("%s: AXI error occurred, cannot proceed\n",
@@ -788,6 +803,7 @@ dhd_clear_bus_errors(dhd_pub_t *dhdp)
 	dhdp->iface_op_failed = FALSE;
 	dhdp->scan_timeout_occurred = FALSE;
 	dhdp->scan_busy_occurred = FALSE;
+	dhdp->p2p_disc_busy_occurred = FALSE;
 }
 
 #ifdef DHD_SSSR_DUMP
@@ -3447,13 +3463,14 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 			dhd_pub->log_capture_enable = (uint8)int_val;
 			break;
 		}
-#endif /* DHD_EFI */
+#else
 	case IOV_GVAL(IOV_LOG_DUMP):
 		{
 			dhd_prot_debug_info_print(dhd_pub);
 			dhd_log_dump_trigger(dhd_pub, CMD_DEFAULT);
 			break;
 		}
+#endif /* DHD_EFI */
 #endif /* DHD_LOG_DUMP */
 
 	case IOV_GVAL(IOV_TPUT_TEST):
@@ -10027,76 +10044,6 @@ dhd_event_logtrace_process_edl(dhd_pub_t *dhdp, uint8 *data,
 }
 #endif /* EWP_EDL */
 
-#ifdef DHD_LOG_DUMP
-#define DEBUG_DUMP_TRIGGER_INTERVAL_SEC	4
-void
-dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
-{
-#if defined(DHD_DUMP_FILE_WRITE_FROM_KERNEL)
-	log_dump_type_t *flush_type;
-#endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
-	uint64 current_time_sec;
-
-	if (!dhdp) {
-		DHD_ERROR(("dhdp is NULL !\n"));
-		return;
-	}
-
-	if (subcmd >= CMD_MAX || subcmd < CMD_DEFAULT) {
-		DHD_ERROR(("%s : Invalid subcmd \n", __FUNCTION__));
-		return;
-	}
-
-	current_time_sec = DIV_U64_BY_U32(OSL_LOCALTIME_NS(), NSEC_PER_SEC);
-
-	DHD_ERROR(("%s: current_time_sec=%lld debug_dump_time_sec=%lld interval=%d\n",
-		__FUNCTION__, current_time_sec, dhdp->debug_dump_time_sec,
-		DEBUG_DUMP_TRIGGER_INTERVAL_SEC));
-
-	if ((current_time_sec - dhdp->debug_dump_time_sec) < DEBUG_DUMP_TRIGGER_INTERVAL_SEC) {
-		DHD_ERROR(("%s : Last debug dump triggered(%lld) within %d seconds, so SKIP\n",
-			__FUNCTION__, dhdp->debug_dump_time_sec, DEBUG_DUMP_TRIGGER_INTERVAL_SEC));
-		return;
-	}
-
-	clear_debug_dump_time(dhdp->debug_dump_time_str);
-#ifdef DHD_PCIE_RUNTIMEPM
-	/* wake up RPM if SYSDUMP is triggered */
-	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
-#endif /* DHD_PCIE_RUNTIMEPM */
-	/*  */
-
-	dhdp->debug_dump_subcmd = subcmd;
-
-	dhdp->debug_dump_time_sec = DIV_U64_BY_U32(OSL_LOCALTIME_NS(), NSEC_PER_SEC);
-
-#if defined(DHD_DUMP_FILE_WRITE_FROM_KERNEL)
-	/* flush_type is freed at do_dhd_log_dump function */
-	flush_type = MALLOCZ(dhdp->osh, sizeof(log_dump_type_t));
-	if (flush_type) {
-		*flush_type = DLD_BUF_TYPE_ALL;
-		dhd_schedule_log_dump(dhdp, flush_type);
-	} else {
-		DHD_ERROR(("%s Fail to malloc flush_type\n", __FUNCTION__));
-		return;
-	}
-#endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
-
-	/* Inside dhd_mem_dump, event notification will be sent to HAL and
-	 * from other context DHD pushes memdump, debug_dump and pktlog dump
-	 * to HAL and HAL will write into file
-	 */
-#if (defined(BCMPCIE) || defined(BCMSDIO)) && defined(DHD_FW_COREDUMP)
-	dhdp->memdump_type = DUMP_TYPE_BY_SYSDUMP;
-	dhd_bus_mem_dump(dhdp);
-#endif /* BCMPCIE && DHD_FW_COREDUMP */
-
-#if defined(DHD_PKT_LOGGING) && defined(DHD_DUMP_FILE_WRITE_FROM_KERNEL)
-	dhd_schedule_pktlog_dump(dhdp);
-#endif /* DHD_PKT_LOGGING && DHD_DUMP_FILE_WRITE_FROM_KERNEL */
-}
-#endif /* DHD_LOG_DUMP */
-
 #if (defined(LINUX) || defined(DHD_EFI)) && defined(SHOW_LOGTRACE)
 int
 dhd_print_fw_ver_from_file(dhd_pub_t *dhdp, char *fwpath)
@@ -10709,270 +10656,6 @@ fail:
 	}
 	return rc;
 }
-#ifdef DHD_LOG_DUMP
-
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
-static dhd_debug_dump_ring_entry_t dhd_debug_dump_ring_map[] = {
-	{LOG_DUMP_SECTION_TIMESTAMP, DEBUG_DUMP_RING1_ID},
-	{LOG_DUMP_SECTION_ECNTRS, DEBUG_DUMP_RING2_ID},
-	{LOG_DUMP_SECTION_STATUS, DEBUG_DUMP_RING1_ID},
-	{LOG_DUMP_SECTION_RTT, DEBUG_DUMP_RING2_ID},
-	{LOG_DUMP_SECTION_DHD_DUMP, DEBUG_DUMP_RING1_ID},
-	{LOG_DUMP_SECTION_EXT_TRAP, DEBUG_DUMP_RING1_ID},
-	{LOG_DUMP_SECTION_HEALTH_CHK, DEBUG_DUMP_RING1_ID},
-	{LOG_DUMP_SECTION_COOKIE, DEBUG_DUMP_RING1_ID},
-	{LOG_DUMP_SECTION_RING, DEBUG_DUMP_RING1_ID},
-};
-
-int dhd_debug_dump_get_ring_num(int sec_type)
-{
-	int idx = 0;
-	for (idx = 0; idx < ARRAYSIZE(dhd_debug_dump_ring_map); idx++) {
-		if (dhd_debug_dump_ring_map[idx].type == sec_type) {
-			idx = dhd_debug_dump_ring_map[idx].debug_dump_ring;
-			return idx;
-		}
-	}
-	return idx;
-}
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
-
-int
-dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
-		log_dump_section_hdr_t *sec_hdr,
-		char *text_hdr, int buflen, uint32 sec_type)
-{
-	uint32 rlen = 0;
-	uint32 data_len = 0;
-	void *data = NULL;
-	unsigned long flags = 0;
-	int ret = 0;
-	dhd_dbg_ring_t *ring = (dhd_dbg_ring_t *)ring_ptr;
-#ifndef DHD_DEBUGABILITY_DEBUG_DUMP
-	int pos = 0;
-#endif /* !DHD_DEBUGABILITY_DEBUG_DUMP */
-	int fpos_sechdr = 0;
-	int tot_len = 0;
-	char *tmp_buf = NULL;
-	int idx;
-	int ring_num = 0;
-
-	BCM_REFERENCE(idx);
-	BCM_REFERENCE(tot_len);
-	BCM_REFERENCE(fpos_sechdr);
-	BCM_REFERENCE(data_len);
-	BCM_REFERENCE(tmp_buf);
-	BCM_REFERENCE(ring_num);
-
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
-	if (!dhdp || !ring || !sec_hdr || !text_hdr) {
-		return BCME_BADARG;
-	}
-
-	tmp_buf = (char *)VMALLOCZ(dhdp->osh, ring->ring_size);
-	if (!tmp_buf) {
-		DHD_ERROR(("%s: VMALLOC Fail id:%d size:%u\n",
-			__func__, ring->id, ring->ring_size));
-		return BCME_NOMEM;
-	}
-#else
-	if (!dhdp || !ring || !user_buf || !sec_hdr || !text_hdr) {
-		return BCME_BADARG;
-	}
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
-	/* do not allow further writes to the ring
-	 * till we flush it
-	 */
-	DHD_DBG_RING_LOCK(ring->lock, flags);
-	ring->state = RING_SUSPEND;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
-
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
-	ring_num = dhd_debug_dump_get_ring_num(sec_type);
-	dhd_export_debug_data(text_hdr, NULL, NULL, strlen(text_hdr), &ring_num);
-
-	data = tmp_buf;
-	do {
-		rlen = dhd_dbg_ring_pull_single(ring, data, ring->ring_size, TRUE);
-		if (rlen > 0) {
-			tot_len += rlen;
-			data += rlen;
-		}
-	} while ((rlen > 0));
-
-	sec_hdr->type = sec_type;
-	sec_hdr->length = tot_len;
-	DHD_ERROR(("%s: DUMP id:%d type:%u tot_len:%d\n", __func__, ring->id, sec_type, tot_len));
-
-	dhd_export_debug_data((char *)sec_hdr, NULL, NULL, sizeof(*sec_hdr), &ring_num);
-	dhd_export_debug_data(tmp_buf, NULL, NULL, tot_len, &ring_num);
-
-	VMFREE(dhdp->osh, tmp_buf, ring->ring_size);
-#else
-	if (dhdp->concise_dbg_buf) {
-		/* re-use concise debug buffer temporarily
-		 * to pull ring data, to write
-		 * record by record to file
-		 */
-		data_len = CONCISE_DUMP_BUFLEN;
-		data = dhdp->concise_dbg_buf;
-		ret = dhd_export_debug_data(text_hdr, NULL, user_buf, strlen(text_hdr), &pos);
-		/* write the section header now with zero length,
-		 * once the correct length is found out, update
-		 * it later
-		 */
-		fpos_sechdr = pos;
-		sec_hdr->type = sec_type;
-		sec_hdr->length = 0;
-		ret = dhd_export_debug_data((char *)sec_hdr, NULL, user_buf,
-			sizeof(*sec_hdr), &pos);
-		do {
-			rlen = dhd_dbg_ring_pull_single(ring, data, data_len, TRUE);
-			if (rlen > 0) {
-				/* write the log */
-				ret = dhd_export_debug_data(data, NULL, user_buf, rlen, &pos);
-			}
-			DHD_DBGIF(("%s: rlen : %d\n", __FUNCTION__, rlen));
-		} while ((rlen > 0));
-		/* now update the section header length in the file */
-		/* Complete ring size is dumped by HAL, hence updating length to ring size */
-		sec_hdr->length = ring->ring_size;
-		ret = dhd_export_debug_data((char *)sec_hdr, NULL, user_buf,
-			sizeof(*sec_hdr), &fpos_sechdr);
-	} else {
-		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
-	}
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
-
-	DHD_DBG_RING_LOCK(ring->lock, flags);
-	ring->state = RING_ACTIVE;
-	/* Resetting both read and write pointer,
-	 * since all items are read.
-	 */
-	ring->rp = ring->wp = 0;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
-
-	return ret;
-}
-
-int
-dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
-		unsigned long *file_posn, log_dump_section_hdr_t *sec_hdr,
-		char *text_hdr, uint32 sec_type)
-{
-	uint32 rlen = 0;
-	uint32 data_len = 0, total_len = 0;
-	void *data = NULL;
-	unsigned long fpos_sechdr = 0;
-	unsigned long flags = 0;
-	int ret = 0;
-	dhd_dbg_ring_t *ring = (dhd_dbg_ring_t *)ring_ptr;
-
-	if (!dhdp || !ring || !file || !sec_hdr ||
-		!file_posn || !text_hdr)
-		return BCME_BADARG;
-
-	/* do not allow further writes to the ring
-	 * till we flush it
-	 */
-	DHD_DBG_RING_LOCK(ring->lock, flags);
-	ring->state = RING_SUSPEND;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
-
-	if (dhdp->concise_dbg_buf) {
-		/* re-use concise debug buffer temporarily
-		 * to pull ring data, to write
-		 * record by record to file
-		 */
-		data_len = CONCISE_DUMP_BUFLEN;
-		data = dhdp->concise_dbg_buf;
-		dhd_os_write_file_posn(file, file_posn, text_hdr,
-				strlen(text_hdr));
-		/* write the section header now with zero length,
-		 * once the correct length is found out, update
-		 * it later
-		 */
-		dhd_init_sec_hdr(sec_hdr);
-		fpos_sechdr = *file_posn;
-		sec_hdr->type = sec_type;
-		sec_hdr->length = 0;
-		dhd_os_write_file_posn(file, file_posn, (char *)sec_hdr,
-				sizeof(*sec_hdr));
-		do {
-			rlen = dhd_dbg_ring_pull_single(ring, data, data_len, TRUE);
-			if (rlen > 0) {
-				/* write the log */
-				ret = dhd_os_write_file_posn(file, file_posn, data, rlen);
-				if (ret < 0) {
-					DHD_ERROR(("%s: write file error !\n", __FUNCTION__));
-					DHD_DBG_RING_LOCK(ring->lock, flags);
-					ring->state = RING_ACTIVE;
-					DHD_DBG_RING_UNLOCK(ring->lock, flags);
-					return BCME_ERROR;
-				}
-			}
-			total_len += rlen;
-		} while (rlen > 0);
-		/* now update the section header length in the file */
-		sec_hdr->length = total_len;
-		dhd_os_write_file_posn(file, &fpos_sechdr, (char *)sec_hdr, sizeof(*sec_hdr));
-	} else {
-		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
-	}
-
-	DHD_DBG_RING_LOCK(ring->lock, flags);
-	ring->state = RING_ACTIVE;
-	/* Resetting both read and write pointer,
-	 * since all items are read.
-	 */
-	ring->rp = ring->wp = 0;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
-	return BCME_OK;
-}
-
-/* logdump cookie */
-#define MAX_LOGUDMP_COOKIE_CNT	10u
-#define LOGDUMP_COOKIE_STR_LEN	50u
-int
-dhd_logdump_cookie_init(dhd_pub_t *dhdp, uint8 *buf, uint32 buf_size)
-{
-	uint32 ring_size;
-
-	if (!dhdp || !buf) {
-		DHD_ERROR(("INVALID PTR: dhdp:%p buf:%p\n", dhdp, buf));
-		return BCME_ERROR;
-	}
-
-	ring_size = dhd_ring_get_hdr_size() + LOGDUMP_COOKIE_STR_LEN * MAX_LOGUDMP_COOKIE_CNT;
-	if (buf_size < ring_size) {
-		DHD_ERROR(("BUF SIZE IS TO SHORT: req:%d buf_size:%d\n",
-			ring_size, buf_size));
-		return BCME_ERROR;
-	}
-
-	dhdp->logdump_cookie = dhd_ring_init(dhdp, buf, buf_size,
-		LOGDUMP_COOKIE_STR_LEN, MAX_LOGUDMP_COOKIE_CNT,
-		DHD_RING_TYPE_FIXED);
-	if (!dhdp->logdump_cookie) {
-		DHD_ERROR(("FAIL TO INIT COOKIE RING\n"));
-		return BCME_ERROR;
-	}
-
-	return BCME_OK;
-}
-
-void
-dhd_logdump_cookie_deinit(dhd_pub_t *dhdp)
-{
-	if (!dhdp) {
-		return;
-	}
-	if (dhdp->logdump_cookie) {
-		dhd_ring_deinit(dhdp, dhdp->logdump_cookie);
-	}
-
-	return;
-}
 
 #ifdef DHD_TX_PROFILE
 int
@@ -11014,239 +10697,6 @@ dhd_tx_profile_attach(dhd_pub_t *dhdp)
 }
 #endif /* defined(DHD_TX_PROFILE) */
 
-void
-dhd_logdump_cookie_save(dhd_pub_t *dhdp, char *cookie, char *type)
-{
-	char *ptr;
-
-	if (!dhdp || !cookie || !type || !dhdp->logdump_cookie) {
-		DHD_ERROR(("%s: At least one buffer ptr is NULL dhdp=%p cookie=%p"
-			" type = %p, cookie_cfg:%p\n", __FUNCTION__,
-			dhdp, cookie, type, dhdp?dhdp->logdump_cookie: NULL));
-		return;
-	}
-	ptr = (char *)dhd_ring_get_empty(dhdp->logdump_cookie);
-	if (ptr == NULL) {
-		DHD_ERROR(("%s : Skip to save due to locking\n", __FUNCTION__));
-		return;
-	}
-	scnprintf(ptr, LOGDUMP_COOKIE_STR_LEN, "%s: %s\n", type, cookie);
-	return;
-}
-
-int
-dhd_logdump_cookie_get(dhd_pub_t *dhdp, char *ret_cookie, uint32 buf_size)
-{
-	char *ptr;
-
-	if (!dhdp || !ret_cookie || !dhdp->logdump_cookie) {
-		DHD_ERROR(("%s: At least one buffer ptr is NULL dhdp=%p"
-			"cookie=%p cookie_cfg:%p\n", __FUNCTION__,
-			dhdp, ret_cookie, dhdp?dhdp->logdump_cookie: NULL));
-		return BCME_ERROR;
-	}
-	ptr = (char *)dhd_ring_get_first(dhdp->logdump_cookie);
-	if (ptr == NULL) {
-		DHD_ERROR(("%s : Skip to save due to locking\n", __FUNCTION__));
-		return BCME_ERROR;
-	}
-	memcpy(ret_cookie, ptr, MIN(buf_size, strlen(ptr)));
-	dhd_ring_free_first(dhdp->logdump_cookie);
-	return BCME_OK;
-}
-
-int
-dhd_logdump_cookie_count(dhd_pub_t *dhdp)
-{
-	if (!dhdp || !dhdp->logdump_cookie) {
-		DHD_ERROR(("%s: At least one buffer ptr is NULL dhdp=%p cookie=%p\n",
-			__FUNCTION__, dhdp, dhdp?dhdp->logdump_cookie: NULL));
-		return 0;
-	}
-	return dhd_ring_get_cur_size(dhdp->logdump_cookie);
-}
-
-static inline int
-__dhd_log_dump_cookie_to_file(
-	dhd_pub_t *dhdp, void *fp, const void *user_buf, unsigned long *f_pos,
-	char *buf, uint32 buf_size)
-{
-
-	uint32 remain = buf_size;
-	int ret = BCME_ERROR;
-	char tmp_buf[LOGDUMP_COOKIE_STR_LEN];
-	log_dump_section_hdr_t sec_hdr;
-	uint32 read_idx;
-	uint32 write_idx;
-
-	read_idx = dhd_ring_get_read_idx(dhdp->logdump_cookie);
-	write_idx = dhd_ring_get_write_idx(dhdp->logdump_cookie);
-	while (dhd_logdump_cookie_count(dhdp) > 0) {
-		memset(tmp_buf, 0, sizeof(tmp_buf));
-		ret = dhd_logdump_cookie_get(dhdp, tmp_buf, LOGDUMP_COOKIE_STR_LEN);
-		if (ret != BCME_OK) {
-			return ret;
-		}
-		remain -= scnprintf(&buf[buf_size - remain], remain, "%s", tmp_buf);
-	}
-	dhd_ring_set_read_idx(dhdp->logdump_cookie, read_idx);
-	dhd_ring_set_write_idx(dhdp->logdump_cookie, write_idx);
-
-	ret = dhd_export_debug_data(COOKIE_LOG_HDR, fp, user_buf, strlen(COOKIE_LOG_HDR), f_pos);
-	if (ret < 0) {
-		DHD_ERROR(("%s : Write file Error for cookie hdr\n", __FUNCTION__));
-		return ret;
-	}
-	sec_hdr.magic = LOG_DUMP_MAGIC;
-	sec_hdr.timestamp = local_clock();
-	sec_hdr.type = LOG_DUMP_SECTION_COOKIE;
-	sec_hdr.length = buf_size - remain;
-
-	ret = dhd_export_debug_data((char *)&sec_hdr, fp, user_buf, sizeof(sec_hdr), f_pos);
-	if (ret < 0) {
-		DHD_ERROR(("%s : Write file Error for section hdr\n", __FUNCTION__));
-		return ret;
-	}
-
-	ret = dhd_export_debug_data(buf, fp, user_buf, sec_hdr.length, f_pos);
-	if (ret < 0) {
-		DHD_ERROR(("%s : Write file Error for cookie data\n", __FUNCTION__));
-	}
-
-	return ret;
-}
-
-uint32
-dhd_log_dump_cookie_len(dhd_pub_t *dhdp)
-{
-	int len = 0;
-	char tmp_buf[LOGDUMP_COOKIE_STR_LEN];
-	log_dump_section_hdr_t sec_hdr;
-	char *buf = NULL;
-	int ret = BCME_ERROR;
-	uint32 buf_size = MAX_LOGUDMP_COOKIE_CNT * LOGDUMP_COOKIE_STR_LEN;
-	uint32 read_idx;
-	uint32 write_idx;
-	uint32 remain;
-
-	remain = buf_size;
-
-	if (!dhdp || !dhdp->logdump_cookie) {
-		DHD_ERROR(("%s At least one ptr is NULL "
-			"dhdp = %p cookie %p\n",
-			__FUNCTION__, dhdp, dhdp?dhdp->logdump_cookie:NULL));
-		goto exit;
-	}
-
-	buf = (char *)MALLOCZ(dhdp->osh, buf_size);
-	if (!buf) {
-		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
-		goto exit;
-	}
-
-	read_idx = dhd_ring_get_read_idx(dhdp->logdump_cookie);
-	write_idx = dhd_ring_get_write_idx(dhdp->logdump_cookie);
-	while (dhd_logdump_cookie_count(dhdp) > 0) {
-		memset(tmp_buf, 0, sizeof(tmp_buf));
-		ret = dhd_logdump_cookie_get(dhdp, tmp_buf, LOGDUMP_COOKIE_STR_LEN);
-		if (ret != BCME_OK) {
-			goto exit;
-		}
-		remain -= (uint32)strlen(tmp_buf);
-	}
-	dhd_ring_set_read_idx(dhdp->logdump_cookie, read_idx);
-	dhd_ring_set_write_idx(dhdp->logdump_cookie, write_idx);
-	len += strlen(COOKIE_LOG_HDR);
-	len += sizeof(sec_hdr);
-	len += (buf_size - remain);
-exit:
-	if (buf)
-		MFREE(dhdp->osh, buf, buf_size);
-	return len;
-}
-
-int
-dhd_log_dump_cookie(dhd_pub_t *dhdp, const void *user_buf)
-{
-	int ret = BCME_ERROR;
-	char tmp_buf[LOGDUMP_COOKIE_STR_LEN];
-	log_dump_section_hdr_t sec_hdr;
-	char *buf = NULL;
-	uint32 buf_size = MAX_LOGUDMP_COOKIE_CNT * LOGDUMP_COOKIE_STR_LEN;
-	int pos = 0;
-	uint32 read_idx;
-	uint32 write_idx;
-	uint32 remain;
-
-	remain = buf_size;
-
-	if (!dhdp || !dhdp->logdump_cookie) {
-		DHD_ERROR(("%s At least one ptr is NULL "
-			"dhdp = %p cookie %p\n",
-			__FUNCTION__, dhdp, dhdp?dhdp->logdump_cookie:NULL));
-		goto exit;
-	}
-
-	buf = (char *)MALLOCZ(dhdp->osh, buf_size);
-	if (!buf) {
-		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
-		goto exit;
-	}
-
-	read_idx = dhd_ring_get_read_idx(dhdp->logdump_cookie);
-	write_idx = dhd_ring_get_write_idx(dhdp->logdump_cookie);
-	while (dhd_logdump_cookie_count(dhdp) > 0) {
-		memset(tmp_buf, 0, sizeof(tmp_buf));
-		ret = dhd_logdump_cookie_get(dhdp, tmp_buf, LOGDUMP_COOKIE_STR_LEN);
-		if (ret != BCME_OK) {
-			goto exit;
-		}
-		remain -= scnprintf(&buf[buf_size - remain], remain, "%s", tmp_buf);
-	}
-	dhd_ring_set_read_idx(dhdp->logdump_cookie, read_idx);
-	dhd_ring_set_write_idx(dhdp->logdump_cookie, write_idx);
-	ret = dhd_export_debug_data(COOKIE_LOG_HDR, NULL, user_buf, strlen(COOKIE_LOG_HDR), &pos);
-	sec_hdr.magic = LOG_DUMP_MAGIC;
-	sec_hdr.timestamp = local_clock();
-	sec_hdr.type = LOG_DUMP_SECTION_COOKIE;
-	sec_hdr.length = buf_size - remain;
-	ret = dhd_export_debug_data((char *)&sec_hdr, NULL, user_buf, sizeof(sec_hdr), &pos);
-	ret = dhd_export_debug_data(buf, NULL, user_buf, sec_hdr.length, &pos);
-exit:
-	if (buf)
-		MFREE(dhdp->osh, buf, buf_size);
-	return ret;
-}
-
-int
-dhd_log_dump_cookie_to_file(dhd_pub_t *dhdp, void *fp, const void *user_buf, unsigned long *f_pos)
-{
-	char *buf;
-	int ret = BCME_ERROR;
-	uint32 buf_size = MAX_LOGUDMP_COOKIE_CNT * LOGDUMP_COOKIE_STR_LEN;
-
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
-	if (!dhdp || !dhdp->logdump_cookie) {
-#else
-	if (!dhdp || !dhdp->logdump_cookie || (!fp && !user_buf) || !f_pos) {
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
-		DHD_ERROR(("%s At least one ptr is NULL "
-			"dhdp = %p cookie %p fp = %p f_pos = %p\n",
-			__FUNCTION__, dhdp, dhdp?dhdp->logdump_cookie:NULL, fp, f_pos));
-		return ret;
-	}
-
-	buf = (char *)MALLOCZ(dhdp->osh, buf_size);
-	if (!buf) {
-		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
-		return ret;
-	}
-	ret = __dhd_log_dump_cookie_to_file(dhdp, fp, user_buf, f_pos, buf, buf_size);
-	MFREE(dhdp->osh, buf, buf_size);
-
-	return ret;
-}
-#endif /* DHD_LOG_DUMP */
 #endif /* LINUX || linux */
 
 #if defined(DISABLE_HE_ENAB) || defined(CUSTOM_CONTROL_HE_ENAB)
@@ -11759,6 +11209,9 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 		case DUMP_TYPE_INVALID_SHINFO_NRFRAGS:
 			type_str = "INVALID_SHINFO_NRFRAGS";
+			break;
+		case DUMP_TYPE_P2P_DISC_BUSY:
+			type_str = "P2P_DISC_BUSY";
 			break;
 		default:
 			type_str = "Unknown_type";

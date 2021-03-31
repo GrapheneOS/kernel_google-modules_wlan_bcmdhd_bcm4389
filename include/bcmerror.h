@@ -136,8 +136,9 @@ typedef int bcmerror_t;
 #define BCME_DNGL_DEVRESET		-72	/* dongle re-attach during DEVRESET */
 #define BCME_ROAM			-73	/* Roam related failures */
 #define BCME_NO_SIG_FILE		-74	/* Signature file is missing */
+#define BCME_RESP_PENDING		-75	/* Command response is pending */
 
-#define BCME_LAST			BCME_NO_SIG_FILE
+#define BCME_LAST			BCME_RESP_PENDING
 
 #define BCME_NOTENABLED BCME_DISABLED
 
@@ -228,6 +229,7 @@ typedef int bcmerror_t;
 	"Dongle Devreset",		\
 	"Critical roam in progress",	\
 	"Signature file is missing",	\
+	"Command response pending",	\
 }
 
 /** status - TBD BCME_ vs proxd status - range reserved for BCME_ */
@@ -429,183 +431,6 @@ enum {
 	/* SAE-PK validation failed */
 	WL_SAE_E_AUTH_PK_VALIDATION		= -3098
 };
-
-/*
- * Firmware signing error code range: -4096...-5119
- */
-enum {
-	/* okay */
-	BCM_FWSIGN_E_OK				= 0,
-
-	/* Operation is in progress */
-	BCM_FWSIGN_E_INPROGRESS			= -4096,
-
-	/* version mismatch */
-	BCM_FWSIGN_E_VERSION			= -4097,
-
-	/* key not found */
-	BCM_FWSIGN_E_KEY_NOT_FOUND		= -4098,
-
-	/* key found, but is not valid (revoked) */
-	BCM_FWSIGN_E_KEY_NOT_VALID		= -4099,
-
-	/* Cipher suite id mismatch for the key */
-	BCM_FWSIGN_E_CS_ID_MISMATCH		= -4100,
-
-	/* Signature does not match */
-	BCM_FWSIGN_E_SIGNATURE			= -4101,
-
-	/* Continue */
-	BCM_FWSIGN_E_CONTINUE			= -4102,
-
-	/* Heap is too small */
-	BCM_FWSIGN_E_HEAP_TOO_SMALL		= -4103,
-
-	/* Allocation of bn ctx failed */
-	BCM_FWSIGN_E_BN_CTX_ALLOC_FAILED	= -4104,
-
-	/* possible bug */
-	BCM_FWSIGN_E_BUGCHECK			= -4105,
-
-	/* chosen key is invalid */
-	BCM_FWSIGN_E_INVALID_KEY		= -4106,
-
-	/* signature is invalid */
-	BCM_FWSIGN_E_INVALID_SIGNATURE		= -4107,
-
-	/* signature tlv missing */
-	BCM_FWSIGN_E_NO_CSID_SIG		= -4108,
-
-	/* chosen key is invalid */
-	BCM_FWSIGN_E_REVOKED_KEY		= -4109,
-
-	/* signature has no matching valid key in ROM */
-	BCM_FWSIGN_E_NO_OTP_FOR_ROM_KEY		= -4110,
-
-	/* Compression not supported */
-	BCM_FWSIGN_E_COMPNOTSUP			= -4111,
-
-	/* OTP read error */
-	BCM_FWSIGN_E_OTP_READ			= -4112,
-
-	/* heap address overlaps with FW address space */
-	BCM_FWSIGN_E_HEAP_OVR_FW		= -4113,
-
-	/* heap address overlaps with bootloader data/bss region */
-	BCM_FWSIGN_E_HEAP_OVR_BSS		= -4114,
-
-	/* heap address overlaps with bootloader stack region */
-	BCM_FWSIGN_E_HEAP_OVR_STACK		= -4115,
-
-	/* firmware encryption header tlv is missing */
-	BCM_FWSIGN_E_NO_FWENC_HDR		= -4116,
-
-	/* firmware encryption algo not supported */
-	BCM_FWSIGN_E_FWENC_ALGO_NOTSUP		= -4117,
-
-	/* firmware encryption tag tlv is missing */
-	BCM_FWSIGN_E_NO_FW_TAG			= -4118,
-
-	/* firmware encryption tag tlv is not valid */
-	BCM_FWSIGN_E_FW_TAG_INVALID_TLV		= -4119,
-
-	/* firmware encryption tag verification fail */
-	BCM_FWSIGN_E_FW_TAG_MISMATCH		= -4120,
-
-	/* signature package is invalid */
-	BCM_FWSIGN_E_PACKAGE_INVALID		= -4121,
-
-	/* chip info mismatch */
-	BCM_FWSIGN_E_CHIP_INFO_MISMATCH		= -4122,
-
-	/* key use is not valid */
-	BCM_FWSIGN_E_KEY_USE_NOT_VALID		= -4123,
-
-	/* fw tag type invalid */
-	BCM_FWSIGN_E_TAG_TYPE_INVALID		= -4124,
-
-	/* fwenc header invalid */
-	BCM_FWSIGN_E_FWENC_HDR_INVALID		= -4125,
-
-	/* firmware encryption header version mismatch */
-	BCM_FWSIGN_E_FWENC_HDR_VERSION		= -4126,
-
-	/* firmware encryption cipher type not supported */
-	BCM_FWSIGN_E_FWENC_CIPHER_TYPE_UNSUPPORTED = -4127,
-
-	/* firmware encryption tlv type not supported */
-	BCM_FWSIGN_E_FWENC_TLV_TYPE_UNSUPPORTED	= -4128,
-
-	/* firmware encryption invalid kdf info */
-	BCM_FWSIGN_E_FWENC_INVALID_KDFINFO	= -4129,
-
-	/* firmware encryption invalid ec group type length */
-	BCM_FWSIGN_E_FWENC_INVALID_ECG_TYPE_LEN	= -4130,
-
-	/* firmware encryption invalid epub */
-	BCM_FWSIGN_E_FWENC_INVALID_EPUB		= -4131,
-
-	/* firmware encryption invalid iv */
-	BCM_FWSIGN_E_FWENC_INVALID_IV		= -4132,
-
-	/* firmware encryption invalid aad */
-	BCM_FWSIGN_E_FWENC_INVALID_AAD		= -4133,
-
-	/* firmware encryption invalid ROM key */
-	BCM_FWSIGN_E_FWENC_INVALID_ROMKEY	= -4134,
-
-	/* firmware encryption invalid sysmem key */
-	BCM_FWSIGN_E_FWENC_INVALID_SYSMEMKEY	= -4135,
-
-	/* firmware encryption invalid OTP key */
-	BCM_FWSIGN_E_FWENC_INVALID_OTPKEY	= -4136,
-
-	/* firmware encryption key unwrap fail */
-	BCM_FWSIGN_E_FWENC_KEY_UNWRAP_FAIL	= -4137,
-
-	/* firmware encryption generate share secret fail */
-	BCM_FWSIGN_E_FWENC_GEN_SECRET_FAIL	= -4138,
-
-	/* firmware encryption symmetric key derivation fail */
-	BCM_FWSIGN_E_FWENC_KEY_DERIVATION_FAIL	= -4139,
-
-	/* firmware encryption RNG read fail */
-	BCM_FWSIGN_E_FWENC_RNG_FAIL		= -4140,
-
-	/* firmware encryption MAC tampered during decryption */
-	BCM_FWSIGN_E_FWENC_MAC_TAMPERED		= -4141,
-
-	/* firmware encryption decryption failed */
-	BCM_FWSIGN_E_FWENC_DECRYPT_FAIL		= -4142,
-
-	/* firmware encryption decryption in progress */
-	BCM_FWSIGN_E_FWENC_DECRYPT_IN_PROGRESS	= -4143,
-
-	/* signature patch tlv is missing */
-	BCM_FWSIGN_E_PATCH_TLV_MISSING		= -4144,
-
-	/* signature patch tlv invalid */
-	BCM_FWSIGN_E_PATCH_TLV_INVALID		= -4145,
-
-	/* signature patch is empty */
-	BCM_FWSIGN_E_PATCH_EMPTY		= -4146,
-
-	/* signature patch bad addr */
-	BCM_FWSIGN_E_PATCH_BAD_ADDR		= -4147,
-
-	/* signature patch unsupported version */
-	BCM_FWSIGN_E_PATCH_VERSION		= -4148,
-
-	/* signature patch cmd error */
-	BCM_FWSIGN_E_PATCH_CMD			= -4149,
-
-	/* signature patch invalid length */
-	BCM_FWSIGN_E_PATCH_INVALID_LENGTH	= -4150,
-
-	/* last error */
-	BCM_FWSIGN_E_LAST			= -5119
-};
-typedef int32 bcm_fwsign_status_t;
 
 /*
  * Bootloader error code range: -4096...-5119
@@ -813,7 +638,7 @@ enum {
 };
 
 /* BCM crypto ASN.1 status codes. */
-/* Reserved range is from -7168 to -8291 */
+/* Reserved range is from -7168 to -8191 */
 enum {
 	/* tag mismatch */
 	BCM_CRYPTO_E_ASN1_TAG_MISMATCH		= -7168,
@@ -835,66 +660,80 @@ enum {
 };
 
 /* PASN authentication status codes. */
-/* Reserved from -8292 to -9315(1K). */
+/* Reserved from -8192 to -9215(1K). */
 enum {
 	/* Terminate PASN authentication if off channel. */
-	WL_PASN_E_OFF_CHANNEL		= -8292,
+	WL_PASN_E_OFF_CHANNEL			= -8192,
 	/* Terminate PASN authentication if infra attempt to join. */
-	WL_PASN_E_JOIN_ATTEMPT		= -8293,
+	WL_PASN_E_JOIN_ATTEMPT			= -8193,
 	/* Host requests to stop current session. */
-	WL_PASN_E_STOP_ON_REQUEST		= -8294,
+	WL_PASN_E_STOP_ON_REQUEST		= -8194,
 	/* Received PASN auth frame carries failure status code. */
-	WL_PASN_E_AUTH_FAILURE		= -8295,
+	WL_PASN_E_AUTH_FAILURE			= -8195,
 	/* Transmitted PASN auth frame is not acknowledged by peer. */
-	WL_PASN_E_AUTH_NO_ACK		= -8296,
+	WL_PASN_E_AUTH_NO_ACK			= -8196,
 	/* Timeout waiting for PASN auth frame. */
-	WL_PASN_E_AUTH_RX_TIMEOUT	= -8297,
+	WL_PASN_E_AUTH_RX_TIMEOUT		= -8197,
 	/* RSN element in PASN auth frame is invalid. */
-	WL_PASN_E_AUTH_INVALID_RSNIE	= -8298,
+	WL_PASN_E_AUTH_INVALID_RSNIE		= -8198,
 	/* PMKID in PASN auth frame is not found. */
-	WL_PASN_E_AUTH_PMKID_NOT_FOUND	= -8299,
+	WL_PASN_E_AUTH_PMKID_NOT_FOUND		= -8199,
 	/* Base AKM in PASN parameters element is not supported. */
-	WL_PASN_E_AUTH_BASE_AKM_NOT_SUPPORTED	= -8300,
+	WL_PASN_E_AUTH_BASE_AKM_NOT_SUPPORTED	= -8200,
 	/* PASN AKM is not supported. */
-	WL_PASN_E_AUTH_PASN_AKM_NOT_SUPPORTED	= -8301,
+	WL_PASN_E_AUTH_PASN_AKM_NOT_SUPPORTED	= -8201,
 	/* Timeout waiting for wrapped data processing completion. */
-	WL_PASN_E_AUTH_WRAPPED_DATA_TIMEOUT	= -8302,
+	WL_PASN_E_AUTH_WRAPPED_DATA_TIMEOUT	= -8202,
 	/* Wrapped data handler returns error. */
-	WL_PASN_E_AUTH_WRAPPED_DATA_ERROR	= -8303,
+	WL_PASN_E_AUTH_WRAPPED_DATA_ERROR	= -8203,
 	/* PASN authentication frame is not correctly constructed. */
-	WL_PASN_E_AUTH_FRAME_CORRUPTED		= -8304,
+	WL_PASN_E_AUTH_FRAME_CORRUPTED		= -8204,
 	/* Retry time is exhausted. */
-	WL_PASN_E_AUTH_RETRY_LIMIT_REACHED	= -8305,
+	WL_PASN_E_AUTH_RETRY_LIMIT_REACHED	= -8205,
 	/* cookie carried by STA is invalid. */
-	WL_PASN_E_AUTH_COOKIE_MISMATCH		= -8306,
+	WL_PASN_E_AUTH_COOKIE_MISMATCH		= -8206,
 	/* PMKSA not found. */
-	WL_PASN_E_SM_INVALID			= -8307,
+	WL_PASN_E_SM_INVALID			= -8207,
 	/* PASN state not found */
-	WL_PASN_E_SM_NOTFOUND			= -8308,
+	WL_PASN_E_SM_NOTFOUND			= -8208,
 	/* Finite cyclic group indicated in PASN parameters element is not supported. */
-	WL_PASN_E_CRYPTO_UNSUPPORTED_GROUP	= -8309,
+	WL_PASN_E_CRYPTO_UNSUPPORTED_GROUP	= -8209,
 	/* Ephemeral public key in PASN parameters element is not valid. */
-	WL_PASN_E_CRYPTO_INVALID_PUBLIC_KEY	= -8310,
+	WL_PASN_E_CRYPTO_INVALID_PUBLIC_KEY	= -8210,
 	/* Generic cryto failure. */
-	WL_PASN_E_CRYPTO_FAILURE		= -8311,
+	WL_PASN_E_CRYPTO_FAILURE		= -8211,
 	/* PASN failed to generate DHss */
-	WL_PASN_E_CRYPTO_DHSS_FAILURE		= -8312,
+	WL_PASN_E_CRYPTO_DHSS_FAILURE		= -8212,
 	/* Fail to get hash type. */
-	WL_PASN_E_CRYPTO_HASH_TYPE_FAILURE	= -8313,
+	WL_PASN_E_CRYPTO_HASH_TYPE_FAILURE	= -8213,
 	/* PASN state is unexpected */
-	WL_PASN_E_INVALID_STATE			= -8314,
-	/* PASN state is unexpected */
-	WL_PASN_E_AUTH_UNSOLICITED		= -8315,
+	WL_PASN_E_INVALID_STATE			= -8214,
+	/* Unsolicited authentication frame */
+	WL_PASN_E_AUTH_UNSOLICITED		= -8215,
 	/* Not a valid scenario for transmission */
-	WL_PASN_E_AUTH_TX_INVALID		= -8316,
+	WL_PASN_E_AUTH_TX_INVALID		= -8216,
 	/* PASN session not found */
-	WL_PASN_E_SESSION_NOTFOUND		= -8317,
+	WL_PASN_E_SESSION_NOTFOUND		= -8217,
 	/* PASN session can't allocate SCB to install key */
-	WL_PASN_E_NO_SCB			= -8318,
+	WL_PASN_E_NO_SCB			= -8218,
 	/* Buffer provided to construct public key is too short */
-	WL_PASN_E_AUTH_PK_BUFTOOSHORT		= -8319,
+	WL_PASN_E_AUTH_PK_BUFTOOSHORT		= -8219,
 	/* Abandon the PASN session in progress if received non PASN auth frame from peer. */
-	WL_PASN_E_AUTH_NON_PASN_RCVD		= -8320
+	WL_PASN_E_AUTH_NON_PASN_RCVD		= -8220,
+	/* Unexpected SAE msg from SAE module. */
+	WL_PASN_E_SAE_UNEXPECTED_MSG		= -8221,
+	/* SAE module rejects tunneled commit msg. */
+	WL_PASN_E_SAE_COMMIT_REJECTED		= -8222,
+	/* Receive deauthentication frame from peer. */
+	WL_PASN_E_RX_DEAUTH			= -8223,
+	/* PMKSA is not establisthed. */
+	WL_PASN_E_AUTH_NO_PMKSA			= -8224,
+	/* Terminate PASN authentication if Non-PASN authentication is successful. */
+	WL_PASN_E_NON_PASN_AUTHENTICATED	= -8225,
+	/* PTKSA is derived and installed. */
+	WL_PASN_E_PTK_EXISTS			= -8226,
+	/* The session is in progress */
+	WL_PASN_E_SESSION_IN_PROGRESS		= -8227
 };
 
 #endif	/* BCMUTILS_ERR_CODES */

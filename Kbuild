@@ -170,6 +170,11 @@ DHDCFLAGS += -DRTT_GEOFENCE_INTERVAL
 #Debug flag
 DHDCFLAGS += -DRTT_GEOFENCE_CONT
 
+# TCP TPUT Enhancement
+DHDCFLAGS += -DTSQ_MULTIPLIER=10
+DHDCFLAGS += -DDHD_TCP_LIMIT_OUTPUT
+DHDCFLAGS += -DDHD_TCP_PACING_SHIFT
+
 #Debug flag
 ifneq ($(CONFIG_FIB_RULES),)
 DHDCFLAGS += -DDEBUGABILITY
@@ -234,14 +239,6 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DFORCE_DONGLE_RESET_IN_DEVRESET_ON
 # Perform Backplane Reset else FLR will happen
 #	DHDCFLAGS += -DDHD_USE_BP_RESET_SS_CTRL
-
-# Adjustments for improving TCP handling
-    DHDCFLAGS += -DTSQ_MULTIPLIER=10
-    DHDCFLAGS += -DDHD_TCP_LIMIT_OUTPUT
-    DHDCFLAGS += -DTCP_DEFAULT_LIMIT_OUTPUT=262144
-
-    DHDCFLAGS += -DDHD_TCP_PACING_SHIFT
-    DHDCFLAGS += -DDHD_DEFAULT_TCP_PACING_SHIFT=7
 
 # Memory consumed by DHD
 DHDCFLAGS += -DDHD_MEM_STATS
@@ -504,6 +501,9 @@ DHDCFLAGS += -DWL_CFG80211_GON_COLLISION
 
 # HANG send due to private command errors
 DHDCFLAGS += -DDHD_SEND_HANG_PRIVCMD_ERRORS
+
+# Required for scanning the non-continue channel
+DHDCFLAGS += -DWFC_NON_CONT_CHAN
 
 # HANG trigger support on escan syncid mismatch
 #DHDCFLAGS += -DDHD_SEND_HANG_ESCAN_SYNCID_MISMATCH
@@ -911,7 +911,7 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
     dhd_pno.o dhd_rtt.o dhd_linux_pktdump.o wl_cfg_btcoex.o hnd_pktq.o \
     hnd_pktpool.o wl_cfgvendor.o bcmxtlv.o bcm_app_utils.o dhd_debug.o frag.o \
     dhd_debug_linux.o wl_cfgnan.o dhd_mschdbg.o bcmbloom.o dhd_dbg_ring.o bcmstdlib_s.o \
-    dhd_linux_exportfs.o dhd_linux_tx.o dhd_linux_rx.o
+    dhd_linux_exportfs.o dhd_linux_tx.o dhd_linux_rx.o dhd_log_dump.o
 
 # This file will be here only for internal builds and sets flags which may
 # affect subsequent behavior. See extended comment within it for details.

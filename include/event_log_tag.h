@@ -495,7 +495,7 @@
 #define	EVENT_LOG_TAG_SPMI_TRACE		397
 
 #define EVENT_LOG_TAG_PROXD_DBG			400
-#define EVENT_LOG_TAG_SB_SCHED_TIMEREF		401
+#define EVENT_LOG_TAG_RXOVFL			401
 
 /* MLO EVEVNT_LOG_TAG */
 #define EVENT_LOG_TAG_WL_MLO_INFO		402
@@ -514,12 +514,12 @@
 
 #define EVENT_LOG_TAG_COEXCPU_ERROR		413
 
-#ifdef WL_CHRE
+#ifdef CHRE
 #define EVENT_LOG_TAG_CHRE_ERR                  414
 #define EVENT_LOG_TAG_CHRE_WARN                 415
 #define EVENT_LOG_TAG_CHRE_INFO                 416
 #define EVENT_LOG_TAG_CHRE_DBG                  417
-#endif /* WL_CHRE */
+#endif /* CHRE */
 
 /* QoS and SCS (Stream Classification Service) */
 #define EVENT_LOG_TAG_RAV_QOS_ERROR		418

@@ -260,9 +260,7 @@ typedef enum dhd_iface_mgmt_policy {
 #define DHD_MSGTRACE_VAL	0x200000
 #define DHD_FWLOG_VAL		0x400000
 #define DHD_DBGIF_VAL		0x800000
-#ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #define DHD_RPM_VAL		0x1000000
-#endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 #define DHD_PKT_MON_VAL		0x2000000
 #define DHD_PKT_MON_DUMP_VAL	0x4000000
 #define DHD_ERROR_MEM_VAL	0x8000000
@@ -270,6 +268,9 @@ typedef enum dhd_iface_mgmt_policy {
 #define DHD_LPBKDTDUMP_VAL	0x20000000
 #define DHD_PRSRV_MEM_VAL	0x40000000
 #define DHD_IOVAR_MEM_VAL	0x80000000
+
+/* Message levels for Mesh */
+#define MESH_MSG_HDR_VAL        0x00000001u /* Header details */
 
 #ifdef SDTEST
 /* For pktgen iovar */
@@ -312,22 +313,22 @@ enum dhd_maclist_xtlv_type {
 };
 
 typedef struct _dhd_maclist_t {
-	uint16 version;		/* Version */
-	uint16 bytes_len;	/* Total bytes length of lists, XTLV headers and paddings */
-	uint8 plist[1];		/* Pointer to the first list */
+	uint16 version;			/* Version */
+	uint16 bytes_len;		/* Total bytes length of lists, XTLV headers and paddings */
+	uint8 plist[BCM_FLEX_ARRAY];	/* Pointer to the first list */
 } dhd_maclist_t;
 
 typedef struct _dhd_pd11regs_param {
 	uint16 start_idx;
 	uint8 verbose;
 	uint8 pad;
-	uint8 plist[1];
+	uint8 plist[BCM_FLEX_ARRAY];
 } dhd_pd11regs_param;
 
 typedef struct _dhd_pd11regs_buf {
 	uint16 idx;
 	uint8 pad[2];
-	uint8 pbuf[1];
+	uint8 pbuf[BCM_FLEX_ARRAY];
 } dhd_pd11regs_buf;
 
 /* BT logging and memory dump */

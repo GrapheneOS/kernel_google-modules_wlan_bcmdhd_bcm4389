@@ -499,6 +499,8 @@ void dhd_rx_pktpool_deinit(dhd_info_t *dhd);
 void dhd_irq_set_affinity(dhd_pub_t *dhdp, const struct cpumask *cpumask);
 #endif /* SET_PCIE_IRQ_CPU_CORE ||  DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON */
 
+void dhd_flush_logtrace_process(dhd_info_t *dhd);
+
 #ifdef DHD_SSSR_DUMP
 extern uint sssr_enab;
 extern uint fis_enab;

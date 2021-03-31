@@ -482,9 +482,9 @@ enum dhd_op_flags {
 /*
  * MAX_NVRAMBUF_SIZE determines the size of the Buffer in the DHD that holds
  * the NVRAM data. That is the size of the buffer pointed by bus->vars
- * This also needs to be increased to 24K to support NVRAM size higher than 16K
+ * This also needs to be increased if NVRAM files size increases
  */
-#define MAX_NVRAMBUF_SIZE	(24 * 1024) /* max nvram buf size */
+#define MAX_NVRAMBUF_SIZE	(32 * 1024) /* max nvram buf size */
 #define MAX_CLM_BUF_SIZE	(48 * 1024) /* max clm blob size */
 #define MAX_TXCAP_BUF_SIZE	(16 * 1024) /* max txcap blob size */
 #ifdef DHD_DEBUG
@@ -610,7 +610,8 @@ enum dhd_dongledump_type {
 	DUMP_TYPE_INBAND_DEVICE_WAKE_FAILURE	= 30,
 	DUMP_TYPE_PKTID_POOL_DEPLETED		= 31,
 	DUMP_TYPE_ESCAN_SYNCID_MISMATCH		= 32,
-	DUMP_TYPE_INVALID_SHINFO_NRFRAGS	= 33
+	DUMP_TYPE_INVALID_SHINFO_NRFRAGS	= 33,
+	DUMP_TYPE_P2P_DISC_BUSY			= 34
 };
 
 enum dhd_hang_reason {
@@ -635,6 +636,7 @@ enum dhd_hang_reason {
 	HANG_REASON_ESCAN_SYNCID_MISMATCH		= 0x8013,
 	HANG_REASON_SCAN_TIMEOUT			= 0x8014,
 	HANG_REASON_SCAN_TIMEOUT_SCHED_ERROR		= 0x8015,
+	HANG_REASON_P2P_DISC_BUSY			= 0x8016,
 	HANG_REASON_PCIE_LINK_DOWN_RC_DETECT		= 0x8805,
 	HANG_REASON_INVALID_EVENT_OR_DATA		= 0x8806,
 	HANG_REASON_UNKNOWN				= 0x8807,
@@ -882,111 +884,7 @@ typedef enum dhd_ring_id {
 	DEBUG_RING_ID_MAX = 0xa
 } dhd_ring_id_t;
 
-#ifdef DHD_LOG_DUMP
-#define DUMP_SSSR_ATTR_START	2
-#define DUMP_SSSR_ATTR_COUNT	10
-
-typedef enum {
-	SSSR_C0_D11_BEFORE = 0,
-	SSSR_C0_D11_AFTER = 1,
-	SSSR_C1_D11_BEFORE = 2,
-	SSSR_C1_D11_AFTER = 3,
-	SSSR_C2_D11_BEFORE = 4,
-	SSSR_C2_D11_AFTER = 5,
-	SSSR_DIG_BEFORE = 6,
-	SSSR_DIG_AFTER = 7
-} EWP_SSSR_DUMP;
-
-typedef enum {
-	DLD_BUF_TYPE_GENERAL = 0,
-	DLD_BUF_TYPE_PRESERVE = 1,
-	DLD_BUF_TYPE_SPECIAL = 2,
-	DLD_BUF_TYPE_ECNTRS = 3,
-	DLD_BUF_TYPE_FILTER = 4,
-	DLD_BUF_TYPE_ALL = 5
-} log_dump_type_t;
-
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-struct dhd_dbg_ring_buf
-{
-	void *dhd_pub;
-};
-extern struct dhd_dbg_ring_buf g_ring_buf;
-#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
-
-#define LOG_DUMP_MAGIC 0xDEB3DEB3
 #define HEALTH_CHK_BUF_SIZE 256
-#ifdef EWP_ECNTRS_LOGGING
-#define ECNTR_RING_ID 0xECDB
-#define	ECNTR_RING_NAME	"ewp_ecntr_ring"
-#endif /* EWP_ECNTRS_LOGGING */
-
-#ifdef EWP_RTT_LOGGING
-#define	RTT_RING_ID 0xADCD
-#define	RTT_RING_NAME	"ewp_rtt_ring"
-#endif /* EWP_ECNTRS_LOGGING */
-
-#ifdef EWP_BCM_TRACE
-#define	BCM_TRACE_RING_ID 0xBCBC
-#define	BCM_TRACE_RING_NAME "ewp_bcm_trace_ring"
-#endif /* EWP_BCM_TRACE */
-
-/*
- * XXX: Always add new enums at the end to compatible with parser,
- * also add new section in split_ret of EWP_config.py
- */
-typedef enum {
-	LOG_DUMP_SECTION_GENERAL = 0,
-	LOG_DUMP_SECTION_ECNTRS,
-	LOG_DUMP_SECTION_SPECIAL,
-	LOG_DUMP_SECTION_DHD_DUMP,
-	LOG_DUMP_SECTION_EXT_TRAP,
-	LOG_DUMP_SECTION_HEALTH_CHK,
-	LOG_DUMP_SECTION_PRESERVE,
-	LOG_DUMP_SECTION_COOKIE,
-	LOG_DUMP_SECTION_RING,
-	LOG_DUMP_SECTION_STATUS,
-	LOG_DUMP_SECTION_RTT,
-	LOG_DUMP_SECTION_BCM_TRACE,
-	LOG_DUMP_SECTION_PKTID_MAP_LOG,
-	LOG_DUMP_SECTION_PKTID_UNMAP_LOG,
-	LOG_DUMP_SECTION_TIMESTAMP,
-	LOG_DUMP_SECTION_MAX
-} log_dump_section_type_t;
-
-/* Each section in the debug_dump log file shall begin with a header */
-typedef struct {
-	uint32 magic;  /* 0xDEB3DEB3 */
-	uint32 type;   /* of type log_dump_section_type_t */
-	uint64 timestamp;
-	uint32 length;  /* length of the section that follows */
-} log_dump_section_hdr_t;
-
-typedef struct dhd_debug_dump_ring_entry {
-	log_dump_section_type_t type;
-	uint32 debug_dump_ring;
-} dhd_debug_dump_ring_entry_t;
-
-/* below structure describe ring buffer. */
-struct dhd_log_dump_buf
-{
-	spinlock_t lock;
-	void *dhd_pub;
-	unsigned int enable;
-	unsigned int wraparound;
-	unsigned long max;
-	unsigned int remain;
-	char* present;
-	char* front;
-	char* buffer;
-};
-
-#define DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE	256
-#define DHD_LOG_DUMP_MAX_TAIL_FLUSH_SIZE (80 * 1024)
-
-extern void dhd_log_dump_write(int type, char *binary_data,
-		int binary_len, const char *fmt, ...);
-#endif /* DHD_LOG_DUMP */
 
 /* DEBUG_DUMP SUB COMMAND */
 enum {
@@ -996,10 +894,6 @@ enum {
 	CMD_MAX
 };
 
-#define DHD_LOG_DUMP_TS_MULTIPLIER_VALUE    60
-#define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSSMSMS    "%02d%02d%02d%02d%02d%02d%04lu"
-#define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSS        "%02d%02d%02d%02d%02d%02d"
-#define DHD_DEBUG_DUMP_TYPE		"debug_dump"
 #define DHD_DUMP_SUBSTR_UNWANTED	"_unwanted"
 #define DHD_DUMP_SUBSTR_DISCONNECTED	"_disconnected"
 
@@ -1007,12 +901,6 @@ enum {
 #define DHD_DUMP_AXI_ERROR_FILENAME	"axi_error"
 #define DHD_DUMP_HAL_FILENAME_SUFFIX	"_hal"
 #endif /* DNGL_AXI_ERROR_LOGGING */
-
-extern void get_debug_dump_time(char *str);
-extern void clear_debug_dump_time(char *str);
-#if defined(WL_CFGVENDOR_SEND_HANG_EVENT) || defined(DHD_PKT_LOGGING)
-extern void copy_debug_dump_time(char *dest, char *src);
-#endif /* WL_CFGVENDOR_SEND_HANG_EVENT || DHD_PKT_LOGGING */
 
 #define FW_LOGSET_MASK_ALL 0xFFFFu
 
@@ -1157,7 +1045,7 @@ typedef struct rx_cpl_history {
 	uint32 ptm_high;
 	uint32 ptm_low;
 	uint32 rx_t0;
-	uint16 latency;
+	uint32 latency;
 	uint8 slice;
 	uint8 priority;
 	int8 rssi;
@@ -1175,6 +1063,7 @@ typedef struct tx_cpl_history {
 	uint32 host_time;
 	uint32 ptm_high;
 	uint32 ptm_low;
+	uint16 latency;
 	uint16 flowid;
 	uint8 tid;
 } tx_cpl_history_t;
@@ -1411,6 +1300,7 @@ typedef struct dhd_pub {
 	bool	is_bt_recovery_required;
 #endif
 	bool	smmu_fault_occurred;	/* flag to indicate SMMU Fault */
+	bool	p2p_disc_busy_occurred;
 /*
  * Add any new variables to track Bus errors above
  * this line. Also ensure that the variable is
@@ -1712,7 +1602,7 @@ typedef struct dhd_pub {
 	int debug_dump_subcmd;
 	uint64 debug_dump_time_sec;
 	bool hscb_enable;
-	uint32 logset_prsrv_mask;
+	uint64 logset_prsrv_mask;
 #ifdef DHD_PKT_LOGGING
 	struct dhd_pktlog *pktlog;
 	char debug_dump_time_pktlog_str[DEBUG_DUMP_TIME_BUF_LEN];
@@ -2600,6 +2490,10 @@ extern int dhd_get_instance(dhd_pub_t *pub);
 #ifdef CUSTOM_SET_CPUCORE
 extern void dhd_set_cpucore(dhd_pub_t *dhd, int set);
 #endif /* CUSTOM_SET_CPUCORE */
+
+#ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
+#define MAX_CONSECUTIVE_MFG_HANG_COUNT 2
+#endif /* DHD_DETECT_CONSECUTIVE_MFG_HANG */
 
 #if defined(KEEP_ALIVE)
 extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
@@ -3772,6 +3666,22 @@ static INLINE void dhd_get_assert_info(dhd_pub_t *dhd) { }
 #if defined(PCIE_FULL_DONGLE)
 extern void dmaxfer_free_prev_dmaaddr(dhd_pub_t *dhdp, dmaxref_mem_map_t *dmmap);
 void dhd_schedule_dmaxfer_free(dhd_pub_t *dhdp, dmaxref_mem_map_t *dmmap);
+
+extern int ring_size_version;
+
+extern uint16 h2d_max_txpost;
+extern uint16 h2d_htput_max_txpost;
+extern uint16 d2h_max_txcpl;
+
+extern uint16 h2d_max_rxpost;
+extern uint16 d2h_max_rxcpl;
+
+extern uint16 h2d_max_ctrlpost;
+extern uint16 d2h_max_ctrlcpl;
+
+extern uint16 rx_buf_burst;
+extern uint16 rx_bufpost_threshold;
+
 #endif  /* PCIE_FULL_DONGLE */
 
 #define DHD_LB_STATS_NOOP	do { /* noop */ } while (0)
@@ -3876,6 +3786,7 @@ extern int dhd_prot_debug_info_print(dhd_pub_t *dhd);
 extern bool dhd_bus_skip_clm(dhd_pub_t *dhdp);
 extern void dhd_pcie_dump_rc_conf_space_cap(dhd_pub_t *dhd);
 extern bool dhd_pcie_dump_int_regs(dhd_pub_t *dhd);
+void dhd_prot_ctrl_info_print(dhd_pub_t *dhd);
 #else
 #define dhd_prot_debug_info_print(x)
 static INLINE bool dhd_bus_skip_clm(dhd_pub_t *dhd_pub)
@@ -4009,6 +3920,7 @@ do { \
 
 extern bool dhd_prot_is_cmpl_ring_empty(dhd_pub_t *dhd, void *prot_info);
 extern void dhd_prot_dump_ring_ptrs(void *prot_info);
+extern bool dhd_prot_check_pending_ctrl_cmpls(dhd_pub_t *dhd);
 
 #if defined(LINUX) || defined(linux)
 #if defined(DHD_TRACE_WAKE_LOCK)
@@ -4095,108 +4007,7 @@ extern int dhd_get_random_bytes(uint8 *buf, uint len);
 extern void dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path);
 #endif /* DHD_BLOB_EXISTENCE_CHECK */
 
-int dhd_get_preserve_log_numbers(dhd_pub_t *dhd, uint32 *logset_mask);
-#ifdef DHD_LOG_DUMP
-void dhd_schedule_log_dump(dhd_pub_t *dhdp, void *type);
-void dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd);
-#endif
-
-#ifdef DHD_LOG_DUMP
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
-int dhd_debug_dump_get_ring_num(int sec_type);
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
-int dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
-		unsigned long *file_posn, log_dump_section_hdr_t *sec_hdr, char *text_hdr,
-		uint32 sec_type);
-int dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
-		log_dump_section_hdr_t *sec_hdr, char *text_hdr, int buflen, uint32 sec_type);
-int dhd_log_dump_cookie_to_file(dhd_pub_t *dhdp, void *fp,
-	const void *user_buf, unsigned long *f_pos);
-int dhd_log_dump_cookie(dhd_pub_t *dhdp, const void *user_buf);
-uint32 dhd_log_dump_cookie_len(dhd_pub_t *dhdp);
-int dhd_logdump_cookie_init(dhd_pub_t *dhdp, uint8 *buf, uint32 buf_size);
-void dhd_logdump_cookie_deinit(dhd_pub_t *dhdp);
-void dhd_logdump_cookie_save(dhd_pub_t *dhdp, char *cookie, char *type);
-int dhd_logdump_cookie_get(dhd_pub_t *dhdp, char *ret_cookie, uint32 buf_size);
-int dhd_logdump_cookie_count(dhd_pub_t *dhdp);
-int dhd_get_dld_log_dump(void *dev, dhd_pub_t *dhdp, const void *user_buf, void *fp,
-	uint32 len, int type, void *pos);
-#if defined(BCMPCIE)
-int dhd_print_ext_trap_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-uint32 dhd_get_ext_trap_len(void *ndev, dhd_pub_t *dhdp);
-#endif /* BCMPCIE */
-int dhd_print_dump_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-int dhd_print_cookie_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-int dhd_print_health_chk_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-int dhd_print_time_str(const void *user_buf, void *fp, uint32 len, void *pos);
-#ifdef DHD_DUMP_PCIE_RINGS
-int dhd_print_flowring_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-uint32 dhd_get_flowring_len(void *ndev, dhd_pub_t *dhdp);
-#endif /* DHD_DUMP_PCIE_RINGS */
-#ifdef DHD_STATUS_LOGGING
-extern int dhd_print_status_log_data(void *dev, dhd_pub_t *dhdp,
-	const void *user_buf, void *fp, uint32 len, void *pos);
-extern uint32 dhd_get_status_log_len(void *ndev, dhd_pub_t *dhdp);
-#endif /* DHD_STATUS_LOGGING */
-#ifdef DHD_MAP_PKTID_LOGGING
-extern uint32 dhd_pktid_buf_len(dhd_pub_t *dhd, bool is_map);
-extern int dhd_print_pktid_map_log_data(void *dev, dhd_pub_t *dhdp,
-	const void *user_buf, void *fp, uint32 len, void *pos, bool is_map);
-extern int dhd_write_pktid_log_dump(dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, unsigned long *pos, bool is_map);
-extern uint32 dhd_get_pktid_map_logging_len(void *ndev, dhd_pub_t *dhdp, bool is_map);
-#endif /* DHD_MAP_PKTID_LOGGING */
-int dhd_print_ecntrs_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-int dhd_print_rtt_data(void *dev, dhd_pub_t *dhdp, const void *user_buf,
-	void *fp, uint32 len, void *pos);
-int dhd_get_debug_dump_file_name(void *dev, dhd_pub_t *dhdp,
-	char *dump_path, int size);
-uint32 dhd_get_time_str_len(void);
-uint32 dhd_get_health_chk_len(void *ndev, dhd_pub_t *dhdp);
-uint32 dhd_get_dhd_dump_len(void *ndev, dhd_pub_t *dhdp);
-uint32 dhd_get_cookie_log_len(void *ndev, dhd_pub_t *dhdp);
-uint32 dhd_get_ecntrs_len(void *ndev, dhd_pub_t *dhdp);
-uint32 dhd_get_rtt_len(void *ndev, dhd_pub_t *dhdp);
-uint32 dhd_get_dld_len(int log_type);
-void dhd_init_sec_hdr(log_dump_section_hdr_t *sec_hdr);
-extern char *dhd_log_dump_get_timestamp(void);
-bool dhd_log_dump_ecntr_enabled(void);
-bool dhd_log_dump_rtt_enabled(void);
-void dhd_nla_put_sssr_dump_len(void *ndev, uint32 *arr_len);
-int dhd_get_debug_dump(void *dev, const void *user_buf, uint32 len, int type);
-#ifdef DHD_SSSR_DUMP_BEFORE_SR
-int
-dhd_sssr_dump_d11_buf_before(void *dev, const void *user_buf, uint32 len, int core);
-int
-dhd_sssr_dump_dig_buf_before(void *dev, const void *user_buf, uint32 len);
-#endif /* DHD_SSSR_DUMP_BEFORE_SR */
-int
-dhd_sssr_dump_d11_buf_after(void *dev, const void *user_buf, uint32 len, int core);
-int
-dhd_sssr_dump_dig_buf_after(void *dev, const void *user_buf, uint32 len);
-#ifdef DHD_PKT_LOGGING
-extern int dhd_os_get_pktlog_dump(void *dev, const void *user_buf, uint32 len);
-extern spinlock_t* dhd_os_get_pktlog_lock(dhd_pub_t *dhdp);
-extern uint32 dhd_os_get_pktlog_dump_size(struct net_device *dev);
-extern void dhd_os_get_pktlogdump_filename(struct net_device *dev, char *dump_path, int len);
-#endif /* DHD_PKT_LOGGING */
-
-#ifdef DNGL_AXI_ERROR_LOGGING
-extern int dhd_os_get_axi_error_dump(void *dev, const void *user_buf, uint32 len);
-extern int dhd_os_get_axi_error_dump_size(struct net_device *dev);
-extern void dhd_os_get_axi_error_filename(struct net_device *dev, char *dump_path, int len);
-#endif /*  DNGL_AXI_ERROR_LOGGING */
-
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
-extern int dhd_debug_dump_to_ring(dhd_pub_t *dhdp);
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
-#endif /* DHD_LOG_DUMP */
+int dhd_get_preserve_log_numbers(dhd_pub_t *dhd, uint64 *logset_mask);
 
 #define DHD_WORD_TO_LEN_SHIFT		(2u)       /* WORD to BYTES SHIFT */
 
@@ -4570,8 +4381,6 @@ int dhd_rxf_thread(void *data);
 void dhd_sched_rxf(dhd_pub_t *dhdp, void *skb);
 int dhd_os_wake_lock_rx_timeout_enable(dhd_pub_t *pub, int val);
 
-void dhd_event_logtrace_enqueue(dhd_pub_t *dhdp, int ifidx, void *pktbuf);
-
 #if defined(__linux__)
 #ifdef DHD_SUPPORT_VFS_CALL
 static INLINE struct file *dhd_filp_open(const char *filename, int flags, int mode)
@@ -4646,98 +4455,6 @@ void dhd_dump_wake_status(dhd_pub_t *dhdp, wake_counts_t *wcp, struct ether_head
 #ifdef SUPPORT_OTA_UPDATE
 void dhd_ota_buf_clean(dhd_pub_t *dhdp);
 #endif /* SUPPORT_OTA_UPDATE */
-#ifdef DHD_LOG_DUMP
-extern char *dhd_log_dump_get_timestamp(void);
-#ifdef DHD_EFI
-/* FW verbose/console output to FW ring buffer */
-extern void dhd_log_dump_print(const char *fmt, ...);
-/* DHD verbose/console output to DHD ring buffer */
-extern void dhd_log_dump_print_drv(const char *fmt, ...);
-#define DHD_LOG_DUMP_WRITE(fmt, ...)	dhd_log_dump_print_drv(fmt, ##__VA_ARGS__)
-#define DHD_LOG_DUMP_WRITE_FW(fmt, ...)	dhd_log_dump_print(fmt, ##__VA_ARGS__)
-#else
-#ifndef _DHD_LOG_DUMP_DEFINITIONS_
-#define _DHD_LOG_DUMP_DEFINITIONS_
-#define GENERAL_LOG_HDR "\n-------------------- General log ---------------------------\n"
-#define PRESERVE_LOG_HDR "\n-------------------- Preserve log ---------------------------\n"
-#define SPECIAL_LOG_HDR "\n-------------------- Special log ---------------------------\n"
-#define DHD_DUMP_LOG_HDR "\n-------------------- 'dhd dump' log -----------------------\n"
-#define EXT_TRAP_LOG_HDR "\n-------------------- Extended trap data -------------------\n"
-#define HEALTH_CHK_LOG_HDR "\n-------------------- Health check data --------------------\n"
-#ifdef DHD_DUMP_PCIE_RINGS
-#define RING_DUMP_HDR "\n-------------------- Ring dump --------------------\n"
-#endif /* DHD_DUMP_PCIE_RINGS */
-#define DHD_LOG_DUMP_DLD(fmt, ...) \
-	dhd_log_dump_write(DLD_BUF_TYPE_GENERAL, NULL, 0, fmt, ##__VA_ARGS__)
-#define DHD_LOG_DUMP_DLD_EX(fmt, ...) \
-	dhd_log_dump_write(DLD_BUF_TYPE_SPECIAL, NULL, 0, fmt, ##__VA_ARGS__)
-#define DHD_LOG_DUMP_DLD_PRSRV(fmt, ...) \
-	dhd_log_dump_write(DLD_BUF_TYPE_PRESERVE, NULL, 0, fmt, ##__VA_ARGS__)
-#endif /* !_DHD_LOG_DUMP_DEFINITIONS_ */
-
-#ifndef DHD_LOG_DUMP_RING_DEFINITIONS
-#define DHD_LOG_DUMP_RING_DEFINITIONS
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
-/* Enabled DHD_DEBUGABILITY_LOG_DUMP_RING */
-extern void dhd_dbg_ring_write(int type, char *binary_data,
-	int binary_len, const char *fmt, ...);
-#define DHD_DBG_RING(fmt, ...) \
-	dhd_dbg_ring_write(DRIVER_LOG_RING_ID, NULL, 0, fmt, ##__VA_ARGS__)
-#define DHD_DBG_RING_EX(fmt, ...) \
-	dhd_dbg_ring_write(FW_VERBOSE_RING_ID, NULL, 0, fmt, ##__VA_ARGS__)
-#define DHD_DBG_RING_ROAM(fmt, ...) \
-	dhd_dbg_ring_write(ROAM_STATS_RING_ID, NULL, 0, fmt, ##__VA_ARGS__)
-
-#define DHD_LOG_DUMP_WRITE		DHD_DBG_RING
-#define DHD_LOG_DUMP_WRITE_EX		DHD_DBG_RING_EX
-#define DHD_LOG_DUMP_WRITE_PRSRV	DHD_DBG_RING
-#define DHD_LOG_DUMP_WRITE_ROAM		DHD_DBG_RING_ROAM
-
-#define DHD_PREFIX_TS "[%s][%s] ",	\
-	OSL_GET_RTCTIME(), dhd_log_dump_get_timestamp()
-#define DHD_PREFIX_TS_FN "[%s][%s] %s: ",	\
-	OSL_GET_RTCTIME(), dhd_log_dump_get_timestamp(), __func__
-#define DHD_LOG_DUMP_WRITE_TS		DHD_DBG_RING(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_TS_FN	DHD_DBG_RING(DHD_PREFIX_TS_FN)
-#define DHD_LOG_DUMP_WRITE_EX_TS	DHD_DBG_RING_EX(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_EX_TS_FN	DHD_DBG_RING_EX(DHD_PREFIX_TS_FN)
-#define DHD_LOG_DUMP_WRITE_PRSRV_TS	DHD_DBG_RING(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_PRSRV_TS_FN	DHD_DBG_RING(DHD_PREFIX_TS_FN)
-#define DHD_LOG_DUMP_WRITE_ROAM_TS	DHD_DBG_RING_ROAM(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_ROAM_TS_FN	DHD_DBG_RING_ROAM(DHD_PREFIX_TS_FN)
-#else
-/* Not enabled DHD_DEBUGABILITY_LOG_DUMP_RING */
-#define DHD_LOG_DUMP_WRITE		DHD_LOG_DUMP_DLD
-#define DHD_LOG_DUMP_WRITE_EX		DHD_LOG_DUMP_DLD_EX
-#define DHD_LOG_DUMP_WRITE_PRSRV	DHD_LOG_DUMP_DLD_PRSRV
-#define DHD_LOG_DUMP_WRITE_ROAM		DHD_LOG_DUMP_DLD
-
-#define DHD_PREFIX_TS "[%s]: ", dhd_log_dump_get_timestamp()
-#define DHD_PREFIX_TS_FN "[%s] %s: ", dhd_log_dump_get_timestamp(), __func__
-#define DHD_LOG_DUMP_WRITE_TS		DHD_LOG_DUMP_DLD(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_TS_FN	DHD_LOG_DUMP_DLD(DHD_PREFIX_TS_FN)
-#define DHD_LOG_DUMP_WRITE_EX_TS	DHD_LOG_DUMP_DLD_EX(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_EX_TS_FN	DHD_LOG_DUMP_DLD_EX(DHD_PREFIX_TS_FN)
-#define DHD_LOG_DUMP_WRITE_PRSRV_TS	DHD_LOG_DUMP_DLD_PRSRV(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_PRSRV_TS_FN	DHD_LOG_DUMP_DLD_PRSRV(DHD_PREFIX_TS_FN)
-#define DHD_LOG_DUMP_WRITE_ROAM_TS	DHD_LOG_DUMP_DLD(DHD_PREFIX_TS)
-#define DHD_LOG_DUMP_WRITE_ROAM_TS_FN	DHD_LOG_DUMP_DLD(DHD_PREFIX_TS_FN)
-#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
-#endif /* DHD_LOG_DUMP_RING_DEFINITIONS */
-
-#endif /* DHD_EFI */
-#define CONCISE_DUMP_BUFLEN 32 * 1024
-#define ECNTRS_LOG_HDR "\n-------------------- Ecounters log --------------------------\n"
-#ifdef DHD_STATUS_LOGGING
-#define STATUS_LOG_HDR "\n-------------------- Status log -----------------------\n"
-#endif /* DHD_STATUS_LOGGING */
-#define RTT_LOG_HDR "\n-------------------- RTT log --------------------------\n"
-#define BCM_TRACE_LOG_HDR "\n-------------------- BCM Trace log --------------------------\n"
-#define COOKIE_LOG_HDR "\n-------------------- Cookie List ----------------------------\n"
-#define DHD_PKTID_MAP_LOG_HDR "\n---------------- PKTID MAP log -----------------------\n"
-#define DHD_PKTID_UNMAP_LOG_HDR "\n------------------ PKTID UNMAP log -----------------------\n"
-#define PKTID_LOG_DUMP_FMT "\nIndex(Current=%d) Timestamp Pktaddr(PA) Pktid Size\n"
-#endif /* DHD_LOG_DUMP */
 #if !defined(AP) && defined(WLP2P)
 extern uint32 dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
 #endif

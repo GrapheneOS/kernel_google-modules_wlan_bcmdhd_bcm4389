@@ -465,17 +465,17 @@ dhd_bus_aspm_enable_dev(dhd_bus_t *bus, struct pci_dev *dev, bool enable)
 {
 	uint32 linkctrl_before;
 	uint32 linkctrl_after = 0;
-	uint8 linkctrl_asm;
+	uint8 linkctrl_aspm;
 	char *device;
 
 	device = (dev == bus->dev) ? "EP" : "RC";
 
 	linkctrl_before = dhdpcie_access_cap(dev, PCIE_CAP_ID_EXP, PCIE_CAP_LINKCTRL_OFFSET,
 		FALSE, FALSE, 0);
-	linkctrl_asm = (linkctrl_before & PCIE_ASPM_CTRL_MASK);
+	linkctrl_aspm = (linkctrl_before & PCIE_ASPM_CTRL_MASK);
 
 	if (enable) {
-		if (linkctrl_asm == PCIE_ASPM_L1_ENAB) {
+		if (linkctrl_aspm == PCIE_ASPM_L1_ENAB) {
 			DHD_ERROR(("%s: %s already enabled  linkctrl: 0x%x\n",
 				__FUNCTION__, device, linkctrl_before));
 			return FALSE;
@@ -484,7 +484,7 @@ dhd_bus_aspm_enable_dev(dhd_bus_t *bus, struct pci_dev *dev, bool enable)
 		dhdpcie_access_cap(dev, PCIE_CAP_ID_EXP, PCIE_CAP_LINKCTRL_OFFSET, FALSE,
 			TRUE, (linkctrl_before | PCIE_ASPM_L1_ENAB));
 	} else {
-		if (linkctrl_asm == 0) {
+		if (linkctrl_aspm == 0) {
 			DHD_ERROR(("%s: %s already disabled linkctrl: 0x%x\n",
 				__FUNCTION__, device, linkctrl_before));
 			return FALSE;
@@ -501,6 +501,30 @@ dhd_bus_aspm_enable_dev(dhd_bus_t *bus, struct pci_dev *dev, bool enable)
 		linkctrl_before, linkctrl_after));
 
 	return TRUE;
+}
+
+static bool
+dhd_bus_is_aspm_enab_dev(dhd_bus_t *bus, struct pci_dev *dev)
+{
+	uint32 linkctrl = dhdpcie_access_cap(dev, PCIE_CAP_ID_EXP,
+		PCIE_CAP_LINKCTRL_OFFSET, FALSE, FALSE, 0);
+
+	DHD_INFO(("%s: %s: linkctrl:0x%x\n",
+		__FUNCTION__, (dev == bus->dev) ? "EP" : "RC", linkctrl));
+
+	return ((linkctrl & PCIE_ASPM_CTRL_MASK) == PCIE_ASPM_L1_ENAB);
+}
+
+bool
+dhd_bus_is_aspm_enab_rc_ep(dhd_bus_t *bus)
+{
+	uint32 rc_aspm_enab;
+	uint32 ep_aspm_enab;
+
+	rc_aspm_enab = dhd_bus_is_aspm_enab_dev(bus, bus->rc_dev);
+	ep_aspm_enab = dhd_bus_is_aspm_enab_dev(bus, bus->dev);
+
+	return (rc_aspm_enab && ep_aspm_enab);
 }
 
 static bool
@@ -550,6 +574,33 @@ dhd_bus_aspm_enable_rc_ep(dhd_bus_t *bus, bool enable)
 	}
 
 	return ret;
+}
+
+static bool
+dhd_bus_is_l1ss_enab_dev(dhd_bus_t *bus, struct pci_dev *dev)
+{
+	uint32 l1ssctrl;
+
+	/* Extendend Capacility Reg */
+	l1ssctrl = dhdpcie_access_cap(dev, PCIE_EXTCAP_ID_L1SS,
+		PCIE_EXTCAP_L1SS_CONTROL_OFFSET, TRUE, FALSE, 0);
+
+	DHD_INFO(("%s: %s: l1ssctrl:0x%x\n",
+		__FUNCTION__, (dev == bus->dev) ? "EP" : "RC", l1ssctrl));
+
+	return ((l1ssctrl & PCIE_EXT_L1SS_MASK) == PCIE_EXT_L1SS_ENAB);
+}
+
+bool
+dhd_bus_is_l1ss_enab_rc_ep(dhd_bus_t *bus)
+{
+	uint32 rc_l1ss_enab;
+	uint32 ep_l1ss_enab;
+
+	rc_l1ss_enab = dhd_bus_is_l1ss_enab_dev(bus, bus->rc_dev);
+	ep_l1ss_enab = dhd_bus_is_l1ss_enab_dev(bus, bus->dev);
+
+	return (rc_l1ss_enab && ep_l1ss_enab);
 }
 
 static void
@@ -761,6 +812,14 @@ static int dhdpcie_pm_resume(struct device *dev)
 	DHD_BUS_BUSY_CLEAR_RESUME_IN_PROGRESS(bus->dhd);
 	dhd_os_busbusy_wake(bus->dhd);
 	DHD_GENERAL_UNLOCK(bus->dhd, flags);
+
+#if defined(CUSTOMER_HW4_DEBUG)
+	if (ret == BCME_OK) {
+		uint32 pm_dur = 0;
+		dhd_iovar(bus->dhd, 0, "pm_dur", NULL, 0, (char *)&pm_dur, sizeof(pm_dur), FALSE);
+		DHD_ERROR(("%s: PM duration(%d)\n", __FUNCTION__, pm_dur));
+	}
+#endif /* CUSTOMER_HW4_DEBUG */
 
 	return ret;
 }
@@ -1034,7 +1093,7 @@ extern void dhd_dpc_tasklet_kill(dhd_pub_t *dhdp);
 static void
 dhdpcie_suspend_dump_cfgregs(struct dhd_bus *bus, char *suspend_state)
 {
-	DHD_PCIE_PM(("%s: BaseAddress0(0x%x)=0x%x, "
+	DHD_RPM(("%s: BaseAddress0(0x%x)=0x%x, "
 		"BaseAddress1(0x%x)=0x%x PCIE_CFG_PMCSR(0x%x)=0x%x "
 		"PCI_BAR1_WIN(0x%x)=(0x%x)\n",
 		suspend_state,
@@ -1064,12 +1123,19 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 		return BCME_ERROR;
 	}
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
+
+	/* Save aspm and l1ss state before doing to suspend, if they are disabled,
+	 * keep them disabled after resume.
+	 */
+	bus->aspm_enab_during_suspend = dhd_bus_is_aspm_enab_rc_ep(bus);
+	bus->l1ss_enab_during_suspend = dhd_bus_is_l1ss_enab_rc_ep(bus);
+
 #if defined(CUSTOMER_HW4_DEBUG)
 	clear_debug_dump_time(dhd_suspend_resume_time_str);
 	get_debug_dump_time(dhd_suspend_resume_time_str);
 	DHD_ERROR(("%s: Enter: TS(%s)\n", __FUNCTION__, dhd_suspend_resume_time_str));
 #else
-	DHD_PCIE_PM(("%s: Enter\n", __FUNCTION__));
+	DHD_RPM(("%s: Enter\n", __FUNCTION__));
 #endif /* CUSTOMER_HW4_DEBUG */
 #if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
 	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
@@ -1081,7 +1147,7 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	* CONFIG_SOC_EXYNOS1000
 	*/
 #if defined(CONFIG_SOC_GS101)
-	DHD_PCIE_PM(("%s: Disable L1ss EP side\n", __FUNCTION__));
+	DHD_RPM(("%s: Disable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
 #endif /* CONFIG_SOC_GS101 */
 
@@ -1160,7 +1226,7 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	get_debug_dump_time(dhd_suspend_resume_time_str);
 	DHD_ERROR(("%s: Enter: TS(%s)\n", __FUNCTION__, dhd_suspend_resume_time_str));
 #else
-	DHD_PCIE_PM(("%s: Enter\n", __FUNCTION__));
+	DHD_RPM(("%s: Enter\n", __FUNCTION__));
 #endif /* CUSTOMER_HW4_DEBUG */
 	dev->state_saved = TRUE;
 	pci_restore_state(dev);
@@ -1196,9 +1262,21 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	* CONFIG_SOC_EXYNOS1000
 	*/
 #if defined(CONFIG_SOC_GS101)
-	DHD_ERROR(("%s: Enable L1ss EP side\n", __FUNCTION__));
+	DHD_RPM(("%s: Enable L1ss EP side\n", __FUNCTION__));
 	exynos_pcie_rc_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI, 1);
 #endif /* CONFIG_SOC_GS101 */
+
+	/* Disable ASPM and L1SS if they were disabled during suspend,
+	 * after resume they are enabled by default.
+	 */
+	if ((pch->bus->aspm_enab_during_suspend == FALSE) &&
+		(dhd_bus_is_aspm_enab_rc_ep(pch->bus) == TRUE)) {
+		dhd_bus_aspm_enable_rc_ep(pch->bus, FALSE);
+	}
+	if ((pch->bus->l1ss_enab_during_suspend == FALSE) &&
+		(dhd_bus_is_l1ss_enab_rc_ep(pch->bus) == TRUE)) {
+		dhd_bus_l1ss_enable_rc_ep(pch->bus, FALSE);
+	}
 
 out:
 	return err;
@@ -1398,7 +1476,10 @@ int dhdpcie_pci_suspend_resume(dhd_bus_t *bus, bool state)
 	struct pci_dev *dev = bus->dev;
 
 	if (state) {
+		bus->ptm_ctrl_reg = dhdpcie_bus_cfg_read_dword(bus, PCI_CFG_PTM_CTRL, 4);
+
 		dhdpcie_config_save_restore_coherent(bus, state);
+
 #if !defined(BCMPCIE_OOB_HOST_WAKE) && !defined(PCIE_OOB)
 		dhdpcie_pme_active(bus->osh, state);
 #endif /* !BCMPCIE_OOB_HOST_WAKE && !PCIE_OOB */
@@ -1416,6 +1497,9 @@ int dhdpcie_pci_suspend_resume(dhd_bus_t *bus, bool state)
 				 */
 				dhdpcie_cto_cfg_init(bus, TRUE);
 			}
+
+			dhdpcie_bus_cfg_write_dword(bus, PCI_CFG_PTM_CTRL, 4, bus->ptm_ctrl_reg);
+
 			if (PCIE_ENUM_RESET_WAR_ENAB(bus->sih->buscorerev)) {
 				dhdpcie_ssreset_dis_enum_rst(bus);
 			}
@@ -1866,12 +1950,12 @@ void dhdpcie_dump_resource(dhd_bus_t *bus)
 	}
 
 	/* BAR0 */
-	DHD_PCIE_PM(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_RPM(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->regs, pci_resource_start(bus->dev, 0),
 		DONGLE_REG_MAP_SIZE));
 
 	/* BAR1 */
-	DHD_PCIE_PM(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_RPM(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->tcm, pci_resource_start(bus->dev, 2),
 		pch->bar1_size));
 }
@@ -3068,6 +3152,11 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 #ifdef WL_CFG80211
 	uint32 ps_mode_off_dur;
 #endif /* WL_CFG80211 */
+#if defined(DHD_KERNEL_SCHED_DEBUG) && defined(DHD_FW_COREDUMP)
+	uint64 d3_ack_latency_ms;
+	uint64 wait_event_latency_ms;
+	uint64 curr_time_ns;
+#endif /* DHD_KERNEL_SCHED_DEBUG && DHD_FW_COREDUMP */
 
 	bus = dhd->bus;
 
@@ -3090,11 +3179,11 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			!DHD_CHECK_CFG_IN_PROGRESS(dhd) && !dhd_os_check_wakelock_all(bus->dhd)) {
 #ifdef WL_CFG80211
 			ps_mode_off_dur = dhd_ps_mode_managed_dur(dhd);
-			DHD_PCIE_PM_STATE(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
+			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
 				"PS mode off dur: %d sec \n", __FUNCTION__,
 				bus->idletime, dhd_runtimepm_ms, ps_mode_off_dur));
 #else
-			DHD_PCIE_PM_STATE(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
+			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
 				__FUNCTION__, bus->idletime, dhd_runtimepm_ms));
 #endif /* WL_CFG80211 */
 			bus->bus_wake = 0;
@@ -3123,14 +3212,46 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 				wake_up(&bus->rpm_queue);
 				return FALSE;
 			}
-
+			DHD_RPM(("%s, update suspend states\n", __FUNCTION__));
 			DHD_GENERAL_LOCK(dhd, flags);
 			DHD_BUS_BUSY_CLEAR_RPM_SUSPEND_IN_PROGRESS(dhd);
 			DHD_BUS_BUSY_SET_RPM_SUSPEND_DONE(dhd);
 			/* For making sure NET TX Queue active  */
 			dhd_bus_start_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
+#if defined(DHD_KERNEL_SCHED_DEBUG) && defined(DHD_FW_COREDUMP)
+			curr_time_ns = OSL_LOCALTIME_NS();
+			d3_ack_latency_ms =
+				DIV_U64_BY_U64((bus->last_d3_ack_time - bus->last_d3_inform_time),
+				NSEC_PER_MSEC);
+			wait_event_latency_ms =
+				DIV_U64_BY_U64((curr_time_ns - bus->last_d3_ack_time),
+				NSEC_PER_MSEC);
+			/*
+			 * RPM thread should go to wait state with in D3_ACK_RESP_TIMEOUT(
+			 * Same Macro is used or overloaded) after receiving D3 ACK. Else ASSERT.
+			 *
+			 * Before tasklet or workqueue information disappears,
+			 * trigger kernel panic to catch the reason for delay in scheduling.
+			 */
+			if ((d3_ack_latency_ms < D3_ACK_RESP_TIMEOUT) &&
+				(wait_event_latency_ms > D3_ACK_RESP_TIMEOUT)) {
+				uint32 cur_memdump_mode = bus->dhd->memdump_enabled;
 
+				DHD_ERROR(("d3_inform:"SEC_USEC_FMT" d3_ack:"SEC_USEC_FMT
+					" curr_time:"SEC_USEC_FMT"\n",
+					GET_SEC_USEC(bus->last_d3_inform_time),
+					GET_SEC_USEC(bus->last_d3_ack_time),
+					GET_SEC_USEC(curr_time_ns)));
+
+				if (cur_memdump_mode == DUMP_MEMFILE_BUGON) {
+					/* change g_assert_type to trigger Kernel panic */
+					g_assert_type = 2;
+					/* use ASSERT() to trigger panic */
+					ASSERT(0);
+				}
+			}
+#endif /* DHD_KERNEL_SCHED_DEBUG && DHD_FW_COREDUMP */
 			wait_event(bus->rpm_queue, bus->bus_wake);
 
 			DHD_GENERAL_LOCK(dhd, flags);
@@ -3159,7 +3280,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 
 			smp_wmb();
 			wake_up(&bus->rpm_queue);
-			DHD_PCIE_PM_STATE(("%s : runtime resume ended \n", __FUNCTION__));
+			DHD_ERROR(("%s : runtime resume ended \n", __FUNCTION__));
 			return TRUE;
 		} else {
 			DHD_GENERAL_UNLOCK(dhd, flags);

@@ -218,6 +218,11 @@ extern int pktpool_avail(pktpool_t *pktpool);
 #define PKTPOOL_ID2PTR(id)          (get_pktpools_registry(id))
 #define PKTPOOL_PTR2ID(pp)          (POOLID(pp))
 
+/* Registry size is one larger than max pools, as slot #0 is reserved */
+#define PKTPOOLREG_RSVD_ID				(0U)
+#define PKTPOOLREG_RSVD_PTR				(POOLPTR(0xdeaddead))
+#define PKTPOOLREG_FREE_PTR				(POOLPTR(NULL))
+
 #ifndef PKTID_POOL
 /* max pktids reserved for pktpool is updated properly in Makeconf */
 #define PKTID_POOL		    (PKT_MAXIMUM_ID - 32u)

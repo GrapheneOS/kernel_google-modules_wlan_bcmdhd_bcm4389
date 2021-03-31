@@ -54,11 +54,6 @@
 #define HND_PKTPOOL_MUTEX_RELEASE(mutex)	OSL_EXT_SUCCESS
 #endif
 
-/* Registry size is one larger than max pools, as slot #0 is reserved */
-#define PKTPOOLREG_RSVD_ID				(0U)
-#define PKTPOOLREG_RSVD_PTR				(POOLPTR(0xdeaddead))
-#define PKTPOOLREG_FREE_PTR				(POOLPTR(NULL))
-
 #define PKTPOOL_REGISTRY_SET(id, pp)	(pktpool_registry_set((id), (pp)))
 #define PKTPOOL_REGISTRY_CMP(id, pp)	(pktpool_registry_cmp((id), (pp)))
 

@@ -1609,6 +1609,95 @@ static struct dhd_attr dhd_attr_max_rx_pkt_pool=
 __ATTR(dhd_max_rx_pkt_pool, 0660, show_max_rx_pkt_pool, set_max_rx_pkt_pool);
 #endif /* RX_PKT_POOL */
 
+#ifdef PCIE_FULL_DONGLE
+static ssize_t
+dhd_set_aspm_enab(struct dhd_info *dhd, const char *buf, size_t count)
+{
+	unsigned long aspm_enab;
+	dhd_pub_t *dhdp = &dhd->pub;
+
+	aspm_enab = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &aspm_enab);
+	if (aspm_enab != 0 && aspm_enab != 1) {
+		return -EINVAL;
+	}
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
+#endif /* DHD_PCIE_RUNTIMEPM */
+	dhd_bus_aspm_enable_rc_ep(dhdp->bus, aspm_enab);
+
+	return count;
+}
+
+static ssize_t
+show_aspm_enab(struct dhd_info *dhd, char *buf)
+{
+	ssize_t ret = 0;
+	bool aspm_enab;
+	dhd_pub_t *dhdp = &dhd->pub;
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return ret;
+	}
+
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
+#endif /* DHD_PCIE_RUNTIMEPM */
+
+	aspm_enab = dhd_bus_is_aspm_enab_rc_ep(dhdp->bus);
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d\n", aspm_enab);
+
+	return ret;
+}
+
+static struct dhd_attr dhd_attr_aspm_enab =
+__ATTR(aspm_enab, 0660, show_aspm_enab, dhd_set_aspm_enab);
+
+static ssize_t
+dhd_set_l1ss_enab(struct dhd_info *dhd, const char *buf, size_t count)
+{
+	unsigned long l1ss_enab;
+	dhd_pub_t *dhdp = &dhd->pub;
+
+	l1ss_enab = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &l1ss_enab);
+	if (l1ss_enab != 0 && l1ss_enab != 1) {
+		return -EINVAL;
+	}
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
+#endif /* DHD_PCIE_RUNTIMEPM */
+	dhd_bus_l1ss_enable_rc_ep(dhdp->bus, l1ss_enab);
+	return count;
+}
+
+static ssize_t
+show_l1ss_enab(struct dhd_info *dhd, char *buf)
+{
+	ssize_t ret = 0;
+	bool l1ss_enab;
+	dhd_pub_t *dhdp = &dhd->pub;
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return ret;
+	}
+
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
+#endif /* DHD_PCIE_RUNTIMEPM */
+
+	l1ss_enab = dhd_bus_is_l1ss_enab_rc_ep(dhdp->bus);
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d\n", l1ss_enab);
+
+	return ret;
+}
+
+static struct dhd_attr dhd_attr_l1ss_enab =
+__ATTR(l1ss_enab, 0660, show_l1ss_enab, dhd_set_l1ss_enab);
+#endif /* PCIE_FULL_DONGLE */
+
 #if defined(CUSTOM_CONTROL_HE_ENAB)
 static ssize_t
 show_control_he_enab(struct dhd_info *dev, char *buf)
@@ -2047,6 +2136,10 @@ static struct attribute *default_file_attrs[] = {
 #if defined(RX_PKT_POOL)
 	&dhd_attr_max_rx_pkt_pool.attr,
 #endif /* RX_PKT_POOL */
+#ifdef PCIE_FULL_DONGLE
+	&dhd_attr_aspm_enab.attr,
+	&dhd_attr_l1ss_enab.attr,
+#endif /* PCIE_FULL_DONGLE */
 	NULL
 };
 

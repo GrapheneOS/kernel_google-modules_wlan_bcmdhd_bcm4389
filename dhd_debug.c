@@ -824,7 +824,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 
 			/* ensure preserve fw logs go to debug_dump only in case of customer4 */
 			if (logset < dhdp->event_log_max_sets &&
-				((0x01u << logset) & dhdp->logset_prsrv_mask)) {
+				((0x01ULL << logset) & dhdp->logset_prsrv_mask)) {
 				DHD_PRSRV_MEM(("%s\n", b.origbuf));
 			} else {
 				DHD_FWLOG(("%s\n", b.origbuf));
@@ -942,7 +942,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 
 	/* ensure preserve fw logs go to debug_dump only in case of customer4 */
 	if (logset < dhdp->event_log_max_sets &&
-			((0x01u << logset) & dhdp->logset_prsrv_mask)) {
+			((0x01ULL << logset) & dhdp->logset_prsrv_mask)) {
 		DHD_PRSRV_MEM((fmtstr_loc_buf, arg[0], arg[1], arg[2], arg[3],
 			arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10],
 			arg[11], arg[12], arg[13], arg[14], arg[15]));
@@ -1612,6 +1612,18 @@ __dhd_dbg_map_tx_status_to_pkt_fate(uint16 status)
 		case WLFC_CTL_PKTFLAG_EXPIRED:
 			pkt_fate = TX_PKT_FATE_FW_DROP_EXPTIME;
 			break;
+		case WLFC_CTL_PKTFLAG_DROPPED:
+			pkt_fate = TX_PKT_FATE_DRV_DROP_OTHER;
+			break;
+		case WLFC_CTL_PKTFLAG_MKTFREE:
+			pkt_fate = TX_PKT_FATE_FW_PKT_FREE;
+			break;
+		case WLFC_CTL_PKTFLAG_MAX_SUP_RETR:
+			pkt_fate = TX_PKT_FATE_FW_MAX_SUP_RETR;
+			break;
+		case WLFC_CTL_PKTFLAG_FORCED_EXPIRED:
+			pkt_fate = TX_PKT_FATE_FW_FORCED_EXPIRED;
+			break;
 		default:
 			pkt_fate = TX_PKT_FATE_FW_DROP_OTHER;
 			break;
@@ -2218,6 +2230,19 @@ dhd_dbg_stop_pkt_monitor(dhd_pub_t *dhdp)
 		} \
 	} while (0);
 
+static wifi_tx_packet_fate
+__dhd_dbg_convert_fate(wifi_tx_packet_fate fate)
+{
+	wifi_tx_packet_fate new_fate = fate;
+
+	 /* To prevent SIG-ABORT, packet_fate > TX_PKT_FATE_DRV_DROP_OTHER */
+	if (fate > TX_PKT_FATE_DRV_DROP_OTHER) {
+		new_fate = TX_PKT_FATE_FW_DROP_OTHER;
+	}
+
+	return new_fate;
+}
+
 int
 dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 		uint16 req_count, uint16 *resp_count)
@@ -2264,7 +2289,12 @@ dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 			compat_wifi_tx_report_t *comp_ptr = compat_ptr((uintptr_t) cptr);
 			compat_dhd_dbg_pkt_info_t compat_tx_pkt;
 			__dhd_dbg_dump_tx_pkt_info(dhdp, tx_pkt, count);
-			__COPY_TO_USER(&comp_ptr->fate, &tx_pkt->fate, sizeof(tx_pkt->fate));
+			/* fate convert asscording to wifi_logger.h */
+			{
+				wifi_tx_packet_fate new_fate = tx_pkt->fate;
+				new_fate = __dhd_dbg_convert_fate(new_fate);
+				__COPY_TO_USER(&comp_ptr->fate, &new_fate, sizeof(new_fate));
+			}
 
 			compat_tx_pkt.payload_type = tx_pkt->info.payload_type;
 			compat_tx_pkt.pkt_len = tx_pkt->info.pkt_len;
@@ -2287,7 +2317,12 @@ dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 		ptr = (wifi_tx_report_t *)user_buf;
 		while ((count < pkt_count) && tx_pkt && ptr) {
 			__dhd_dbg_dump_tx_pkt_info(dhdp, tx_pkt, count);
-			__COPY_TO_USER(&ptr->fate, &tx_pkt->fate, sizeof(tx_pkt->fate));
+			/* fate convert asscording to wifi_logger.h */
+			{
+				wifi_tx_packet_fate new_fate = tx_pkt->fate;
+				new_fate = __dhd_dbg_convert_fate(new_fate);
+				__COPY_TO_USER(&ptr->fate, &new_fate, sizeof(new_fate));
+			}
 			__COPY_TO_USER(&ptr->frame_inf.payload_type,
 				&tx_pkt->info.payload_type,
 				OFFSETOF(dhd_dbg_pkt_info_t, pkt_hash));
@@ -2376,7 +2411,6 @@ dhd_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 		ptr = (wifi_rx_report_t *)user_buf;
 		while ((count < pkt_count) && rx_pkt && ptr) {
 			__dhd_dbg_dump_rx_pkt_info(dhdp, rx_pkt, count);
-
 			__COPY_TO_USER(&ptr->fate, &rx_pkt->fate, sizeof(rx_pkt->fate));
 			__COPY_TO_USER(&ptr->frame_inf.payload_type,
 				&rx_pkt->info.payload_type,
@@ -2918,11 +2952,11 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	dhd_dbg_ring_t *ring = NULL;
 	int ring_id = 0;
 	void *buf = NULL;
+	int ret = BCME_ERROR;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
 	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING ||
 	* (DEBUGABILITY && CUSTOMER_HW6)
 	*/
-	int ret = BCME_ERROR;
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	struct dhd_dbg_ring_buf *ring_buf;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
@@ -3053,11 +3087,11 @@ error:
 		}
 	}
 	MFREE(dhdp->osh, dbg, sizeof(dhd_dbg_t));
+	return ret;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
 	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING ||
 	* (DEBUGABILITY && CUSTOMER_HW6)
 	*/
-	return ret;
 }
 
 /*

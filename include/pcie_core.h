@@ -391,7 +391,9 @@ typedef volatile struct sbpcieregs {
 			uint32		erraddr;		/* 0xA64 */
 			uint32		mbox_int;		/* 0xA68 */
 			uint32		fis_ctrl;		/* 0xA6C */
-			uint32		PAD[36];		/* 0xA70-0xAFF */
+			uint32		dar_gpio_dbg;		/* 0xA70 */
+			uint32		dar_sec_stat;		/* 0xA74 */
+			uint32		PAD[34];		/* 0xA78-0xAFF */
 		} dar_64;
 	} u1;
 	uint32		PAD[64];		/* 0xB00-0xBFF */
@@ -1151,6 +1153,16 @@ typedef volatile struct sbpcieregs {
 #define DAR_PCIE_PWR_CTRL(rev)	PCIE_dar_power_control_OFFSET(rev)
 #define DAR_PCIE_DAR_CTRL(rev)	PCIE_dar_control_OFFSET(rev)
 #endif
+
+#define DAR_SEC_STATUS(rev)    OFFSETOF(sbpcieregs_t, u1.dar_64.dar_sec_stat)
+
+#define DAR_SEC_JTAG_MASK	0x1u
+#define DAR_SEC_SBOOT_MASK	0x2u
+#define DAR_SEC_SBOOT_SHIFT	1u
+#define DAR_SEC_ARM_DBG_MASK	0x4u
+#define DAR_SEC_ARM_DBG_SHIFT	2u
+#define DAR_SEC_UNLOCK_MASK	0x8u
+#define DAR_SEC_UNLOCK_SHIFT	3u
 
 #define DAR_FIS_CTRL(rev)      OFFSETOF(sbpcieregs_t, u1.dar_64.fis_ctrl)
 
