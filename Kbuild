@@ -240,6 +240,14 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Perform Backplane Reset else FLR will happen
 #	DHDCFLAGS += -DDHD_USE_BP_RESET_SS_CTRL
 
+ifneq ($(CONFIG_SOC_GS101),)
+# Tasklet load detection and balancing
+	DHDCFLAGS += -DRESCHED_CNT_CHECK_PERIOD_SEC=2
+	DHDCFLAGS += -DRESCHED_STREAK_MAX_HIGH=10
+	DHDCFLAGS += -DRESCHED_STREAK_MAX_LOW=2
+	DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=5
+endif
+
 # Memory consumed by DHD
 DHDCFLAGS += -DDHD_MEM_STATS
 # Check trap in the case of ROT

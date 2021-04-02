@@ -4883,7 +4883,6 @@ static void
 dhd_dpc(ulong data)
 {
 	dhd_info_t *dhd = (dhd_info_t *)data;
-
 	int curr_cpu = get_cpu();
 	put_cpu();
 
@@ -4900,7 +4899,10 @@ dhd_dpc(ulong data)
 		DHD_LB_STATS_INCR(dhd->dhd_dpc_cnt);
 #endif /* DHD_LB_STATS && PCIE_FULL_DONGLE */
 		if (dhd_bus_dpc(dhd->pub.bus)) {
-			tasklet_schedule(&dhd->tasklet);
+ 			tasklet_schedule(&dhd->tasklet);
+			dhd_plat_report_bh_sched(dhd->pub.plat_info, 1);
+ 		} else {
+			dhd_plat_report_bh_sched(dhd->pub.plat_info, 0);
 		}
 	} else {
 		dhd_bus_stop(dhd->pub.bus, TRUE);

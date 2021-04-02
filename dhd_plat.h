@@ -58,5 +58,6 @@ typedef void (*dhd_pcie_event_cb_t) (struct pci_dev *pdev);
 extern int dhd_plat_pcie_register_event(void *plat_info,
 		struct pci_dev *pdev, dhd_pcie_event_cb_t pfn);
 extern void dhd_plat_pcie_deregister_event(void *plat_info);
+extern void dhd_plat_report_bh_sched(void *plat_info, int resched);
 
 #endif /* __DHD_PLAT_H__ */

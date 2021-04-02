@@ -959,3 +959,9 @@ void __attribute__ ((weak)) dhd_plat_pcie_deregister_event(void *plat_info)
 {
 	return;
 }
+
+void __attribute__ ((weak)) dhd_plat_report_bh_sched(void *plat_info, int resched)
+{
+	return;
+}
+

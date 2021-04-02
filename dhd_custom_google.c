@@ -26,6 +26,7 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -63,6 +64,11 @@ static int wlan_host_wake_up = -1;
 static int wlan_host_wake_irq = 0;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 #define WIFI_WLAN_HOST_WAKE_PROPNAME    "wl_host_wake"
+
+static int resched_streak = 0;
+static int resched_streak_max = 0;
+static uint64 last_resched_cnt_check_time_ns = 0;
+static bool is_irq_on_big_core = FALSE;
 
 #if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
 	defined(CONFIG_SOC_GS101)
@@ -453,6 +459,78 @@ void dhd_plat_pcie_deregister_event(void *plat_info)
 		exynos_pcie_deregister_event(&p->pcie_event);
 	}
 #endif /* SUPPORT_EXYNOS7420 */
+	return;
+}
+
+static int
+set_affinity(unsigned int irq, const struct cpumask *cpumask)
+{
+#ifdef BCMDHD_MODULAR
+	return irq_set_affinity_hint(irq, cpumask);
+#else
+	return irq_set_affinity(irq, cpumask);
+#endif
+}
+
+static void
+irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max)
+{
+	int err = 0;
+	if (!pdev) {
+		DHD_ERROR(("%s : pdev is NULL\n", __FUNCTION__));
+		return;
+	}
+	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH)) {
+		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_BIG_CORE));
+		if (!err) {
+			is_irq_on_big_core = TRUE;
+			DHD_INFO(("%s switches to big core \n", __FUNCTION__));
+		}
+	}
+	if (is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW)) {
+		err = set_affinity(pdev->irq, &(CPU_MASK_ALL));
+		if (!err) {
+			is_irq_on_big_core = FALSE;
+			DHD_INFO(("%s switches to all cores\n", __FUNCTION__));
+		}
+	}
+}
+
+/*
+ * DHD Core layer reports whether the bottom half is getting rescheduled or not
+ * resched = 1, BH is getting rescheduled.
+ * resched = 0, BH is NOT getting rescheduled.
+ * resched is used to detect bottom half load and configure IRQ affinity dynamically
+ */
+void dhd_plat_report_bh_sched(void *plat_info, int resched)
+{
+	dhd_plat_info_t *p = plat_info;
+	uint64 curr_time_ns;
+	uint64 time_delta_ns;
+
+	if (resched > 0) {
+		resched_streak++;
+		return;
+	}
+
+	if (resched_streak > resched_streak_max) {
+		resched_streak_max = resched_streak;
+	}
+	resched_streak = 0;
+
+	curr_time_ns = OSL_LOCALTIME_NS();
+	time_delta_ns = curr_time_ns - last_resched_cnt_check_time_ns;
+	if (time_delta_ns < (RESCHED_CNT_CHECK_PERIOD_SEC * NSEC_PER_SEC)) {
+		return;
+	}
+	last_resched_cnt_check_time_ns = curr_time_ns;
+
+	DHD_INFO(("%s resched_streak_max=%d\n",
+		__FUNCTION__, resched_streak_max));
+
+	irq_affinity_hysteresis_control(p->pdev, resched_streak_max);
+
+	resched_streak_max = 0;
 	return;
 }
 
