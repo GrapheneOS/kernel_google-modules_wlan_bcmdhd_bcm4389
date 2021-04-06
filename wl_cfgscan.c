@@ -6024,7 +6024,8 @@ static void wl_cfgscan_acs_result_event(struct work_struct *work)
 			break;
 		}
 
-		WL_TRACE(("%s: send the event\n", __FUNCTION__));
+		WL_INFORM_MEM(("%s: ACS event notified. freq:%d:%d\n", __FUNCTION__,
+					result.pri_freq, result.sec_freq));
 		cfg80211_vendor_event(skb, kflags);
 	} while (0);
 
@@ -6565,6 +6566,7 @@ exit:
 	return ret;
 }
 
+#define ACS_WORK_DELAY_US	(100 * 1000)
 int
 wl_cfgscan_acs(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void *data, int len)
@@ -6757,14 +6759,23 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 		WL_DBG(("%s: do acs ret=%d, ch_chosen=(0x%X)\n",
 		          __FUNCTION__, ret, ch_chosen));
 		if (ret >= 0) {
+			u8 acs_work_cnt = 5;
+			while (delayed_work_pending(&delay_work_acs.acs_delay_work)) {
+				if (acs_work_cnt) {
+					WL_INFORM(("wait for acs work completion. cnt:%d\n", acs_work_cnt));
+					acs_work_cnt--;
+					OSL_DELAY(ACS_WORK_DELAY_US);
+				} else {
+					WL_INFORM(("force cancel ACS work\n"));
+					break;
+				}
+			}
+			cancel_delayed_work_sync(&delay_work_acs.acs_delay_work);
 			delay_work_acs.ndev = net;
 			delay_work_acs.ch_chosen = ch_chosen;
-			if (delayed_work_pending(&delay_work_acs.acs_delay_work)) {
-				cancel_delayed_work(&delay_work_acs.acs_delay_work);
-			}
-			WL_TRACE(("%s: schedule the acs result event send work\n", __FUNCTION__));
+			WL_INFORM_MEM(("%s: schedule the acs result event send work\n", __FUNCTION__));
 			schedule_delayed_work(&delay_work_acs.acs_delay_work,
-			                      msecs_to_jiffies((const unsigned int)500));
+			                      msecs_to_jiffies((const unsigned int)50));
 			ret = 0;
 		}
 
