@@ -6306,7 +6306,8 @@ dhd_stop(struct net_device *net)
 #if defined(WL_STATIC_IF) && defined(WL_CFG80211)
 	/* If static if is operational, don't reset the chip */
 	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg) ||
-		(wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) > 0)) {
+		((wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) > 0) &&
+		(!dhd->pub.hang_was_sent))) {
 		DHD_ERROR(("static/ap if operational. skip chip reset.\n"));
 		skip_reset = true;
 		wl_cfg80211_sta_ifdown(net);
@@ -17166,6 +17167,13 @@ int dhd_os_send_hang_message(dhd_pub_t *dhdp)
 	}
 #endif /* DHD_HANG_SEND_UP_TEST */
 
+#ifdef DHD_COREDUMP
+	if (dhdp->memdump_type != DUMP_TYPE_DONGLE_TRAP) {
+		memset_s(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN, 0, DHD_MEMDUMP_LONGSTR_LEN);
+		dhd_convert_memdump_type_to_str(dhdp->memdump_type, dhdp->memdump_str,
+			DHD_MEMDUMP_LONGSTR_LEN, dhdp->debug_dump_subcmd);
+	}
+#endif /* DHD_COREDUMP */
 	if (!dhdp->hang_was_sent) {
 #ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
 		if (dhdp->op_mode & DHD_FLAG_MFG_MODE) {
