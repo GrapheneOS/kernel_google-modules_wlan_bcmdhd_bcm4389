@@ -10952,6 +10952,17 @@ exit:
 	return ret;
 }
 #endif /* WL_USABLE_CHAN */
+
+#if defined(WLAN_ACCEL_BOOT)
+static int
+wl_cfgvendor_trigger_ssr(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void  *data, int len)
+{
+	dhd_dev_set_accel_force_reg_on(wdev->netdev);
+	return BCME_OK;
+}
+#endif /* WLAN_ACCEL_BOOT */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
 const struct nla_policy andr_wifi_attr_policy[ANDR_WIFI_ATTRIBUTE_MAX] = {
 	[ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET] = { .type = NLA_U32 },
@@ -12541,6 +12552,16 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 	},
 #endif /* WL_USABLE_CHAN */
 
+#ifdef WLAN_ACCEL_BOOT
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = WIFI_SUBCMD_TRIGGER_SSR
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_trigger_ssr
+	},
+#endif /* WLAN_ACCEL_BOOT */
 };
 
 static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
