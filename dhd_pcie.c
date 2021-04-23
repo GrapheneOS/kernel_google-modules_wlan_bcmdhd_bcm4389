@@ -15245,7 +15245,7 @@ dhdpcie_get_etd_preserve_logs(dhd_pub_t *dhd,
 
 		/* boundary check */
 		baseaddr = etd_evtlog->log_arr_addr;
-		if ((baseaddr < dhd->bus->dongle_ram_base) ||
+		if ((baseaddr < dhd->bus->dongle_ram_base) || (baseaddr > endaddr) ||
 			((baseaddr + arr_size) > endaddr)) {
 			DHD_ERROR(("%s: Error reading invalid address\n",
 				__FUNCTION__));
@@ -15270,7 +15270,7 @@ dhdpcie_get_etd_preserve_logs(dhd_pub_t *dhd,
 		for (i = 0; i < (etd_evtlog->num_elements); ++i) {
 			/* boundary check */
 			baseaddr = evtlog_buf_arr[i].buf_addr;
-			if ((baseaddr < dhd->bus->dongle_ram_base) ||
+			if ((baseaddr < dhd->bus->dongle_ram_base) || (baseaddr > endaddr) ||
 				((baseaddr + evtlog_buf_arr[i].len) > endaddr)) {
 				DHD_ERROR(("%s: Error reading invalid address\n",
 					__FUNCTION__));
