@@ -5353,7 +5353,7 @@ dhdpcie_bus_membytes(dhd_bus_t *bus, bool write, ulong address, uint8 *data, uin
 	int detect_endian_flag = 0x01;
 	bool little_endian;
 
-	if (write && bus->is_linkdown) {
+	if (bus->is_linkdown) {
 		DHD_ERROR(("%s: PCIe link was down\n", __FUNCTION__));
 		return BCME_ERROR;
 	}

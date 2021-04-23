@@ -6589,7 +6589,7 @@ void
 dhd_force_collect_init_fail_dumps(dhd_pub_t *dhdp)
 {
 
-#ifdef CUSTOMER_HW4_DEBUG
+#if defined(CUSTOMER_HW4_DEBUG) || defined(CUSTOMER_HW2_DEBUG)
 #ifdef DEBUG_DNGL_INIT_FAIL
 	/* As HAL is not inited, do force crash and collect from host dram */
 	dhdp->memdump_enabled = DUMP_MEMONLY;
@@ -6598,7 +6598,7 @@ dhd_force_collect_init_fail_dumps(dhd_pub_t *dhdp)
 		" cannot collect dumps\n", __FUNCTION__));
 	return;
 #endif /* DEBUG_DNGL_INIT_FAIL */
-#endif /* CUSTOMER_HW4_DEBUG */
+#endif /* CUSTOMER_HW4_DEBUG || CUSTOMER_HW2_DEBUG */
 
 #ifdef DHD_FW_COREDUMP
 	/* save core dump or write to a file */
