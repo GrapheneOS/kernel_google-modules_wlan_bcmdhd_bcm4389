@@ -1573,7 +1573,7 @@ dhd_log_dump_init(dhd_pub_t *dhd)
 	}
 #else
 	DHD_ERROR(("%s: logdump_prsrv_tailsize = %uKB \n",
-		__FUNCTION__, logdump_prsrv_tailsize/1024);
+		__FUNCTION__, logdump_prsrv_tailsize/1024));
 #endif /* CONFIG_LOG_BUF_SHIFT */
 
 	mutex_init(&dhd_info->logdump_lock);
