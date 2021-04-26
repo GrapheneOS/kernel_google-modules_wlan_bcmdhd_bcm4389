@@ -586,6 +586,15 @@ dhd_wlan_init(void)
 
 	DHD_INFO(("%s: START.......\n", __FUNCTION__));
 
+#ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
+	ret = dhd_init_wlan_mem();
+	if (ret < 0) {
+		DHD_ERROR(("%s: failed to alloc reserved memory,"
+					" ret=%d\n", __FUNCTION__, ret));
+		goto fail;
+	}
+#endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
+
 #ifdef DHD_COREDUMP
 	platform_device_register(&sscd_dev);
 #endif /* DHD_COREDUMP */
@@ -600,15 +609,6 @@ dhd_wlan_init(void)
 	dhd_wlan_resources.start = wlan_host_wake_irq;
 	dhd_wlan_resources.end = wlan_host_wake_irq;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
-
-#ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
-	ret = dhd_init_wlan_mem();
-	if (ret < 0) {
-		DHD_ERROR(("%s: failed to alloc reserved memory,"
-					" ret=%d\n", __FUNCTION__, ret));
-		goto fail;
-	}
-#endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
 #ifdef GET_CUSTOM_MAC_ENABLE
 	dhd_wlan_init_mac_addr();

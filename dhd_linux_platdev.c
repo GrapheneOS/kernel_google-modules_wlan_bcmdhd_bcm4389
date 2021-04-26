@@ -475,7 +475,10 @@ static int wifi_ctrlfunc_register_drv(void)
 	dev2 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME2, wifi_platdev_match);
 
 #ifdef BCMDHD_MODULAR
-	dhd_wlan_init();
+	if ((err = dhd_wlan_init())) {
+		DHD_ERROR(("%s: dhd_wlan_init() failed(%d)\n", __FUNCTION__, err));
+		return err;
+	}
 #ifdef WBRC
 	wbrc_init();
 #endif /* WBRC */
@@ -567,6 +570,11 @@ void wifi_ctrlfunc_unregister_drv(void)
 		platform_driver_unregister(&wifi_platform_dev_driver);
 	if (dev2)
 		platform_driver_unregister(&wifi_platform_dev_driver_legacy);
+
+	if (!dhd_wifi_platdata) {
+		goto done;
+	}
+
 	if (dts_enabled) {
 		wifi_adapter_info_t *adapter;
 		adapter = &dhd_wifi_platdata->adapters[0];
@@ -584,11 +592,16 @@ void wifi_ctrlfunc_unregister_drv(void)
 
 #endif /* !defined(CONFIG_DTS) */
 
-	kfree(dhd_wifi_platdata->adapters);
-	dhd_wifi_platdata->adapters = NULL;
-	dhd_wifi_platdata->num_adapters = 0;
-	kfree(dhd_wifi_platdata);
-	dhd_wifi_platdata = NULL;
+done:
+	if (dhd_wifi_platdata && dhd_wifi_platdata->adapters) {
+		kfree(dhd_wifi_platdata->adapters);
+		dhd_wifi_platdata->adapters = NULL;
+		dhd_wifi_platdata->num_adapters = 0;
+	}
+	if (dhd_wifi_platdata) {
+		kfree(dhd_wifi_platdata);
+		dhd_wifi_platdata = NULL;
+	}
 }
 
 static int bcmdhd_wifi_plat_dev_drv_probe(struct platform_device *pdev)

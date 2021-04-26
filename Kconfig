@@ -184,13 +184,6 @@ config WL_NAN
 	---help---
 	  This is a configuration for NAN Feature.
 
-config BCMDHD_PREALLOC_PKTIDMAP
-	bool "BROADCOM PCIE specific memory reserved for PKTIDMAP"
-	depends on BROADCOM_WIFI_RESERVED_MEM && BCMDHD_PCIE
-	---help---
-	  Preallocated memory support for PCIE interface in Broadcom
-	  WLAN driver.
-
 config BCMDHD_PREALLOC_MEMDUMP
 	bool "BROADCOM PCIE specific memory reserved for MEMDUMP"
 	depends on BROADCOM_WIFI_RESERVED_MEM
