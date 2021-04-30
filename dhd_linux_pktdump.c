@@ -37,6 +37,7 @@
 #include <bcmdhcp.h>
 #include <bcmarp.h>
 #include <bcmicmp.h>
+#include <bcmigmp.h>
 #include <dhd_linux_pktdump.h>
 
 #define DHD_PKTDUMP(arg)	DHD_ERROR(arg)

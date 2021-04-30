@@ -115,12 +115,6 @@
 #include <linux/compat.h>
 #endif
 
-#ifdef CONFIG_ARCH_EXYNOS
-#ifndef SUPPORT_EXYNOS7420
-#include <linux/exynos-pci-ctrl.h>
-#endif /* SUPPORT_EXYNOS7420 */
-#endif /* CONFIG_ARCH_EXYNOS */
-
 #ifdef DHD_WMF
 #include <dhd_wmf_linux.h>
 #endif /* DHD_WMF */
@@ -1112,7 +1106,8 @@ dhd_eap_txcomplete(dhd_pub_t *dhdp, void *txp, bool success, int ifidx)
 
 void
 dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata, uint32 pktid,
-	uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, bool tx, int pkt_wake, bool pkt_log)
+	uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, uint8 *dhd_igmp,
+	bool tx, int pkt_wake, bool pkt_log)
 {
 	struct ether_header *eh;
 	uint16 ether_type;

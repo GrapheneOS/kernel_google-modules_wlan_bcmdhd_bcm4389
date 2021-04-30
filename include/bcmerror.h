@@ -232,7 +232,59 @@ typedef int bcmerror_t;
 	"Command response pending",	\
 }
 
-/** status - TBD BCME_ vs proxd status - range reserved for BCME_ */
+/* FTM error codes [-1024, -2047] */
+enum {
+	WL_FTM_E_LAST			= -1068,
+	WL_FTM_E_FATAL			= -1068,
+	WL_FTM_E_PASN			= -1067,
+	WL_FTM_E_PERM			= -1066,
+	WL_FTM_E_BURST			= -1065,
+	WL_FTM_E_RESCHED		= -1064,
+	WL_FTM_E_OFF_CHAN		= -1063,
+	WL_FTM_E_NO_SCB			= -1062,
+	WL_FTM_E_NOT_READY		= -1061,
+	WL_FTM_E_DELETED		= -1060,
+	WL_FTM_E_TX_PENDING		= -1059,
+	WL_FTM_E_BAD_CONFIG		= -1058,
+	WL_FTM_E_ASSOC_INPROG		= -1057,
+	WL_FTM_E_NOAVAIL		= -1056,
+	WL_FTM_E_EXT_SCHED		= -1055,
+	WL_FTM_E_NOT_BCM		= -1054,
+	WL_FTM_E_FRAME_TYPE		= -1053,
+	WL_FTM_E_VERNOSUPPORT		= -1052,
+	WL_FTM_E_SEC_NOKEY		= -1051,
+	WL_FTM_E_SEC_POLICY		= -1050,
+	WL_FTM_E_SCAN_INPROCESS		= -1049,
+	WL_FTM_E_BAD_PARTIAL_TSF	= -1048,
+	WL_FTM_E_SCANFAIL		= -1047,
+	WL_FTM_E_NOTSF			= -1046,
+	WL_FTM_E_POLICY			= -1045,
+	WL_FTM_E_INCOMPLETE		= -1044,
+	WL_FTM_E_OVERRIDDEN		= -1043,
+	WL_FTM_E_ASAP_FAILED		= -1042,
+	WL_FTM_E_NOTSTARTED		= -1041,
+	WL_FTM_E_INVALIDMEAS		= -1040,
+	WL_FTM_E_INCAPABLE		= -1039,
+	WL_FTM_E_MISMATCH		= -1038,
+	WL_FTM_E_DUP_SESSION		= -1037,
+	WL_FTM_E_REMOTE_FAIL		= -1036,
+	WL_FTM_E_REMOTE_INCAPABLE	= -1035,
+	WL_FTM_E_SCHED_FAIL		= -1034,
+	WL_FTM_E_PROTO			= -1033,
+	WL_FTM_E_EXPIRED		= -1032,
+	WL_FTM_E_TIMEOUT		= -1031,
+	WL_FTM_E_NOACK			= -1030,
+	WL_FTM_E_DEFERRED		= -1029,
+	WL_FTM_E_INVALID_SID		= -1028,
+	WL_FTM_E_REMOTE_CANCEL		= -1027,
+	WL_FTM_E_CANCELED		= -1026,	/**< local */
+	WL_FTM_E_INVALID_SESSION	= -1025,
+	WL_FTM_E_BAD_STATE		= -1024,
+	WL_FTM_E_OK			= 0
+};
+typedef int32 wl_ftm_status_t;
+
+/* begin proxd codes compatible w/ ftm above - obsolete  DO NOT extend */
 enum {
 	WL_PROXD_E_LAST			= -1057,
 	WL_PROXD_E_ASSOC_INPROG		= -1057,
@@ -274,10 +326,12 @@ enum {
 	WL_PROXD_E_OK			= 0
 };
 typedef int32 wl_proxd_status_t;
+/* end proxd codes - obsolete  DO NOT extend */
 
 /** status - TBD BCME_ vs NAN status - range reserved for BCME_ */
 enum {
 	/* add new status here... */
+	WL_NAN_E_GRP_REKEY_FAIL		= -2137,
 	WL_NAN_E_NO_ACTION		= -2136,	/* status for no action */
 	WL_NAN_E_INVALID_TOKEN		= -2135,	/* invalid token or mismatch */
 	WL_NAN_E_INVALID_ATTR		= -2134,	/* generic invalid attr error */
@@ -692,7 +746,7 @@ enum {
 	WL_PASN_E_AUTH_RETRY_LIMIT_REACHED	= -8205,
 	/* cookie carried by STA is invalid. */
 	WL_PASN_E_AUTH_COOKIE_MISMATCH		= -8206,
-	/* PMKSA not found. */
+	/* Invalid PASN state transition. */
 	WL_PASN_E_SM_INVALID			= -8207,
 	/* PASN state not found */
 	WL_PASN_E_SM_NOTFOUND			= -8208,
@@ -733,7 +787,34 @@ enum {
 	/* PTKSA is derived and installed. */
 	WL_PASN_E_PTK_EXISTS			= -8226,
 	/* The session is in progress */
-	WL_PASN_E_SESSION_IN_PROGRESS		= -8227
+	WL_PASN_E_SESSION_IN_PROGRESS		= -8227,
+	/* cached PMK used in the session is expired */
+	WL_PASN_E_AUTH_PMKSA_EXPIRED		= -8228
+};
+
+/* bcm fsm status codes. [-9216, -10239] */
+enum {
+	BCM_FSM_E_INVALID_STATE		= -9216,
+	BCM_FSM_E_INVALID_EVENT		= -9217,
+	BCM_FSM_E_BAD_TRANSITION	= -9218,
+	BCM_FSM_E_NO_ALLOC		= -9219,
+	BCM_FSM_E_NO_TIMER		= -9220,
+	BCM_FSM_E_EXISTS		= -9221,
+	BCM_FSM_E_NO_HANDLER		= -9222,
+	BCM_FSM_E_NO_TIMER_INFO		= -9223,
+	BCM_FSM_E_TIME_NON_MONOTONIC	= -9224,
+	BCM_FSM_E_IN_EVH_ALREADY	= -9225,
+	BCM_FSM_E_NOT_IN_EVH		= -9226,
+	BCM_FSM_E_NO_ERR_HANDLER	= -9227,
+	BCM_FSM_E_FATAL_ERROR		= -9228,
+	BCM_FSM_E_NO_TRANSITION		= -9229,
+	BCM_FSM_E_DESTROY_FSM		= -9230,
+	BCM_FSM_E_ASYNC_REQUIRED	= -9231,
+	BCM_FSM_E_INVALID_FSM		= -9232,
+	BCM_FSM_E_CHILD_EXISTS		= -9233,
+
+	/* add additional errors above this line */
+	BCM_FSM_E_MAX			= -10239
 };
 
 #endif	/* BCMUTILS_ERR_CODES */

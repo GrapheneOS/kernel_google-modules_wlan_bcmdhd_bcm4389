@@ -10871,10 +10871,15 @@ static int wl_cfgvendor_get_usable_channels(struct wiphy *wiphy,
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	usable_channel_info_t u_info;
+	usable_channel_t u_chan;
 	struct sk_buff *skb;
 	int ret = BCME_OK;
 	s32 type, rem_attr;
 	const struct nlattr *iter;
+	int i = 0;
+	uint32 uchan_item_size = 0, uchan_data_len = 0;
+	int off = 0;
+	char *uchan_data = NULL;
 
 	nla_for_each_attr(iter, data, len, rem_attr) {
 		type = nla_type(iter);
@@ -10925,9 +10930,25 @@ static int wl_cfgvendor_get_usable_channels(struct wiphy *wiphy,
 		goto exit;
 	}
 
+	uchan_item_size = sizeof(u_chan.freq) + sizeof(u_chan.width) +
+		sizeof(u_chan.iface_mode_mask);
+	uchan_data_len = uchan_item_size * u_info.size;
+	/* Only freq, width and iface_mode_mask in usable_channel_t send to HAL */
+	uchan_data = MALLOC(cfg->osh, uchan_data_len);
+	if (!uchan_data) {
+		WL_ERR(("failed to allocate sending buffer\n"));
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	for (i = 0; i < u_info.size; i++) {
+		memcpy_s(uchan_data + off, uchan_data_len, &u_info.channels[i], uchan_item_size);
+		off += uchan_item_size;
+	}
+
 	/* Alloc the SKB for vendor_event */
 	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy,
-		nla_total_size(sizeof(*u_info.channels) * u_info.size) +
+		nla_total_size(uchan_data_len) +
 		nla_total_size(sizeof(u_info.size)));
 	if (!skb) {
 		WL_ERR(("skb allocation is failed\n"));
@@ -10936,8 +10957,7 @@ static int wl_cfgvendor_get_usable_channels(struct wiphy *wiphy,
 	}
 
 	(void)nla_put_u32(skb, USABLECHAN_ATTRIBUTE_SIZE, u_info.size);
-	(void)nla_put(skb, USABLECHAN_ATTRIBUTE_CHANNELS, USABLE_CHAN_SIZE * u_info.size,
-			u_info.channels);
+	(void)nla_put(skb, USABLECHAN_ATTRIBUTE_CHANNELS, uchan_data_len, uchan_data);
 
 	ret = cfg80211_vendor_cmd_reply(skb);
 
@@ -10945,6 +10965,10 @@ static int wl_cfgvendor_get_usable_channels(struct wiphy *wiphy,
 		WL_ERR(("Vendor Command reply failed ret:%d \n", ret));
 	}
 exit:
+	if (uchan_data) {
+		MFREE(cfg->osh, uchan_data, uchan_data_len);
+	}
+
 	if (u_info.channels) {
 		MFREE(cfg->osh, u_info.channels, sizeof(*u_info.channels) * u_info.max_size);
 	}
@@ -12551,7 +12575,6 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 #endif /* LINUX_VERSION >= 5.3 */
 	},
 #endif /* WL_USABLE_CHAN */
-
 #ifdef WLAN_ACCEL_BOOT
 	{
 		{
@@ -12562,6 +12585,7 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.doit = wl_cfgvendor_trigger_ssr
 	},
 #endif /* WLAN_ACCEL_BOOT */
+
 };
 
 static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
@@ -12611,6 +12635,7 @@ static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
 		{ OUI_BRCM, BRCM_VENDOR_EVENT_TWT},
 		{ OUI_GOOGLE, BRCM_VENDOR_EVENT_TPUT_DUMP},
 		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_MATCH_EXPIRY},
+		{ OUI_BRCM, BRCM_VENDOR_EVENT_RCC_FREQ_INFO},
 };
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))

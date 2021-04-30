@@ -4482,6 +4482,12 @@ typedef	struct brcm_ie brcm_ie_t;
 #define BRF2_DTPC_RX		0x2u	/* DTPC: DTPC RX Cap */
 #define BRF2_DTPC_TX_RX		0x3u	/* DTPC: Enable Both DTPC TX and RX Cap */
 #define BRF2_DTPC_NONBF		0x4u	/* DTPC: Enable DTPC for NON-TXBF */
+#define BRF2_TWT_RESP_CAP	0x8u	/* TWT responder Cap for Brcm Softap
+					 * only brcm sta parse this
+					 */
+#define BRF2_TWT_REQ_CAP	0x10u	/* TWT requester Cap for BRCM STA
+					 * only brcm softap parse this
+					 */
 
 /** Vendor IE structure */
 BWL_PRE_PACKED_STRUCT struct vndr_ie {
@@ -5550,11 +5556,23 @@ typedef struct dot11_ftm_ntb_params dot11_ftm_ntb_params_t;
 BWL_PRE_PACKED_STRUCT struct dot11_ftm_tb_params {
 	uint8 id; /* RANGING_PARAMS_TB_SUB_ELT_ID */
 	uint8 len;
-	uint8 info[BCM_FLEX_ARRAY]; /* variable length, minimum 1 */
+	uint8 info[]; /* variable length */
 } BWL_POST_PACKED_STRUCT;
 
 typedef struct dot11_ftm_tb_params dot11_ftm_tb_params_t;
 #define DOT11_FTM_TB_PARAMS_IE_LEN sizeof(dot11_ftm_tb_params_t)
+
+BWL_PRE_PACKED_STRUCT struct dot11_ftm_tb_avail_window {
+	uint8 id; /* 255 */
+	uint8 len;
+	uint8 ext_id; /* EXT_MNG_ISTA_AVAIL_WINDOW_ID or
+		       * EXT_MNG_RSTA_AVAIL_WINDOW_ID
+		       */
+	uint8 info[];
+}  BWL_POST_PACKED_STRUCT;
+
+typedef struct dot11_ftm_tb_avail_window dot11_ftm_tb_avail_window_t;
+#define DOT11_FTM_TB_AVAIL_WINDOW_HDR_LEN sizeof(dot11_ftm_tb_avail_window_t)
 
 BWL_PRE_PACKED_STRUCT struct dot11_ftm_sec_ltf_params {
 	uint8 id; /* 255 */

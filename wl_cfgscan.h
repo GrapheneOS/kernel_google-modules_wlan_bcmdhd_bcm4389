@@ -56,6 +56,9 @@
 
 #define SCAN_PARAMS_VER_2    2u
 #define SCAN_PARAMS_VER_3    3u
+/* SCAN_PARAMS V3 and V2 have same size. so use V3 with appriate version param */
+#define IS_SCAN_PARAMS_V3_V2(cfg) (((cfg->scan_params_ver == SCAN_PARAMS_VER_3) || \
+			(cfg->scan_params_ver == SCAN_PARAMS_VER_2)) ? TRUE : FALSE)
 #define IS_SCAN_PARAMS_V3(cfg) ((cfg->scan_params_ver == SCAN_PARAMS_VER_3) ? \
 				TRUE : FALSE)
 
@@ -147,6 +150,7 @@ extern chanspec_t wl_freq_to_chanspec(int freq);
 extern s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool update_ssid);
 #ifdef WL_GET_RCC
 extern int wl_android_get_roam_scan_chanlist(struct bcm_cfg80211 *cfg);
+extern int wl_android_get_roam_scan_freqlist(struct bcm_cfg80211 *cfg);
 #endif /* WL_GET_RCC */
 extern s32 wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 	struct net_device *dev, wlcfg_assoc_info_t *info);
@@ -203,5 +207,7 @@ extern void wl_cfgscan_sched_scan_stop_work(struct work_struct *work);
 #ifdef WL_SOFTAP_ACS
 extern bool is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec);
 extern void wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data);
+extern int wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg,
+		drv_acs_params_t *parameter, int qty, uint32 *pList);
 #endif /* WL_SOFTAP_ACS */
 #endif /* _wl_cfgscan_h_ */

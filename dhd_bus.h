@@ -412,4 +412,9 @@ extern void dhd_bus_flow_ring_status_dpc_trace(dhd_pub_t *dhd);
 extern bool dhd_bus_init_done(struct dhd_bus *bus);
 
 extern void dhdpcie_db7_trap(struct dhd_bus *bus);
+
+#if defined(NDIS)
+void * dhd_bus_get_socram_buf(struct dhd_bus *bus, struct dhd_pub *dhdp);
+#endif
+
 #endif /* _dhd_bus_h_ */

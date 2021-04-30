@@ -756,16 +756,16 @@ dhd_get_flowring_len(void *ndev, dhd_pub_t *dhdp)
 				+ (sizeof(uint16) * 2));
 #endif /* EWP_EDL */
 
-#if defined(DHD_HTPUT_TUNABLES)
-	/* flowring lengths are different for HTPUT rings, handle accordingly */
-	length += ((H2DRING_TXPOST_ITEMSIZE * h2d_htput_max_txpost *
-		HTPUT_TOTAL_FLOW_RINGS) +
-		(H2DRING_TXPOST_ITEMSIZE * h2d_max_txpost *
-		(h2d_flowrings_total - HTPUT_TOTAL_FLOW_RINGS)));
-#else
-	length += (H2DRING_TXPOST_ITEMSIZE * h2d_max_txpost *
-		h2d_flowrings_total);
-#endif /* DHD_HTPUT_TUNABLES */
+	if (dhdp->htput_support) {
+		/* flowring lengths are different for HTPUT rings, handle accordingly */
+		length += ((H2DRING_TXPOST_ITEMSIZE * h2d_htput_max_txpost *
+			HTPUT_TOTAL_FLOW_RINGS) +
+			(H2DRING_TXPOST_ITEMSIZE * h2d_max_txpost *
+			(h2d_flowrings_total - HTPUT_TOTAL_FLOW_RINGS)));
+	} else {
+		length += (H2DRING_TXPOST_ITEMSIZE * h2d_max_txpost *
+			h2d_flowrings_total);
+	}
 
 	return length;
 }

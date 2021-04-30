@@ -149,12 +149,22 @@ dbg_ring_poll_worker(struct work_struct *work)
 		DHD_DBG_RING_UNLOCK(ring->lock, flags);
 	}
 
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC
+	buf = dhdp->dbg_ring_send_buf;
+	if (!buf) {
+		DHD_ERROR(("%s send buf is not allocated\n", __FUNCTION__));
+		sched = FALSE;
+		goto exit;
+	}
+	memset(buf, 0, dhdp->dbg_ring_send_buf_len);
+#else
 	buf = MALLOCZ(dhdp->osh, buflen);
 	if (!buf) {
 		DHD_ERROR(("%s failed to allocate read buf\n", __FUNCTION__));
 		sched = FALSE;
 		goto exit;
 	}
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC */
 
 #ifdef DHD_PKT_LOGGING_DBGRING
 	if (ringid == PACKET_LOG_RING_ID) {
@@ -193,7 +203,10 @@ dbg_ring_poll_worker(struct work_struct *work)
 		rlen -= ENTRY_LENGTH(hdr);
 		hdr = (dhd_dbg_ring_entry_t *)((char *)hdr + ENTRY_LENGTH(hdr));
 	}
+
+#ifndef DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC
 	MFREE(dhdp->osh, buf, buflen);
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC */
 
 	DHD_DBG_RING_LOCK(ring->lock, flags);
 	if (!ring->sched_pull) {

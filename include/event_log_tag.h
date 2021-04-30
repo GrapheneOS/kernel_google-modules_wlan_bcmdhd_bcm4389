@@ -530,8 +530,17 @@
 
 #define EVENT_LOG_TAG_AMPDU_BARDBG              422
 
+#define EVENT_LOG_TAG_PASN_ERROR		423
+#define EVENT_LOG_TAG_PASN_INFO			424
+
+#ifdef WLIGMPOE
+#define EVENT_LOG_TAG_IGMP_DBG        425
+#define EVENT_LOG_TAG_IGMP_INFO       426
+#define EVENT_LOG_TAG_IGMP_ERR        427
+#endif /* WLIGMPOE */
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			422
+#define EVENT_LOG_TAG_MAX			427
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

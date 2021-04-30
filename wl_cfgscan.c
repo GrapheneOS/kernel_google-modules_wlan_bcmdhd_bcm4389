@@ -1584,7 +1584,7 @@ wl_scan_prep(struct bcm_cfg80211 *cfg, void *scan_params, u32 len,
 	}
 
 	WL_DBG(("Preparing Scan request\n"));
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		params_v3 = (wl_scan_params_v3_t *)scan_params;
 		scan_param_size = sizeof(wl_scan_params_v3_t);
 		channel_offset = offsetof(wl_scan_params_v3_t, channel_list);
@@ -1600,7 +1600,7 @@ wl_scan_prep(struct bcm_cfg80211 *cfg, void *scan_params, u32 len,
 		scan_type  += wl_cfgscan_map_nl80211_scan_type(cfg, request);
 #endif /* WL_SCAN_TYPE */
 		(void)memcpy_s(&params_v3->bssid, ETHER_ADDR_LEN, &ether_bcast, ETHER_ADDR_LEN);
-		params_v3->version = htod16(WL_SCAN_PARAMS_VERSION_V3);
+		params_v3->version = htod16(cfg->scan_params_ver);
 		params_v3->length = htod16(sizeof(wl_scan_params_v3_t));
 		params_v3->bss_type = DOT11_BSSTYPE_ANY;
 		params_v3->scan_type = htod32(scan_type);
@@ -1781,7 +1781,7 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		goto exit;
 	}
 
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		params_size = (WL_SCAN_PARAMS_V3_FIXED_SIZE +
 				OFFSETOF(wl_escan_params_v3_t, params));
 	} else {
@@ -1871,10 +1871,10 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		}
 
 		wl_escan_set_sync_id(sync_id, cfg);
-		if (IS_SCAN_PARAMS_V3(cfg)) {
+		if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 			eparams_v3 = (wl_escan_params_v3_t *)params;
 			scan_params = (u8 *)&eparams_v3->params;
-			eparams_v3->version = htod32(ESCAN_REQ_VERSION_V2);
+			eparams_v3->version = htod32(cfg->scan_params_ver);
 			eparams_v3->action =  htod16(action);
 			eparams_v3->sync_id = sync_id;
 		} else {
@@ -2638,7 +2638,7 @@ static void wl_cfgscan_scan_abort(struct bcm_cfg80211 *cfg)
 	u32 channel, channel_num;
 
 	/* Abort scan params only need space for 1 channel and 0 ssids */
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		params_size = WL_SCAN_PARAMS_V3_FIXED_SIZE + (1 * sizeof(uint16));
 	} else {
 		params_size = WL_SCAN_PARAMS_FIXED_SIZE + (1 * sizeof(uint16));
@@ -2654,7 +2654,7 @@ static void wl_cfgscan_scan_abort(struct bcm_cfg80211 *cfg)
 	channel = htodchanspec(-1);
 	channel_num = htod32((0 << WL_SCAN_PARAMS_NSSID_SHIFT) |
 			(1 & WL_SCAN_PARAMS_COUNT_MASK));
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		wl_scan_params_v3_t *params_v3 = (wl_scan_params_v3_t *)params;
 		params_v3->channel_list[0] = channel;
 		params_v3->channel_num = channel_num;
@@ -4878,9 +4878,9 @@ wl_init_scan_params(struct bcm_cfg80211 *cfg, u8 *params, u16 params_size,
 	wl_scan_params_v3_t *scanparams_v3 = NULL;
 
 	wl_escan_set_sync_id(sync_id, cfg);
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		eparams_v3 = (wl_escan_params_v3_t *)params;
-		eparams_v3->version = htod32(ESCAN_REQ_VERSION_V2);
+		eparams_v3->version = htod32(cfg->scan_params_ver);
 		eparams_v3->action =  htod16(action);
 		eparams_v3->sync_id = sync_id;
 		scanparams_v3 = (wl_scan_params_v3_t *)&eparams_v3->params;
@@ -4987,7 +4987,7 @@ wl_cfgscan_listen_on_channel(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev
 	/* Use primary ndev for netless dev. BSSIDX will point to right I/F */
 	ndev = wdev->netdev ? wdev->netdev : bcmcfg_to_prmry_ndev(cfg);
 
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		params_size = (WL_SCAN_PARAMS_V3_FIXED_SIZE +
 			OFFSETOF(wl_escan_params_v3_t, params));
 	} else {
@@ -5014,7 +5014,7 @@ wl_cfgscan_listen_on_channel(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev
 		scan_type, WL_SCAN_ACTION_START, dwell);
 
 	channel_num = (chanspec_num & WL_SCAN_PARAMS_COUNT_MASK);
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		eparams_v3 = (wl_escan_params_v3_t *)params;
 		scanparams_v3 = (wl_scan_params_v3_t *)&eparams_v3->params;
 		chanspec_list = scanparams_v3->channel_list;
@@ -5386,6 +5386,98 @@ fail:
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0) */
 	return err;
 }
+
+int
+wl_android_get_roam_scan_freqlist(struct bcm_cfg80211 *cfg)
+{
+	s32 err = BCME_OK;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
+	struct sk_buff *skb;
+	gfp_t kflags;
+	struct net_device *ndev;
+	struct wiphy *wiphy;
+	wlc_ssid_t *ssid = NULL;
+	wl_roam_channel_list_t channel_list;
+	uint16 frequencies[MAX_ROAM_CHANNEL] = {0};
+	int i = 0;
+
+	ndev = bcmcfg_to_prmry_ndev(cfg);
+	wiphy = bcmcfg_to_wiphy(cfg);
+
+	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
+	skb = CFG80211_VENDOR_EVENT_ALLOC(wiphy, ndev_to_wdev(ndev),
+		BRCM_VENDOR_GET_RCC_EVENT_BUF_LEN, BRCM_VENDOR_EVENT_RCC_FREQ_INFO, kflags);
+
+	if (!skb) {
+		WL_ERR(("skb alloc failed"));
+		return BCME_NOMEM;
+	}
+
+	/* Get Current SSID */
+	ssid = (struct wlc_ssid *)wl_read_prof(cfg, ndev, WL_PROF_SSID);
+	if (!ssid) {
+		WL_ERR(("No SSID found in the saved profile\n"));
+		err = BCME_ERROR;
+		goto fail;
+	}
+
+	/* Get Current RCC List */
+	err = wldev_iovar_getbuf(ndev, "roamscan_channels", 0, 0,
+		(void *)&channel_list, sizeof(channel_list), NULL);
+	if (err) {
+		WL_ERR(("Failed to get roamscan channels, err = %d\n", err));
+		goto fail;
+	}
+	if (channel_list.n > MAX_ROAM_CHANNEL) {
+		WL_ERR(("Invalid roamscan channels count(%d)\n", channel_list.n));
+		goto fail;
+	}
+
+	WL_DBG(("SSID %s(%d), RCC(%d)\n", ssid->SSID, ssid->SSID_len, channel_list.n));
+	for (i = 0; i < channel_list.n; i++) {
+		chanspec_t chsp = channel_list.channels[i];
+		u32 freq = wl_channel_to_frequency(wf_chspec_ctlchan(chsp), CHSPEC_BAND(chsp));
+		WL_DBG(("  [%d] Freq: %d (0x%04x)\n", i, freq, channel_list.channels[i]));
+		frequencies[i] = (uint16)freq;
+	}
+
+	err = nla_put_string(skb, RCC_ATTRIBUTE_SSID, ssid->SSID);
+	if (unlikely(err)) {
+		WL_ERR(("nla_put_string RCC_ATTRIBUTE_SSID failed\n"));
+		goto fail;
+	}
+
+	err = nla_put_u32(skb, RCC_ATTRIBUTE_SSID_LEN, ssid->SSID_len);
+	if (unlikely(err)) {
+		WL_ERR(("nla_put_u32 RCC_ATTRIBUTE_SSID_LEN failed\n"));
+		goto fail;
+	}
+
+	err = nla_put_u32(skb, RCC_ATTRIBUTE_NUM_CHANNELS, channel_list.n);
+	if (unlikely(err)) {
+		WL_ERR(("nla_put_u32 RCC_ATTRIBUTE_NUM_CHANNELS failed\n"));
+		goto fail;
+	}
+
+	err = nla_put(skb, RCC_ATTRIBUTE_CHANNEL_LIST,
+		sizeof(uint16) * MAX_ROAM_CHANNEL, frequencies);
+	if (unlikely(err)) {
+		WL_ERR(("nla_put RCC_ATTRIBUTE_CHANNEL_LIST failed\n"));
+		goto fail;
+	}
+
+	cfg80211_vendor_event(skb, kflags);
+
+	return err;
+
+fail:
+	if (skb) {
+		nlmsg_free(skb);
+	}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0) */
+	return err;
+}
+
 #endif /* WL_GET_RCC */
 
 /*
@@ -6009,7 +6101,6 @@ static void wl_cfgscan_acs_result_event(struct work_struct *work)
 			ret = BCME_NOMEM;
 			break;
 		}
-		WL_TRACE(("%s: good to get skb=0x%p\n", __FUNCTION__, skb));
 
 		if ((nla_put_u32(skb, BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ, result.pri_freq) < 0) ||
 		    (nla_put_u32(skb, BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ, result.sec_freq) < 0) ||
@@ -6024,8 +6115,8 @@ static void wl_cfgscan_acs_result_event(struct work_struct *work)
 			break;
 		}
 
-		WL_INFORM_MEM(("%s: ACS event notified. freq:%d:%d\n", __FUNCTION__,
-					result.pri_freq, result.sec_freq));
+		WL_INFORM_MEM(("%s: ACS event notified. freq:%d:%d\n",
+			__FUNCTION__, result.pri_freq, result.sec_freq));
 		cfg80211_vendor_event(skb, kflags);
 	} while (0);
 
@@ -6283,7 +6374,7 @@ wl_acs_check_scc(drv_acs_params_t *parameter,
 	return scc;
 }
 
-static int
+int
 wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *parameter,
 	int qty, uint32 *pList)
 {
@@ -6566,7 +6657,8 @@ exit:
 	return ret;
 }
 
-#define ACS_WORK_DELAY_US	(100 * 1000)
+#define ACS_WORK_DELAY_US   (100 * 1000)
+#define ACS_WORK_CNT        5
 int
 wl_cfgscan_acs(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void *data, int len)
@@ -6759,23 +6851,24 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 		WL_DBG(("%s: do acs ret=%d, ch_chosen=(0x%X)\n",
 		          __FUNCTION__, ret, ch_chosen));
 		if (ret >= 0) {
-			u8 acs_work_cnt = 5;
+			u8 acs_work_cnt = ACS_WORK_CNT;
 			while (delayed_work_pending(&delay_work_acs.acs_delay_work)) {
 				if (acs_work_cnt) {
-					WL_INFORM(("wait for acs work completion. cnt:%d\n", acs_work_cnt));
+					WL_INFORM(("acs_delay_work: wait_cnt:%d\n", acs_work_cnt));
 					acs_work_cnt--;
 					OSL_DELAY(ACS_WORK_DELAY_US);
 				} else {
-					WL_INFORM(("force cancel ACS work\n"));
+					WL_INFORM_MEM(("ACS work time out. Force cancel.\n"));
 					break;
 				}
 			}
 			cancel_delayed_work_sync(&delay_work_acs.acs_delay_work);
 			delay_work_acs.ndev = net;
 			delay_work_acs.ch_chosen = ch_chosen;
-			WL_INFORM_MEM(("%s: schedule the acs result event send work\n", __FUNCTION__));
 			schedule_delayed_work(&delay_work_acs.acs_delay_work,
 			                      msecs_to_jiffies((const unsigned int)50));
+			WL_INFORM_MEM(("%s: scheduled work for acs event (chspec:0x%X)\n",
+					__FUNCTION__, ch_chosen));
 			ret = 0;
 		}
 

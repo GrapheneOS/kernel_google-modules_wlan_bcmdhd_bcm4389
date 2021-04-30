@@ -54,7 +54,8 @@ enum pkt_type {
 	PKT_TYPE_ICMPV6 = 3,
 	PKT_TYPE_DNS = 4,
 	PKT_TYPE_ARP = 5,
-	PKT_TYPE_EAP = 6
+	PKT_TYPE_EAP = 6,
+	PKT_TYPE_IGMP = 7
 };
 
 extern msg_eapol_t dhd_is_4way_msg(uint8 *pktdata);

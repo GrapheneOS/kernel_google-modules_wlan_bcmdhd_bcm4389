@@ -57,22 +57,7 @@
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #include <linux/pm_runtime.h>
-#endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
-#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
-	defined(CONFIG_SOC_EXYNOS1000)
-#include <linux/exynos-pci-ctrl.h>
-#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
-	* CONFIG_SOC_EXYNOS1000
-	*/
-
-#if defined(CONFIG_SOC_GS101)
-#include <linux/exynos-pci-ctrl.h>
-#endif /* CONFIG_SOC_GS101 */
-
-#ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #ifndef AUTO_SUSPEND_TIMEOUT
 #define AUTO_SUSPEND_TIMEOUT 1000
 #endif /* AUTO_SUSPEND_TIMEOUT */
@@ -231,11 +216,6 @@ static int dhdpcie_pm_runtime_resume(struct device * dev);
 static int dhdpcie_pm_system_suspend_noirq(struct device * dev);
 static int dhdpcie_pm_system_resume_noirq(struct device * dev);
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
-
-#ifdef SUPPORT_EXYNOS7420
-void exynos_pcie_pm_suspend(int ch_num) {}
-int exynos_pcie_pm_resume(int ch_num) { return 0; }
-#endif /* SUPPORT_EXYNOS7420 */
 
 static void dhdpcie_config_save_restore_coherent(dhd_bus_t *bus, bool state);
 
@@ -1137,19 +1117,13 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 #else
 	DHD_RPM(("%s: Enter\n", __FUNCTION__));
 #endif /* CUSTOMER_HW4_DEBUG */
-#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
-	defined(CONFIG_SOC_EXYNOS1000)
-	DHD_ERROR(("%s: Disable L1ss EP side\n", __FUNCTION__));
-	exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
-	* CONFIG_SOC_EXYNOS1000
-	*/
-#if defined(CONFIG_SOC_GS101)
-	DHD_RPM(("%s: Disable L1ss EP side\n", __FUNCTION__));
-	exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
-#endif /* CONFIG_SOC_GS101 */
+
+	/*
+	 * Disable L1ss on EP and RC side ... defaults to NOP
+	 * If needed implement this function in the dhd_custom_xxx.c
+	 * accordingly.
+	 */
+	dhd_plat_l1ss_ctrl(0);
 
 	dhdpcie_suspend_dump_cfgregs(bus, "BEFORE_EP_SUSPEND");
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
@@ -1252,19 +1226,12 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	}
 	BCM_REFERENCE(pch);
 	dhdpcie_suspend_dump_cfgregs(pch->bus, "AFTER_EP_RESUME");
-#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830) || defined(CONFIG_SOC_EXYNOS2100) || \
-	defined(CONFIG_SOC_EXYNOS1000)
-	DHD_ERROR(("%s: Enable L1ss EP side\n", __FUNCTION__));
-	exynos_pcie_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	* CONFIG_SOC_EXYNOS9830 || CONFIG_SOC_EXYNOS2100 ||
-	* CONFIG_SOC_EXYNOS1000
-	*/
-#if defined(CONFIG_SOC_GS101)
-	DHD_RPM(("%s: Enable L1ss EP side\n", __FUNCTION__));
-	exynos_pcie_rc_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI, 1);
-#endif /* CONFIG_SOC_GS101 */
+
+	/*
+	 * Re-enable L1ss in Resume path. Implementation defalts to NOP
+	 * If need override in the paltform file
+	 */
+	dhd_plat_l1ss_ctrl(1);
 
 	/* Disable ASPM and L1SS if they were disabled during suspend,
 	 * after resume they are enabled by default.
@@ -1315,7 +1282,7 @@ static int dhdpcie_suspend_host_dev(dhd_bus_t *bus)
 		pci_save_state(bus->rc_dev);
 	} else {
 		DHD_ERROR(("%s: RC %x:%x handle is NULL\n",
-			__FUNCTION__, PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID));
+			__FUNCTION__, dhd_plat_get_rc_vendor_id(), dhd_plat_get_rc_device_id()));
 	}
 #endif /* CONFIG_ARCH_EXYNOS */
 	bcmerror = dhdpcie_stop_host_dev(bus);
@@ -1343,10 +1310,11 @@ dhdpcie_rc_config_read(dhd_bus_t *bus, uint offset)
 		OSL_DELAY(100);
 	} else {
 		DHD_ERROR(("%s: RC %x:%x handle is NULL\n",
-			__FUNCTION__, PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID));
+			__FUNCTION__, dhd_plat_get_rc_vendor_id(), dhd_plat_get_rc_device_id()));
 	}
 	DHD_ERROR(("%s: RC %x:%x offset 0x%x val 0x%x\n",
-		__FUNCTION__, PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID, offset, val));
+		__FUNCTION__, dhd_plat_get_rc_vendor_id(), dhd_plat_get_rc_device_id(),
+		offset, val));
 	return (val);
 }
 
@@ -1422,7 +1390,7 @@ dhdpcie_rc_access_cap(dhd_bus_t *bus, int cap, uint offset, bool is_ext, bool is
 {
 	if (!(bus->rc_dev)) {
 		DHD_ERROR(("%s: RC %x:%x handle is NULL\n",
-			__FUNCTION__, PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID));
+			__FUNCTION__, dhd_plat_get_rc_vendor_id(), dhd_plat_get_rc_device_id()));
 		return BCME_ERROR;
 	}
 
@@ -2131,9 +2099,11 @@ int dhdpcie_init(struct pci_dev *pdev)
 
 		/* if rc_dev is still NULL, try to get from vendor/device IDs */
 		if (bus->rc_dev == NULL) {
-			bus->rc_dev = pci_get_device(PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID, NULL);
+			bus->rc_dev = pci_get_device(dhd_plat_get_rc_vendor_id(),
+					dhd_plat_get_rc_device_id(), NULL);
 			DHD_ERROR(("%s: rc_dev from pci_get_device (%x:%x) is %p\n", __FUNCTION__,
-				PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID, bus->rc_dev));
+				dhd_plat_get_rc_vendor_id(), dhd_plat_get_rc_device_id(),
+				bus->rc_dev));
 		}
 
 		bus->rc_ep_aspm_cap = dhd_bus_is_rc_ep_aspm_capable(bus);
@@ -2381,10 +2351,6 @@ dhdpcie_irq_disabled(dhd_bus_t *bus)
 	return desc->depth;
 }
 
-#if defined(CONFIG_ARCH_EXYNOS)
-int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
-#endif /* CONFIG_ARCH_EXYNOS */
-
 int
 dhdpcie_start_host_dev(dhd_bus_t *bus)
 {
@@ -2404,9 +2370,8 @@ dhdpcie_start_host_dev(dhd_bus_t *bus)
 		return BCME_ERROR;
 	}
 
-#ifdef CONFIG_ARCH_EXYNOS
-	ret = exynos_pcie_pm_resume(pcie_ch_num);
-#endif /* CONFIG_ARCH_EXYNOS */
+	dhd_plat_pcie_resume(bus->dhd->plat_info);
+
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	if (bus->no_cfg_restore) {
@@ -2457,9 +2422,8 @@ dhdpcie_stop_host_dev(dhd_bus_t *bus)
 		return BCME_ERROR;
 	}
 
-#ifdef CONFIG_ARCH_EXYNOS
-	exynos_pcie_pm_suspend(pcie_ch_num);
-#endif /* CONFIG_ARCH_EXYNOS */
+	dhd_plat_pcie_suspend(bus->dhd->plat_info);
+
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	if (bus->no_cfg_restore) {

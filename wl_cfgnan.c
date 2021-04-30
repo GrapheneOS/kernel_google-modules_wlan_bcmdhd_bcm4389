@@ -2800,6 +2800,8 @@ wl_cfgnan_config_nmi_rand_mac(struct net_device *ndev,
 			return ret;
 		}
 
+		WL_INFORM_MEM(("Cluster merge : %s\n", merge_enable ? "Enabled" : "Disabled"));
+
 		lwt_mode_enable = !!(cmd_data->nmi_rand_intvl &
 				NAN_NMI_RAND_AUTODAM_LWT_MODE_ENAB);
 
@@ -2817,6 +2819,8 @@ wl_cfgnan_config_nmi_rand_mac(struct net_device *ndev,
 			}
 			return ret;
 		}
+
+		WL_INFORM_MEM(("LWT mode : %s\n", lwt_mode_enable ? "Enabled" : "Disabled"));
 
 		/* reset pvt merge enable bits */
 		cmd_data->nmi_rand_intvl &= ~(NAN_NMI_RAND_PVT_CMD_VENDOR |
@@ -9490,7 +9494,7 @@ wl_nan_print_avail_stats(const uint8 *data)
 	int s_chan = 0;
 	char pbuf[NAN_IOCTL_BUF_SIZE_MED];
 	const wl_nan_stats_sched_t *sched = (const wl_nan_stats_sched_t *)data;
-#define SLOT_PRINT_SIZE 4
+#define SLOT_PRINT_SIZE 6
 
 	char *buf = pbuf;
 	int remained_len = 0, bytes_written = 0;
@@ -9518,8 +9522,10 @@ wl_nan_print_avail_stats(const uint8 *data)
 
 		buf += bytes_written;
 		remained_len -= bytes_written;
-		bytes_written = snprintf(buf, remained_len, "%03d|", s_chan);
-
+		bytes_written = snprintf(buf, remained_len, "%3u%c|",
+				s_chan, ((s_chan) &&
+				(slot->info & WL_NAN_SCHED_STAT_SLOT_COMM)) ? 'C' :
+				' ');	/* Committed */
 	}
 	WL_INFORM_MEM(("%s\n", pbuf));
 exit:

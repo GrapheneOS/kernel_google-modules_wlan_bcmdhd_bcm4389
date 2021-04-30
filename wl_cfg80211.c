@@ -122,6 +122,12 @@
 #include <wl_cfg_cellavoid.h>
 #endif /* WL_CELLULAR_CHAN_AVOID */
 
+/* DSCP Policy for the network-centric QoS */
+#if defined(DHD_DSCP_POLICY)
+#include <dscp_policy.h>
+#include <dhd_cfg_dscp_policy_api.h>
+#endif /* DHD_DSCP_POLICY */
+
 #if (defined(WL_FW_OCE_AP_SELECT) || defined(BCMFW_ROAM_ENABLE)) && \
 	((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)) || defined(WL_COMPAT_WIRELESS))
 uint fw_ap_select = true;
@@ -4348,8 +4354,13 @@ wl_cfg80211_join_ibss(struct wiphy *wiphy, struct net_device *dev,
 			WL_ERR(("Failed to get bandwidth capability (%d)\n", err));
 			return err;
 		}
+#ifdef WL_6G_320_SUPPORT
+		chanspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(cfg->channel),
+			bw_cap, CHSPEC_BAND(cfg->channel), 0);
+#else
 		chanspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(cfg->channel),
 			bw_cap, CHSPEC_BAND(cfg->channel));
+#endif /* WL_6G_320_SUPPORT */
 	}
 
 	/*
@@ -5909,6 +5920,14 @@ wl_config_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	u32 wpaie_len;
 	s32 err;
 	s32 bssidx = info->bssidx;
+
+#if defined(DHD_DSCP_POLICY)
+	/* Add QoS Mgmt vendor-specific IE in the assoc request */
+	if ((err = dhd_dscp_policy_set_vndr_ie(cfg, dev, bssidx)) != BCME_OK) {
+		WL_ERR(("Failed to set QoS Mgmt vendor-specific ie in assoc: %d\n", err));
+		/* continue */
+	}
+#endif /* DHD_DSCP_POLICY */
 
 	/* configure all vendor and extended vendor IEs */
 	wl_cfg80211_set_mgmt_vndr_ies(cfg, ndev_to_cfgdev(dev), bssidx,
@@ -7856,10 +7875,11 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 				}
 			}
 			DHD_OS_WAKE_UNLOCK(dhd);
-			if (!dhd_assoc_state || !fw_assoc_state) {
+			if (!dhd_assoc_state || !fw_assoc_state)
 #else
-			if (!wl_get_drv_status(cfg, CONNECTED, dev)) {
+			if (!wl_get_drv_status(cfg, CONNECTED, dev))
 #endif /* defined(BCMDONGLEHOST) */
+			{
 				WL_ERR(("NOT assoc\n"));
 				if (err == -ENODATA)
 					goto error;
@@ -12043,6 +12063,7 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 
 #ifdef WL_GET_RCC
 	wl_android_get_roam_scan_chanlist(cfg);
+	wl_android_get_roam_scan_freqlist(cfg);
 #endif /* WL_GET_RCC */
 	ROAMOFF_DBG_DUMP(cfg);
 
@@ -12205,6 +12226,7 @@ wl_handle_assoc_events(struct bcm_cfg80211 *cfg,
 	as.data = data;
 	as.data_len = ntoh32(e->datalen);
 	as.event_msg = e;
+	as.assoc_state = assoc_state;
 	(void)memcpy_s(as.addr, ETH_ALEN, e->addr.octet, ETH_ALEN);
 
 	WL_INFORM_MEM(("[%s] Mode BSS. assoc_state:%d event:%d "
@@ -13678,6 +13700,33 @@ int wl_cfg80211_get_ioctl_version(void)
 	return ioctl_version;
 }
 
+#if defined(DHD_DSCP_POLICY)
+
+/*
+ * Returns true if the incoming frame is the vendor-specific QoS Mgmt action frame,
+ * otherwise false.
+ */
+static bool
+wl_is_qos_mgmt_vsaf(uint8 *body, uint body_len)
+{
+	dot11_action_vs_frmhdr_t *vsafh;
+
+	if (body_len < DOT11_ACTION_VS_HDR_LEN) {
+		return false;
+	}
+
+	vsafh = (dot11_action_vs_frmhdr_t *) body;
+	if ((vsafh->type == DSCP_POLICY_AF_OUI_TYPE) &&
+	    ((vsafh->subtype == DSCP_POLICY_REQ_FRAME) ||
+	     (vsafh->subtype == DSCP_POLICY_RESP_FRAME)) &&
+	     (bcmp(vsafh->OUI, WFA_OUI, WFA_OUI_LEN) == 0)) {
+		return (true);
+	}
+
+	return false;
+}
+#endif /* DHD_DSCP_POLICY */
+
 static s32
 wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data)
@@ -13854,6 +13903,44 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				MFREE(cfg->osh, cfg->up_table, UP_TABLE_MAX);
 			}
 #endif /* QOS_MAP_SET */
+
+#ifdef DHD_DSCP_POLICY
+		} else if ((mgmt_frame[DOT11_MGMT_HDR_LEN] == DOT11_ACTION_CAT_VS) ||
+		           (mgmt_frame[DOT11_MGMT_HDR_LEN] == DOT11_ACTION_CAT_VSP)) {
+
+			uint8 offset = DOT11_MGMT_HDR_LEN;
+			bool qos_mgmt_vsaf;
+
+			/* Check if the frame is the vendor-specific QoS Mgmt AF */
+			qos_mgmt_vsaf = wl_is_qos_mgmt_vsaf(&mgmt_frame[offset],
+			                                    mgmt_frame_len - offset);
+
+			if (qos_mgmt_vsaf == true) {
+
+				struct wl_security *sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
+
+				/* sec has the information about the security parameters
+				 * for the current ongoing association.
+				 */
+				if (sec != NULL) {
+					int ret_val;
+
+					/* Actively testing, keep it for a while */
+					prhex("QoS Mgmt VS frame in DHD", &mgmt_frame[offset],
+					      mgmt_frame_len - offset);
+
+					/* process the DSCP Policy frame */
+					ret_val = dhd_dscp_policy_process_vsaf(
+						cfg, ndev, sec->fw_mfp, &mgmt_frame[offset],
+						mgmt_frame_len - offset);
+					if (ret_val != BCME_OK) {
+						WL_ERR(("DSCP Policy frame processing "
+						        "has failed = %d \n", ret_val));
+					}
+				}
+			}
+#endif /* DHD_DSCP_POLICY */
+
 #ifdef WBTEXT
 		} else if (mgmt_frame[DOT11_MGMT_HDR_LEN] == DOT11_ACTION_CAT_RRM) {
 			/* radio measurement category */
@@ -15378,6 +15465,14 @@ s32 wl_cfg80211_attach(struct net_device *ndev, void *context)
 #endif /* WL_NAN */
 	cfg->rssi_sum_report = FALSE;
 
+#if defined(DHD_DSCP_POLICY)
+	err = dhd_dscp_policy_attach(cfg);
+	if (err != BCME_OK) {
+		WL_ERR(("Failed to attach DSCP module %d\n", err));
+		goto cfg80211_attach_out;
+	}
+#endif /* defined(DHD_DSCP_POLICY) */
+
 	return err;
 
 cfg80211_attach_out:
@@ -15427,6 +15522,11 @@ void wl_cfg80211_detach(struct bcm_cfg80211 *cfg)
 #ifdef WL_NAN
 	wl_cfgnan_detach(cfg);
 #endif /* WL_NAN */
+
+#if defined(DHD_DSCP_POLICY)
+	dhd_dscp_policy_detach(cfg);
+#endif	/* defined(DHD_DSCP_POLICY) */
+
 	wl_cfg80211_ibss_vsie_free(cfg);
 	wl_dealloc_netinfo_by_wdev(cfg, cfg->wdev);
 	wl_cfg80211_set_bcmcfg(NULL);
@@ -16633,7 +16733,7 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 			 * has been changed to ssid type for 6G use. That will variable
 			 * get ignored when used with branches supporting V2 struct
 			 */
-			cfg->scan_params_ver = SCAN_PARAMS_VER_3;
+			cfg->scan_params_ver = ver->scan_ver_major;
 			WL_INFORM_MEM(("scan_params version:%d\n", cfg->scan_params_ver));
 		} else {
 			WL_INFORM(("scan_ver (%d), UNSUPPORTED\n", ver->scan_ver_major));
@@ -23277,6 +23377,16 @@ wl_android_roamoff_dbg_dump(struct bcm_cfg80211 *cfg)
 		return;
 	}
 
+#ifdef DHD_PM_CONTROL_FROM_FILE
+	{
+		extern bool g_pm_control;
+		if (g_pm_control == TRUE) {
+			WL_ERR(("Enabled RF test mode\n"));
+			return;
+		}
+	}
+#endif /* DHD_PM_CONTROL_FROM_FILE */
+
 	/* Dump roaminfo */
 	WL_INFORM_MEM(("Last ROAM Disable(%02d) "SEC_USEC_FMT"\n",
 		roamoff_info->roam_disable_rsn,
@@ -23366,6 +23476,32 @@ wl_cfg80211_get_sta_chanspec(struct bcm_cfg80211 *cfg)
 	return 0;
 }
 
+int
+wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid, chanspec_t chanspec)
+{
+	int error = BCME_OK;
+	u32 params_size;
+	wl_reassoc_params_t reassoc_params;
+
+	bzero(&reassoc_params, WL_REASSOC_PARAMS_FIXED_SIZE);
+	bcopy(bssid, &reassoc_params.bssid, ETHER_ADDR_LEN);
+
+	if (chanspec) {
+		reassoc_params.chanspec_num = 1;
+		reassoc_params.chanspec_list[0] = chanspec;
+		params_size = WL_REASSOC_PARAMS_FIXED_SIZE + sizeof(chanspec_t);
+	} else {
+		params_size = ETHER_ADDR_LEN;
+	}
+
+	error = wldev_ioctl_set(dev, WLC_REASSOC, &reassoc_params, params_size);
+	if (error) {
+		WL_ERR(("failed to reassoc, error=%d\n", error));
+		return error;
+	}
+	return error;
+}
+
 #ifdef WL_USABLE_CHAN
 bool wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 freq)
 {
@@ -23376,6 +23512,92 @@ bool wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 fr
 		}
 	}
 	return false;
+}
+
+void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint32 *mask,
+		usable_channel_info_t *u_info, uint32 *conn,
+		chanspec_t sta_chspec)
+{
+	wifi_interface_mode mode;
+	drv_acs_params_t param = { 0 };
+	int ret;
+	uint32 cur_band;
+	uint32 filter = 0;
+	bool filter_softap = true;
+
+	/* If there is STA connection on 5GHz DFS channel,
+	 * none of the 5GHz channels are usable for SoftAP
+	 */
+	if (u_info->filter_mask & WIFI_USABLE_CHANNEL_FILTER_CONCURRENCY) {
+
+		/* Filter out P2P_GO, P2P_CLIENT and NAN under condition */
+		if (conn[WL_IF_TYPE_STA] && conn[WL_IF_TYPE_AP]) {
+			/* STA + SOFTAP */
+			filter |= ((1U << WIFI_INTERFACE_P2P_GO) |
+					(1U << WIFI_INTERFACE_P2P_CLIENT) |
+					(1U << WIFI_INTERFACE_NAN));
+			filter_softap = false;
+		} else if (conn[WL_IF_TYPE_STA] && conn[WL_IF_TYPE_P2P_GO]) {
+			/* STA + GO */
+			filter |= ((1U << WIFI_INTERFACE_P2P_CLIENT) |
+					(1U << WIFI_INTERFACE_NAN) |
+					(1U << WIFI_INTERFACE_P2P_GO) |
+					(1U << WIFI_INTERFACE_SOFTAP));
+		} else if (conn[WL_IF_TYPE_STA] && conn[WL_IF_TYPE_P2P_GC]) {
+			/* STA + GC */
+			filter |= ((1U << WIFI_INTERFACE_P2P_GO) |
+					(1U << WIFI_INTERFACE_NAN) |
+					(1U << WIFI_INTERFACE_P2P_CLIENT) |
+					(1U << WIFI_INTERFACE_SOFTAP));
+		} else if (conn[WL_IF_TYPE_STA] && conn[WL_IF_TYPE_NAN]) {
+			/* STA + NAN */
+			filter |= ((1U << WIFI_INTERFACE_P2P_GO) |
+					(1U << WIFI_INTERFACE_P2P_CLIENT) |
+					(1U << WIFI_INTERFACE_NAN) |
+					(1U << WIFI_INTERFACE_SOFTAP));
+		}
+
+		/* Filter out SOFTAP under condition */
+		/* Check whether the cur_chspec is available for SOFTAP (include scc case) */
+		cur_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(cur_chspec));
+		if (!filter_softap) {
+			param.freq_bands |= cur_band;
+
+			ret = wl_handle_acs_concurrency_cases(cfg, &param, 1, &cur_chspec);
+			if (ret != BCME_OK) {
+				WL_DBG(("Clear SOFAP bit chspec:%x ret:%d freq_bands(%d)\n",
+					cur_chspec, ret, param.freq_bands));
+				filter |= (1U << WIFI_INTERFACE_SOFTAP);
+			}
+		}
+
+		/* Filter out STA under condition */
+		/* If Dual STA is enabled cannot add another STA iface on any channel
+		 * and TDLS are not supported.
+		 */
+		if (conn[WL_IF_TYPE_STA] == 2U) {
+			filter |= ((1U << WIFI_INTERFACE_TDLS) |
+					(1U << WIFI_INTERFACE_STA));
+			WL_DBG(("DualSTA filter:%u chspec:%x cur_band:%d\n",
+					filter, cur_chspec, cur_band));
+		} else if (conn[WL_IF_TYPE_STA] == 1U && sta_chspec) {
+			if (CHSPEC_CHANNEL(cur_chspec) != CHSPEC_CHANNEL(sta_chspec)) {
+				filter |= (1U << WIFI_INTERFACE_TDLS);
+			}
+		}
+
+		*mask &= ~(filter);
+	}
+
+#ifdef WL_CELLULAR_CHAN_AVOID
+	if (u_info->filter_mask & WIFI_USABLE_CHANNEL_FILTER_CELLULAR_COEXISTENCE) {
+		/*  Filter chanspecs that must be avoided (hard unsafe) due to cell coex */
+		mode = wl_cellavoid_mandatory_to_usable_channel_filter(cfg->cellavoid_info);
+		WL_DBG(("Filter coexistence chspec:%x mode:%d\n", cur_chspec, mode));
+		*mask &= (~mode);
+	}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 }
 
 int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_info)
@@ -23390,7 +23612,11 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	u16 list_count;
 	bool exist = false;
 	bool ch_160mhz_5g;
-	u32 passive_channel, vlp_psc_include;
+	u32 restrict_chan, vlp_psc_include;
+	uint32 conn[WL_IF_TYPE_MAX] = {0};
+	struct net_device *p2p_ndev = NULL;
+	uint32 sta_band = 0;
+	chanspec_t sta_chanspec;
 
 	bzero(u_info->channels, sizeof(*u_info->channels) * u_info->max_size);
 	/* Get chan_info_list or chanspec from FW */
@@ -23426,8 +23652,10 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		channel = CHSPEC_CHANNEL(chspec);
 		freq = wl_channel_to_frequency(channel, band);
 
-		WL_DBG(("chspec:%x chaninfo:%x freq:%u band:%u req_band:%u req_iface_mode:%u\n",
-			chspec, chaninfo, freq, band, u_info->band_mask, u_info->iface_mode_mask));
+		WL_DBG(("chspec:%x chaninfo:%x freq:%u band:%u"
+				"req_band:%u req_iface_mode:%u filter:%u\n",
+				chspec, chaninfo, freq, band,
+				u_info->band_mask, u_info->iface_mode_mask, u_info->filter_mask));
 
 		/* (36,40,44,48) / 80 have the same center freq. Avoid adding duplicated freq */
 		exist = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
@@ -23442,12 +23670,12 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 			continue;
 		}
 
-		passive_channel = ((chaninfo & WL_CHAN_RADAR) ||
+		restrict_chan = ((chaninfo & WL_CHAN_RADAR) ||
 				(chaninfo & WL_CHAN_PASSIVE));
 		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
 				(chaninfo & WL_CHAN_BAND_6G_VLP));
 
-		/* STA can be set all cases */
+		/* STA set all chanspec but can be filtered out in filter function */
 		mask = (1 << WIFI_INTERFACE_STA);
 
 		/* Only STA supported 160Mhz in 5G */
@@ -23457,23 +23685,28 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 			ch_160mhz_5g = false;
 		}
 
-		if (!passive_channel && !ch_160mhz_5g) {
+		if (!restrict_chan && !ch_160mhz_5g) {
 			/* consider only VLP and PSC channel in 6g */
 			if (CHSPEC_IS6G(chspec) && !vlp_psc_include) {
 				continue;
 			}
 			if (!CHSPEC_IS6G(chspec)) {
-				mask |= ((1 << WIFI_INTERFACE_P2P_CLIENT) |
-					(1 << WIFI_INTERFACE_P2P_GO) |
+				mask |= ((1 << WIFI_INTERFACE_P2P_GO) |
 					(1 << WIFI_INTERFACE_SOFTAP) |
-					(1 << WIFI_INTERFACE_NAN));
+					(1 << WIFI_INTERFACE_NAN) |
+					(1 << WIFI_INTERFACE_TDLS));
 			} else {
-#ifdef WL_USABLE_CHAN_SUPPORT_6G_SOFTAP_NAN
-				/* SAP and NAN can be considered if it needed */
-				mask |= ((1 << WIFI_INTERFACE_SOFTAP) |
-					(1 << WIFI_INTERFACE_NAN));
-#endif /* WL_USABLE_CHAN_SUPPORT_6G_SOFTAP_NAN */
+#ifdef WL_NAN_6G
+				mask |= (1 << WIFI_INTERFACE_NAN);
+#endif /* WL_NAN_6G */
+#ifdef WL_SOFTAP_6G
+				mask |= (1 << WIFI_INTERFACE_SOFTAP);
+#endif /* WL_SOFTAP_6G */
 			}
+		}
+		/* Supplicant does scan passive channel but not for DFS channel */
+		if (!(chaninfo & WL_CHAN_RADAR) && !ch_160mhz_5g && !CHSPEC_IS6G(chspec)) {
+			mask |= (1 << WIFI_INTERFACE_P2P_CLIENT);
 		}
 
 		/* only channel entries matched at least a bit in iface_mode_mask are returned */
@@ -23486,11 +23719,54 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		cur_ch->freq = freq;
 		cur_ch->width = wl_chanspec_to_host_bw_map(chspec);
 		cur_ch->iface_mode_mask = mask & u_info->iface_mode_mask;
-		WL_INFORM_MEM(("idx:%d freq:%u width:%u iface_mode_mask:%x\n",
-			idx, cur_ch->freq, cur_ch->width, cur_ch->iface_mode_mask));
+		cur_ch->chspec = chspec;
+		WL_INFORM_MEM(("idx:%d chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
+			idx, cur_ch->chspec, cur_ch->freq, cur_ch->width, cur_ch->iface_mode_mask));
 		idx++;
 	}
 	u_info->size = idx;
+
+	/* Driver should clear unusable interface based on concurrency and coex restriction */
+	if (u_info->filter_mask) {
+		/* Get conneceted bands to clear STA bit when Dual STA is connected */
+		sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
+		if (sta_chanspec) {
+			sta_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(sta_chanspec));
+		}
+
+		/* Get connected STA, AP, P2P and NAN interface count */
+		conn[WL_IF_TYPE_STA] = wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_STA);
+		conn[WL_IF_TYPE_AP] = wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP);
+		if (wl_cfgp2p_vif_created(cfg)) {
+			p2p_ndev = wl_to_p2p_bss_ndev(cfg, P2PAPI_BSSCFG_CONNECTION1);
+			if (!p2p_ndev) {
+				WL_ERR(("No p2p net device"));
+				goto exit;
+			}
+			if (p2p_ndev->ieee80211_ptr) {
+				if (p2p_ndev->ieee80211_ptr->iftype ==
+						NL80211_IFTYPE_P2P_GO) {
+					conn[WL_IF_TYPE_P2P_GO] = 1;
+				} else if (p2p_ndev->ieee80211_ptr->iftype ==
+						NL80211_IFTYPE_P2P_CLIENT) {
+					conn[WL_IF_TYPE_P2P_GC] = 1;
+				}
+			}
+		}
+		conn[WL_IF_TYPE_NAN] = wl_cfgnan_is_dp_active(bcmcfg_to_prmry_ndev(cfg));
+		WL_INFORM_MEM(("Cur interface STA:%d(chspec:%x) "
+				"AP:%d P2P GO:%d GC:%d NAN:%d\n",
+				conn[WL_IF_TYPE_STA], sta_chanspec,
+				conn[WL_IF_TYPE_AP], conn[WL_IF_TYPE_P2P_GO],
+				conn[WL_IF_TYPE_P2P_GC], conn[WL_IF_TYPE_NAN]));
+
+		for (i = 0; i < u_info->size; i++) {
+			cur_ch = &u_info->channels[i];
+			wl_usable_channels_filter(cfg, cur_ch->chspec, &cur_ch->iface_mode_mask,
+					u_info, conn, sta_chanspec);
+		}
+	}
+
 exit:
 	if (chan_list) {
 		MFREE(cfg->osh, chan_list, CHANINFO_LIST_BUF_SIZE);

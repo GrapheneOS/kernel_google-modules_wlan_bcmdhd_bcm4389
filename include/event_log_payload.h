@@ -513,6 +513,8 @@ typedef struct wlc_ampdu_rx_stats {
 	uint32 rxunexp;		/**< unexpected packets */
 	uint32 txdelba;		/**< delba sent */
 	uint32 rxdelba;		/**< delba recd */
+
+	uint32 rxretrynobapol;	/**< retried mpdus rxed without a ba policy */
 } wlc_ampdu_rx_stats_t;
 
 /* Sub-block type for WL_IFSTATS_XTLV_HE_TXMU_STATS */
@@ -2119,6 +2121,65 @@ typedef struct wlc_btc_stats_phy_logging {
 	wlc_btc_shared_stats_v1_t shared;
 } phy_periodic_btc_stats_v1_t;
 
+/* SmartCCA related PHY Logging */
+typedef struct wlc_scca_stats_phy_logging {
+	uint32 asym_intf_cmplx_pwr[2];
+	uint32 asym_intf_ncal_time;
+	uint32 asym_intf_host_req_mit_turnon_time;
+	uint32 core1_smask_val_bk;	/* bt fem control related */
+	int32 asym_intf_ed_thresh;
+
+	int16 crsminpoweru0;			/* crsmin thresh */
+	int16 crsminpoweroffset0;		/* ac_offset core0 */
+	int16 crsminpoweroffset1;		/* ac_offset core1 */
+	int16 Core0InitGainCodeB;		/* rx mitigation: eLNA bypass setting */
+	int16 Core1InitGainCodeB;		/* rx mitigation: eLNA bypass setting */
+	int16 ed_crsEn;				/* phyreg(ed_crsEn) */
+	int16 nvcfg0;				/* LLR deweighting coefficient */
+	int16 SlnaRxMaskCtrl0;
+	int16 SlnaRxMaskCtrl1;
+	uint16 save_SlnaRxMaskCtrl0;
+	uint16 save_SlnaRxMaskCtrl1;
+	uint16 asym_intf_ncal_req_chspec;	/* channel request noisecal */
+	/* asym_intf_stats includes the following bits:
+	* b[0]:   bool asym_intf_rx_noise_mit_on;
+	* b[1]:   bool asym_intf_tx_smartcca_on;
+	* b[3:2]: bool asym_intf_elna_bypass[2];
+	* b[4]:   bool asym_intf_valid_noise_samp;
+	* b[5]:   bool asym_intf_fill_noise_buf;
+	* b[6]:   bool asym_intf_ncal_discard;
+	* b[7]:   bool slna_reg_saved;
+	* b[8]:   bool asym_intf_host_ext_usb;		//Host control related variable
+	* b[9]:   bool asym_intf_host_ext_usb_chg;	// Host control related variable
+	* b[10]:  bool asym_intf_host_en;		// Host control related variable
+	* b[11]:  bool asym_intf_host_enable;
+	* b[12]:  bool asym_intf_pending_host_req;	// Set request pending if clk not present
+	*/
+	uint16 asym_intf_stats;
+
+	uint8 elna_bypass;	/* from bt_desense.elna_bypass in gainovr_shm_config() */
+	uint8 btc_mode;		/* from bt_desense in gainovr_shm_config() */
+	/* noise at antenna from phy_ac_noise_ant_noise_calc() */
+	int8 noise_dbm_ant[2];
+	/* in phy_ac_noise_calc(), also used by wl noise */
+	int8 noisecalc_cmplx_pwr_dbm[2];
+	uint8 gain_applied;		/* from phy_ac_rxgcrs_set_init_clip_gain() */
+
+	int8 asym_intf_tx_smartcca_cm;
+	int8 asym_intf_rx_noise_mit_cm;
+	int8 asym_intf_avg_noise[2];
+	int8 asym_intf_latest_noise[2];
+	/* used to calculate noise_delta for rx mitigation on/off */
+	int8 asym_intf_prev_noise_lvl[2];
+	uint8 asym_intf_noise_calc_gain_2g[2];
+	uint8 asym_intf_noise_calc_gain_5g[2];
+	uint8 asym_intf_ant_noise_idx;
+	uint8 asym_intf_least_core_idx;
+	uint8 phy_crs_thresh_save[2];
+	uint8 asym_intf_initg_desense[2];
+	uint8 asym_intf_pending_host_req_type;	/* Set request pending if clk not present */
+} phy_periodic_scca_stats_v1_t;
+
 #define PHY_PERIODIC_LOG_VER1         (1u)
 
 typedef struct phy_periodic_log_v1 {
@@ -2709,6 +2770,27 @@ typedef struct phy_periodic_log_v9 {
 	/* Logs data pertaining to each core */
 	phy_periodic_log_core_v4_t phy_perilog_core[BCM_FLEX_ARRAY];
 } phy_periodic_log_v9_t;
+
+#define PHY_PERIODIC_LOG_VER10	10u
+typedef struct phy_periodic_log_v10 {
+	uint8  version;		/* Logging structure version */
+	uint8  numcores;	/* Number of cores for which core specific data present */
+	uint16 length;		/* Length of the entire structure */
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v6_t phy_perilog_cmn;
+
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v7_t counters_peri_log;
+
+	/* log data for BTcoex */
+	phy_periodic_btc_stats_v1_t btc_stats_peri_log;
+
+	/* Logs data pertaining to each core */
+	phy_periodic_log_core_v5_t phy_perilog_core[2];
+
+	/* log data for smartCCA */
+	phy_periodic_scca_stats_v1_t scca_counters_peri_log;
+} phy_periodic_log_v10_t;
 
 #define AMT_MATCH_INFRA_BSSID	(1 << 0)
 #define AMT_MATCH_INFRA_MYMAC	(1 << 1)

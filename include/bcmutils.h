@@ -1017,6 +1017,7 @@ extern int wl_set_up_table(uint8 *up_table, bcm_tlv_t *qos_map_ie);
 typedef uint32 mbool;
 #define mboolset(mb, bit)		((mb) |= (bit))		/* set one bool */
 #define mboolclr(mb, bit)		((mb) &= ~(bit))	/* clear one bool */
+#define mbooltgl(mb, bit)		((mb) ^= (bit))		/* toggle one bool */
 #define mboolisset(mb, bit)		(((mb) & (bit)) != 0)	/* TRUE if one bool is set */
 #define mboolisclr(mb, bit)		(((mb) & (bit)) == 0)	/* TRUE if one bool is clear */
 #define	mboolmaskset(mb, mask, val)	((mb) = (((mb) & ~(mask)) | (val)))

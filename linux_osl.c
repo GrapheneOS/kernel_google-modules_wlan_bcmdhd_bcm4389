@@ -574,15 +574,6 @@ osl_pci_device(osl_t *osh)
 	return osh->pdev;
 }
 
-#ifdef BCMDBG_MEM
-/* In BCMDBG_MEM configurations osl_malloc is only used internally in
- * the implementation of osl_debug_malloc.  Because we are using the GCC
- * -Wstrict-prototypes compile option, we must always have a prototype
- * for a global/external function.  So make osl_malloc static in
- * the BCMDBG_MEM case.
- */
-static
-#endif
 void *
 osl_malloc(osl_t *osh, uint size)
 {
@@ -639,7 +630,6 @@ original:
 	return (addr);
 }
 
-#ifndef BCMDBG_MEM
 void *
 osl_mallocz(osl_t *osh, uint size)
 {
@@ -653,17 +643,7 @@ osl_mallocz(osl_t *osh, uint size)
 
 	return ptr;
 }
-#endif
 
-#ifdef BCMDBG_MEM
-/* In BCMDBG_MEM configurations osl_mfree is only used internally in
- * the implementation of osl_debug_mfree.  Because we are using the GCC
- * -Wstrict-prototypes compile option, we must always have a prototype
- * for a global/external function.  So make osl_mfree static in
- * the BCMDBG_MEM case.
- */
-static
-#endif
 void
 osl_mfree(osl_t *osh, void *addr, uint size)
 {

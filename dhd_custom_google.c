@@ -26,7 +26,6 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -43,9 +42,21 @@
 #include <dhd_dbg.h>
 #include <dhd.h>
 
+#if defined(CONFIG_SOC_GS101)
+#include <linux/exynos-pci-ctrl.h>
+#endif /* CONFIG_SOC_GS101 */
+
 #ifdef DHD_COREDUMP
 #include <linux/platform_data/sscoredump.h>
 #endif /* DHD_COREDUMP */
+
+#define EXYNOS_PCIE_VENDOR_ID 0x144d
+#if defined(CONFIG_SOC_GS101)
+#define EXYNOS_PCIE_DEVICE_ID 0xecec
+#define EXYNOS_PCIE_CH_NUM 0
+#else
+#error "Not supported platform"
+#endif /* CONFIG_SOC_GS101 */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern int dhd_init_wlan_mem(void);
@@ -70,13 +81,20 @@ static int resched_streak_max = 0;
 static uint64 last_resched_cnt_check_time_ns = 0;
 static bool is_irq_on_big_core = FALSE;
 
-#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_GS101)
+static int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
+#if defined(CONFIG_SOC_GS101)
 #define EXYNOS_PCIE_RC_ONOFF
-extern int pcie_ch_num;
 extern int exynos_pcie_pm_resume(int);
 extern void exynos_pcie_pm_suspend(int);
-#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_GS101 */
+extern int exynos_pcie_l1_exit(int ch_num);
+#endif /* CONFIG_SOC_GS101 */
+
+#ifdef EXYNOS_PCIE_DEBUG
+extern void exynos_pcie_register_dump(int ch_num);
+#endif /* EXYNOS_PCIE_DEBUG */
+#ifdef PRINT_WAKEUP_GPIO_STATUS
+extern void exynos_pin_dbg_show(unsigned int pin, const char* str);
+#endif /* PRINT_WAKEUP_GPIO_STATUS */
 
 #ifdef DHD_COREDUMP
 #define DEVICE_NAME "wlan"
@@ -386,11 +404,9 @@ dhd_wlan_set_carddetect(int val)
 	return 0;
 }
 
-#ifndef SUPPORT_EXYNOS7420
 #include <linux/exynos-pci-noti.h>
 extern int exynos_pcie_register_event(struct exynos_pcie_register_event *reg);
 extern int exynos_pcie_deregister_event(struct exynos_pcie_register_event *reg);
-#endif /* !SUPPORT_EXYNOS7420 */
 
 #include <dhd_plat.h>
 
@@ -431,7 +447,6 @@ int dhd_plat_pcie_register_event(void *plat_info, struct pci_dev *pdev, dhd_pcie
 {
 		dhd_plat_info_t *p = plat_info;
 
-#ifndef SUPPORT_EXYNOS7420
 		if ((p == NULL) || (pdev == NULL) || (pfn == NULL)) {
 			pr_err("%s(): Invalid argument p %p, pdev %p, pfn %p\r\n",
 				__func__, p, pdev, pfn);
@@ -446,19 +461,14 @@ int dhd_plat_pcie_register_event(void *plat_info, struct pci_dev *pdev, dhd_pcie
 		exynos_pcie_register_event(&p->pcie_event);
 		pr_err("%s(): Registered Event PCIe event pdev %p \r\n", __func__, pdev);
 		return 0;
-#else
-		return 0;
-#endif /* SUPPORT_EXYNOS7420 */
 }
 
 void dhd_plat_pcie_deregister_event(void *plat_info)
 {
 	dhd_plat_info_t *p = plat_info;
-#ifndef SUPPORT_EXYNOS7420
 	if (p) {
 		exynos_pcie_deregister_event(&p->pcie_event);
 	}
-#endif /* SUPPORT_EXYNOS7420 */
 	return;
 }
 
@@ -549,6 +559,13 @@ dhd_get_wlan_oob_gpio(void)
 		gpio_get_value(wlan_host_wake_up) : -1;
 }
 EXPORT_SYMBOL(dhd_get_wlan_oob_gpio);
+int
+dhd_get_wlan_oob_gpio_number(void)
+{
+	return gpio_is_valid(wlan_host_wake_up) ?
+		wlan_host_wake_up : -1;
+}
+EXPORT_SYMBOL(dhd_get_wlan_oob_gpio_number);
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE && CONFIG_BCMDHD_GET_OOB_STATE */
 
 struct resource dhd_wlan_resources = {
@@ -639,6 +656,67 @@ dhd_wlan_deinit(void)
 
 	return 0;
 }
+
+void dhd_plat_l1ss_ctrl(bool ctrl)
+{
+#if defined(CONFIG_SOC_GS101)
+	printk(KERN_DEBUG "%s: Control L1ss RC side %d \n", __FUNCTION__, ctrl);
+	exynos_pcie_rc_l1ss_ctrl(ctrl, PCIE_L1SS_CTRL_WIFI, 1);
+#endif /* CONFIG_SOC_GS101 */
+	return;
+}
+
+void dhd_plat_l1_exit_io(void)
+{
+#if defined(DHD_PCIE_L1_EXIT_DURING_IO)
+	exynos_pcie_l1_exit(pcie_ch_num);
+#endif /* DHD_PCIE_L1_EXIT_DURING_IO */
+	return;
+}
+
+void dhd_plat_l1_exit(void)
+{
+	exynos_pcie_l1_exit(pcie_ch_num);
+	return;
+}
+
+int dhd_plat_pcie_suspend(void *plat_info)
+{
+	exynos_pcie_pm_suspend(pcie_ch_num);
+	return 0;
+}
+
+int dhd_plat_pcie_resume(void *plat_info)
+{
+	int ret = 0;
+	ret = exynos_pcie_pm_resume(pcie_ch_num);
+	return ret;
+}
+
+void dhd_plat_pin_dbg_show(void *plat_info)
+{
+#ifdef PRINT_WAKEUP_GPIO_STATUS
+	exynos_pin_dbg_show(dhd_get_wlan_oob_gpio_number(), "gpa0");
+#endif /* PRINT_WAKEUP_GPIO_STATUS */
+}
+
+void dhd_plat_pcie_register_dump(void *plat_info)
+{
+#ifdef EXYNOS_PCIE_DEBUG
+	exynos_pcie_register_dump(1);
+#endif /* EXYNOS_PCIE_DEBUG */
+}
+
+uint32 dhd_plat_get_rc_vendor_id(void)
+{
+	return EXYNOS_PCIE_VENDOR_ID;
+}
+
+uint32 dhd_plat_get_rc_device_id(void)
+{
+	return EXYNOS_PCIE_DEVICE_ID;
+}
+
 #ifndef BCMDHD_MODULAR
 /* Required only for Built-in DHD */
 device_initcall(dhd_wlan_init);

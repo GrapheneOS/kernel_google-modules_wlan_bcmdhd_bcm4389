@@ -554,7 +554,15 @@ typedef struct dhd_bus {
 	dhd_pcie_link_state_type_t link_state;
 	bool dar_err_set;
 	uint32 ptm_ctrl_reg;
+	bool lpm_mode;	/* lpm enabled */
+	bool lpm_keep_in_reset; /* during LPM keep in FLR, if FLR force is enabled */
+	bool lpm_mem_kill; /* kill WLAN memories in LPM */
+	bool lpm_force_flr; /* Force F0 FLR on WLAN  when in LPM */
 } dhd_bus_t;
+
+#define LPM_MODE_LPM_ALL	0x1
+#define LPM_MODE_NO_MEMKILL	0x010
+#define LPM_MODE_NO_FLR		0x100
 
 #ifdef DHD_MSI_SUPPORT
 extern uint enable_msi;
@@ -788,94 +796,6 @@ extern void dhd_os_ib_set_device_wake(struct dhd_bus *bus, bool val);
 extern void dhd_bus_doorbell_timeout_reset(struct dhd_bus *bus);
 #endif /* defined(PCIE_OOB) || defined(PCIE_INB_DW) */
 
-#if defined(linux) || defined(LINUX)
-/* XXX: SWWLAN-82173 Making PCIe RC D3cold by force during system PM
- * exynos_pcie_pm_suspend : RC goes to suspend status & assert PERST
- * exynos_pcie_pm_resume : de-assert PERST & RC goes to resume status
- */
-#if defined(CONFIG_ARCH_EXYNOS)
-#define EXYNOS_PCIE_VENDOR_ID 0x144d
-#if defined(CONFIG_MACH_UNIVERSAL7420) || defined(CONFIG_SOC_EXYNOS7420)
-#define EXYNOS_PCIE_DEVICE_ID 0xa575
-#define EXYNOS_PCIE_CH_NUM 1
-#elif defined(CONFIG_SOC_EXYNOS8890)
-#define EXYNOS_PCIE_DEVICE_ID 0xa544
-#define EXYNOS_PCIE_CH_NUM 0
-#elif defined(CONFIG_SOC_EXYNOS8895) || defined(CONFIG_SOC_EXYNOS9810) || \
-	defined(CONFIG_SOC_EXYNOS9820) || defined(CONFIG_SOC_EXYNOS9830) || \
-	defined(CONFIG_SOC_EXYNOS2100) || defined(CONFIG_SOC_EXYNOS1000)
-#define EXYNOS_PCIE_DEVICE_ID 0xecec
-#define EXYNOS_PCIE_CH_NUM 0
-#else
-#if defined(CONFIG_SOC_GS101)
-#define EXYNOS_PCIE_DEVICE_ID 0xecec
-#define EXYNOS_PCIE_CH_NUM 0
-#else
-#error "Not supported platform"
-#endif /* CONFIG_SOC_GS101 */
-#endif /* CONFIG_SOC_EXYNOSXXXX & CONFIG_MACH_UNIVERSALXXXX */
-extern void exynos_pcie_pm_suspend(int ch_num);
-extern int exynos_pcie_pm_resume(int ch_num);
-#endif /* CONFIG_ARCH_EXYNOS */
-
-#if defined(CONFIG_ARCH_MSM)
-#define MSM_PCIE_VENDOR_ID 0x17cb
-#if defined(CONFIG_ARCH_APQ8084)
-#define MSM_PCIE_DEVICE_ID 0x0101
-#elif defined(CONFIG_ARCH_MSM8994)
-#define MSM_PCIE_DEVICE_ID 0x0300
-#elif defined(CONFIG_ARCH_MSM8996)
-#define MSM_PCIE_DEVICE_ID 0x0104
-#elif defined(CONFIG_ARCH_MSM8998)
-#define MSM_PCIE_DEVICE_ID 0x0105
-#elif defined(CONFIG_ARCH_SDM845) || defined(CONFIG_ARCH_SM8150) || \
-	defined(CONFIG_ARCH_KONA) || defined(CONFIG_ARCH_LAHAINA)
-#define MSM_PCIE_DEVICE_ID 0x0106
-#else
-#error "Not supported platform"
-#endif
-#endif /* CONFIG_ARCH_MSM */
-
-#if defined(CONFIG_X86)
-#define X86_PCIE_VENDOR_ID 0x8086
-#define X86_PCIE_DEVICE_ID 0x9c1a
-#endif /* CONFIG_X86 */
-
-#if defined(CONFIG_ARCH_TEGRA)
-#define TEGRA_PCIE_VENDOR_ID 0x14e4
-#define TEGRA_PCIE_DEVICE_ID 0x4347
-#endif /* CONFIG_ARCH_TEGRA */
-
-#if defined(BOARD_HIKEY)
-#define HIKEY_PCIE_VENDOR_ID 0x19e5
-#define HIKEY_PCIE_DEVICE_ID 0x3660
-#endif /* BOARD_HIKEY */
-
-#define DUMMY_PCIE_VENDOR_ID 0xffff
-#define DUMMY_PCIE_DEVICE_ID 0xffff
-
-#if defined(CONFIG_ARCH_EXYNOS)
-#define PCIE_RC_VENDOR_ID EXYNOS_PCIE_VENDOR_ID
-#define PCIE_RC_DEVICE_ID EXYNOS_PCIE_DEVICE_ID
-#elif defined(CONFIG_ARCH_MSM)
-#define PCIE_RC_VENDOR_ID MSM_PCIE_VENDOR_ID
-#define PCIE_RC_DEVICE_ID MSM_PCIE_DEVICE_ID
-#elif defined(CONFIG_X86)
-#define PCIE_RC_VENDOR_ID X86_PCIE_VENDOR_ID
-#define PCIE_RC_DEVICE_ID X86_PCIE_DEVICE_ID
-#elif defined(CONFIG_ARCH_TEGRA)
-#define PCIE_RC_VENDOR_ID TEGRA_PCIE_VENDOR_ID
-#define PCIE_RC_DEVICE_ID TEGRA_PCIE_DEVICE_ID
-#elif defined(BOARD_HIKEY)
-#define PCIE_RC_VENDOR_ID HIKEY_PCIE_VENDOR_ID
-#define PCIE_RC_DEVICE_ID HIKEY_PCIE_DEVICE_ID
-#else
-/* Use dummy vendor and device IDs */
-#define PCIE_RC_VENDOR_ID DUMMY_PCIE_VENDOR_ID
-#define PCIE_RC_DEVICE_ID DUMMY_PCIE_DEVICE_ID
-#endif /* CONFIG_ARCH_EXYNOS */
-#endif /* linux || LINUX */
-
 #define DHD_REGULAR_RING    0
 #define DHD_HP2P_RING    1
 
@@ -1018,5 +938,7 @@ extern void dhdpcie_set_dongle_deepsleep(dhd_bus_t *bus, bool val);
 extern void dhd_init_dongle_ds_lock(dhd_bus_t *bus);
 extern void dhd_deinit_dongle_ds_lock(dhd_bus_t *bus);
 #endif /* PCIE_INB_DW */
+
+extern bool dhd_check_htput_chip(dhd_bus_t *bus);
 
 #endif /* dhd_pcie_h */

@@ -749,9 +749,13 @@ wl_cfg_uwb_coex_get_ch_idx(const int ch)
 
 static void
 wl_cfg_uwb_coex_make_coex_bitmap(int start_ch_idx, int end_ch_idx,
-	uwbcx_coex_bitmap_t *coex_bitmap)
+	uwbcx_coex_bitmap_v2_t *coex_bitmap_cfg)
 {
 	int i;
+	uwbcx_coex_bitmap_t *coex_bitmap = (uwbcx_coex_bitmap_t *) (&coex_bitmap_cfg->coex_bitmap);
+	coex_bitmap_cfg->version = UWBCX_COEX_BITMAP_VERSION_V2;
+	coex_bitmap_cfg->len = sizeof(*coex_bitmap_cfg);
+	coex_bitmap_cfg->band = UWBCX_BAND_6G;
 
 	for (i = start_ch_idx; i <= end_ch_idx; i++) {
 		if (i < 16u) {
@@ -824,7 +828,7 @@ wl_cfg_uwb_coex_enable(struct net_device *dev, int enable, int start_ch, int end
 
 	uint8 *resp_buf = NULL;
 
-	uwbcx_coex_bitmap_t coex_bitmap;
+	uwbcx_coex_bitmap_v2_t coex_bitmap_cfg;
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 	resp_buf = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_SMLEN);
@@ -834,7 +838,7 @@ wl_cfg_uwb_coex_enable(struct net_device *dev, int enable, int start_ch, int end
 		goto exit;
 	}
 
-	bzero(&coex_bitmap, sizeof(uwbcx_coex_bitmap_t));
+	bzero(&coex_bitmap_cfg, sizeof(uwbcx_coex_bitmap_v2_t));
 
 	/* Validate UWB Coex channel in case of turnning on */
 	if (enable && (((start_ch_idx = wl_cfg_uwb_coex_get_ch_idx(start_ch)) < 0) ||
@@ -845,11 +849,11 @@ wl_cfg_uwb_coex_enable(struct net_device *dev, int enable, int start_ch, int end
 	}
 
 	if (enable) {
-		wl_cfg_uwb_coex_make_coex_bitmap(start_ch_idx, end_ch_idx, &coex_bitmap);
+		wl_cfg_uwb_coex_make_coex_bitmap(start_ch_idx, end_ch_idx, &coex_bitmap_cfg);
 	}
 
 	ret = wl_cfg_uwb_coex_execute_ioctl(dev, cfg, TRUE, WL_UWBCX_CMD_COEX_BITMAP,
-		&coex_bitmap, (uint16)sizeof(coex_bitmap),
+		&coex_bitmap_cfg, (uint16)sizeof(coex_bitmap_cfg),
 		resp_buf, WLC_IOCTL_SMLEN);
 	WL_ERR(("%s - UWB Coex %s %s - Ch. [%d/%d] (ret = %d)\n", __FUNCTION__,
 	       enable ? "On" : "Off", !ret ? "Success" : "Fail",

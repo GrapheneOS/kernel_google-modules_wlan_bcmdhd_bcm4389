@@ -886,6 +886,12 @@ extern uint32 gFWID;
 
 typedef struct bcm_rng * bcm_rng_handle_t;
 
+/* Explicitly locate initialized data and uninitialized data (bss) in memory regions that
+ * are NOT write-protected by the BUS-MPU.
+ */
+#define BCM_BMPU_RW_DATA(_data)	__attribute__ ((__section__ (".data_bmpu_rw." #_data))) _data
+#define BCM_BMPU_RW_BSS(_data)	__attribute__ ((__section__ (".bss_bmpu_rw." #_data))) _data
+
 /* Use BCM_FUNC_PTR() to tag function pointers for ASLR code implementation. It will perform
  * run-time relocation of a function pointer by translating it from a physical to virtual address.
  *

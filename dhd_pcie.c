@@ -52,9 +52,10 @@
 #include <dhd_proto.h>
 #include <dhd_dbg.h>
 #include <dhd_debug.h>
-#if defined(LINUX) || defined(linux)
+#if defined(__linux__)
 #include <dhd_daemon.h>
-#endif /* LINUX || linux */
+#include <dhd_plat.h>
+#endif /* __linux__ */
 #include <dhdioctl.h>
 #include <sdiovar.h>
 #include <bcmmsgbuf.h>
@@ -308,12 +309,6 @@ static void  select_fd_image(
 int dbushost_initvars_flash(si_t *sih, osl_t *osh, char **base, uint len);
 #endif
 
-#ifdef EXYNOS_PCIE_DEBUG
-extern void exynos_pcie_register_dump(int ch_num);
-#endif /* EXYNOS_PCIE_DEBUG */
-#ifdef PRINT_WAKEUP_GPIO_STATUS
-extern void exynos_pin_dbg_show(unsigned int pin, const char* str);
-#endif /* PRINT_WAKEUP_GPIO_STATUS */
 #if defined(DHD_H2D_LOG_TIME_SYNC)
 static void dhdpci_bus_rte_log_time_sync_poll(dhd_bus_t *bus);
 #endif /* DHD_H2D_LOG_TIME_SYNC */
@@ -458,6 +453,7 @@ enum {
 	IOV_DONGLE_TXCPL_INFO,
 	IOV_DONGLE_SEC_INFO,
 	IOV_DONGLE_SBOOT_DIS,
+	IOV_LPM_MODE,
 
 	IOV_PCIE_LAST /**< unused IOVAR */
 };
@@ -556,9 +552,9 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 
 	{"dump_rxlat", IOV_DONGLE_RXLAT_INFO, 0, 0, IOVT_BUFFER,
 	sizeof(rx_cpl_history_t) * MAX_RXCPL_HISTORY + 128 },
-
 	{"dump_rxlat_hist", IOV_DONGLE_RXLAT_HISTO, 0, 0, IOVT_BUFFER,
 	(MAX_RX_LAT_PRIO * MAX_RX_LAT_HIST_BIN * 2) + 128 },
+	{"lpm_mode",	IOV_LPM_MODE,	0,      0,	IOVT_UINT32,	0 },
 
 	{"dump_txcpl", IOV_DONGLE_TXCPL_INFO, 0, 0, IOVT_BUFFER,
 	sizeof(tx_cpl_history_t) * MAX_TXCPL_HISTORY + 128 },
@@ -1961,6 +1957,28 @@ dhd_dump_pcie_slave_wrapper_regs(dhd_bus_t *bus)
 	}
 
 	DHD_ERROR(("%s: ##### ##### #####\n", __FUNCTION__));
+}
+
+bool
+dhd_check_htput_chip(dhd_bus_t *bus)
+{
+	bool htput_support = FALSE;
+	uint16 chipid = si_chipid(bus->sih);
+
+	switch (chipid) {
+		/* Enable htput support for all 160Mhz chips */
+		case BCM4388_CHIP_ID:
+		case BCM4389_CHIP_ID:
+		case BCM4397_CHIP_ID:
+			htput_support = TRUE;
+			break;
+		default:
+			htput_support = FALSE;
+	}
+
+	DHD_ERROR(("%s: htput_support:%d\n", __FUNCTION__, htput_support));
+
+	return htput_support;
 }
 
 static bool
@@ -5155,9 +5173,10 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 			__FUNCTION__, dhd_console_ms_prev));
 		dhdp->dhd_console_ms = 0;
 	}
-#ifdef EXYNOS_PCIE_DEBUG
-	exynos_pcie_register_dump(1);
-#endif /* EXYNOS_PCIE_DEBUG */
+
+#if defined(__linux__)
+	dhd_plat_pcie_register_dump(dhdp->plat_info);
+#endif /* __linux__ */
 
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	if (bus->is_linkdown) {
@@ -6893,6 +6912,7 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	uint flr_capab;
 	uint val;
 	int retry = 0;
+	bool in_flr_already = FALSE;
 
 	DHD_ERROR(("******** Perform FLR ********\n"));
 
@@ -6920,46 +6940,71 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	       DHD_ERROR(("Chip does not support FLR\n"));
 	       return BCME_UNSUPPORTED;
 	}
+	/* Check if we are already in FLR, if we are then just go to restore part of it  */
+	val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(val));
+	DHD_ERROR(("config space 0x88 is 0x%x\n", val));
+	if (val & (1 << PCIE_SSRESET_STATUS_BIT)) {
+		DHD_ERROR(("******** device already in FLR, so clear only ********\n"));
+		in_flr_already = TRUE;
+	}
+	else {
+		DHD_ERROR(("******** device not in FLR ********\n"));
+	}
+	if (!in_flr_already) {
 
-	bus->ptm_ctrl_reg = dhdpcie_bus_cfg_read_dword(bus, PCI_CFG_PTM_CTRL, 4);
+		bus->ptm_ctrl_reg = dhdpcie_bus_cfg_read_dword(bus, PCI_CFG_PTM_CTRL, 4);
 
-	/* Save pcie config space */
-	DHD_INFO(("Save Pcie Config Space\n"));
-	DHD_PCIE_CONFIG_SAVE(bus);
+		/* Save pcie config space */
+		DHD_INFO(("Save Pcie Config Space\n"));
+		DHD_PCIE_CONFIG_SAVE(bus);
 
-	/* Set bit 15 of PCIE_CFG_DEVICE_CONTROL */
-	DHD_INFO(("Set PCIE_FUNCTION_LEVEL_RESET_BIT(%d) of PCIE_CFG_DEVICE_CONTROL(0x%x)\n",
-		PCIE_FUNCTION_LEVEL_RESET_BIT, PCIE_CFG_DEVICE_CONTROL));
-	val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_DEVICE_CONTROL, sizeof(val));
-	DHD_INFO(("read_config: reg=0x%x read val=0x%x\n", PCIE_CFG_DEVICE_CONTROL, val));
-	val = val | (1 << PCIE_FUNCTION_LEVEL_RESET_BIT);
-	DHD_INFO(("write_config: reg=0x%x write val=0x%x\n", PCIE_CFG_DEVICE_CONTROL, val));
-	OSL_PCI_WRITE_CONFIG(bus->osh, PCIE_CFG_DEVICE_CONTROL, sizeof(val), val);
+		/* Set bit 15 of PCIE_CFG_DEVICE_CONTROL */
+		DHD_INFO(("Set PCIE_FUNCTION_LEVEL_RESET_BIT(%d) of"
+			" PCIE_CFG_DEVICE_CONTROL(0x%x)\n",
+			PCIE_FUNCTION_LEVEL_RESET_BIT, PCIE_CFG_DEVICE_CONTROL));
+		val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_DEVICE_CONTROL, sizeof(val));
+		DHD_INFO(("read_config: reg=0x%x read val=0x%x\n", PCIE_CFG_DEVICE_CONTROL, val));
+		val = val | (1 << PCIE_FUNCTION_LEVEL_RESET_BIT);
+		DHD_INFO(("write_config: reg=0x%x write val=0x%x\n", PCIE_CFG_DEVICE_CONTROL, val));
+		OSL_PCI_WRITE_CONFIG(bus->osh, PCIE_CFG_DEVICE_CONTROL, sizeof(val), val);
+		if (bus->lpm_keep_in_reset) {
+			/* Keep the device in FLR */
+			DHD_ERROR(("******** device force FLR only ********\n"));
+			return BCME_OK;
+		}
+		else {
+			DHD_ERROR(("******** device force FLR only not set ********\n"));
+		}
 
-	/* wait for DHD_FUNCTION_LEVEL_RESET_DELAY msec */
+		/* wait for DHD_FUNCTION_LEVEL_RESET_DELAY msec */
 #ifdef BCMSLTGT
-	DHD_ERROR_MEM(("Delay of %d msec\n", DHD_FUNCTION_LEVEL_RESET_DELAY * htclkratio));
+		DHD_ERROR_MEM(("Delay of %d msec\n", DHD_FUNCTION_LEVEL_RESET_DELAY * htclkratio));
 #else
-	DHD_ERROR_MEM(("Delay of %d msec\n", DHD_FUNCTION_LEVEL_RESET_DELAY));
+		DHD_ERROR_MEM(("Delay of %d msec\n", DHD_FUNCTION_LEVEL_RESET_DELAY));
 #endif /* BCMSLTGT */
 
-	CAN_SLEEP() ? OSL_SLEEP(DHD_FUNCTION_LEVEL_RESET_DELAY) :
-		OSL_DELAY(DHD_FUNCTION_LEVEL_RESET_DELAY * USEC_PER_MSEC);
+		CAN_SLEEP() ? OSL_SLEEP(DHD_FUNCTION_LEVEL_RESET_DELAY) :
+			OSL_DELAY(DHD_FUNCTION_LEVEL_RESET_DELAY * USEC_PER_MSEC);
 
-	if (force_fail) {
-		DHD_ERROR(("Set PCIE_SSRESET_DISABLE_BIT(%d) of PCIE_CFG_SUBSYSTEM_CONTROL(0x%x)\n",
-			PCIE_SSRESET_DISABLE_BIT, PCIE_CFG_SUBSYSTEM_CONTROL));
-		val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(val));
-		DHD_ERROR(("read_config: reg=0x%x read val=0x%x\n", PCIE_CFG_SUBSYSTEM_CONTROL,
-			val));
-		val = val | (1 << PCIE_SSRESET_DISABLE_BIT);
-		DHD_ERROR(("write_config: reg=0x%x write val=0x%x\n", PCIE_CFG_SUBSYSTEM_CONTROL,
-			val));
-		OSL_PCI_WRITE_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(val), val);
+		if (force_fail) {
+			DHD_ERROR(("Set PCIE_SSRESET_DISABLE_BIT(%d) of"
+				" PCIE_CFG_SUBSYSTEM_CONTROL(0x%x)\n",
+				PCIE_SSRESET_DISABLE_BIT, PCIE_CFG_SUBSYSTEM_CONTROL));
+			val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL,
+				sizeof(val));
+			DHD_ERROR(("read_config: reg=0x%x read val=0x%x\n",
+				PCIE_CFG_SUBSYSTEM_CONTROL, val));
+			val = val | (1 << PCIE_SSRESET_DISABLE_BIT);
+			DHD_ERROR(("write_config: reg=0x%x write val=0x%x\n",
+				PCIE_CFG_SUBSYSTEM_CONTROL, val));
+			OSL_PCI_WRITE_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL,
+				sizeof(val), val);
 
-		val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(val));
-		DHD_ERROR(("read_config: reg=0x%x read val=0x%x\n", PCIE_CFG_SUBSYSTEM_CONTROL,
-			val));
+			val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL,
+				sizeof(val));
+			DHD_ERROR(("read_config: reg=0x%x read val=0x%x\n",
+				PCIE_CFG_SUBSYSTEM_CONTROL, val));
+		}
 	}
 
 	/* Clear bit 15 of PCIE_CFG_DEVICE_CONTROL */
@@ -7623,9 +7668,9 @@ BCMRAMFN(dhd_cap_bcmstrbuf)(dhd_pub_t *dhd, struct bcmstrbuf *b)
 	bcm_bprintf(b, "lbtxp ");
 #endif /* DHD_LB_TXP_DEFAULT_ENAB */
 #endif /* DHD_LB_TXP */
-#ifdef DHD_HTPUT_TUNABLES
-	bcm_bprintf(b, "htput ");
-#endif /* DHD_HTPUT_TUNABLES */
+	if (dhd->htput_support) {
+		bcm_bprintf(b, "htput ");
+	}
 }
 
 /** Return dhd capability string */
@@ -8683,7 +8728,40 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 		break;
 	}
-
+	case IOV_GVAL(IOV_LPM_MODE):
+		int_val = bus->lpm_mode;
+		if (bus->lpm_mode) {
+			if (!bus->lpm_mem_kill) {
+				int_val |= LPM_MODE_NO_MEMKILL;
+			}
+			if (!bus->lpm_force_flr) {
+				int_val |= LPM_MODE_NO_FLR;
+			}
+		}
+		(void)memcpy_s(arg, val_size, &int_val, sizeof(int_val));
+		break;
+	case IOV_SVAL(IOV_LPM_MODE):
+		if (int_val) {
+			bus->lpm_mode = TRUE;
+			if (int_val & LPM_MODE_NO_MEMKILL) {
+				bus->lpm_mem_kill = FALSE;
+			}
+			else {
+				bus->lpm_mem_kill = TRUE;
+			}
+			if (int_val & LPM_MODE_NO_FLR) {
+				bus->lpm_force_flr = FALSE;
+			}
+			else {
+				bus->lpm_force_flr = TRUE;
+			}
+		}
+		else {
+			bus->lpm_mode = FALSE;
+			bus->lpm_mem_kill = FALSE;
+			bus->lpm_force_flr = FALSE;
+		}
+		break;
 	default:
 		bcmerror = BCME_UNSUPPORTED;
 		break;
@@ -8834,6 +8912,37 @@ dhdpcie_get_last_suspend_time(dhd_pub_t *dhdp)
 	return dhdp->bus->last_suspend_end_time;
 }
 #endif /* PWRSTATS_SYSFS */
+
+#define BCM4387_WLAN_SYS_MEMDOWN_FORCE_PMU      0x444
+#define BCM4378_WLAN_SYS_MEMDOWN_FORCE_PMU      0x133
+
+static void
+dhd_pcie_handle_lpm_memkill(struct dhd_bus *bus)
+{
+	uint16 chipid = si_chipid(bus->sih);
+
+	if (bus->lpm_mem_kill == FALSE) {
+		DHD_ERROR(("LPM MODE: MEM Kill not enabled\n"));
+		return;
+	}
+	if (chipid == BCM4378_CHIP_ID) {
+		pmu_corereg(bus->sih, SI_CC_IDX, chipcontrol_addr, ~0, PMU_CHIPCTL13);
+		pmu_corereg(bus->sih, SI_CC_IDX, chipcontrol_data,
+			BCM4378_WLAN_SYS_MEMDOWN_FORCE_PMU, BCM4378_WLAN_SYS_MEMDOWN_FORCE_PMU);
+	}
+	else if (chipid == BCM4387_CHIP_ID) {
+		pmu_corereg(bus->sih, SI_CC_IDX, chipcontrol_addr, ~0, PMU_CHIPCTL13);
+		pmu_corereg(bus->sih, SI_CC_IDX, chipcontrol_data,
+			BCM4387_WLAN_SYS_MEMDOWN_FORCE_PMU, BCM4387_WLAN_SYS_MEMDOWN_FORCE_PMU);
+	}
+	else {
+		DHD_ERROR(("LPM MODE: Mem kill support not added for chip %d\n", chipid));
+		return;
+	}
+	DHD_ERROR(("PMU chipcontrol addr %d value is 0x%04x\n",
+		pmu_corereg(bus->sih, SI_CC_IDX, chipcontrol_addr, 0, 0),
+		pmu_corereg(bus->sih, SI_CC_IDX, chipcontrol_data, 0, 0)));
+}
 
 int
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
@@ -9180,10 +9289,47 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 #if defined(LINUX) || defined(linux)
 				dhdpcie_dump_resource(bus);
 #endif /* LINUX || linux */
+				DHD_ERROR(("lpm_mode %d, fw_lpm_support %d\n", bus->lpm_mode,
+					bus->dhd->fw_lpm_support));
+				/* Once LPM mode is entered, recovery is only through WL_REG_ON */
+				if (bus->lpm_mode && bus->dhd->fw_lpm_support) {
+					/* send DB7 with PCIE_DB7_MAGIC_NUMBER_DPC_LPM */
+					int trap_data = 0;
+					uint32 addr = dhd_bus_db1_addr_3_get(bus);
+
+					DHD_ERROR(("forcing LPM mode\n"));
+					si_corereg(bus->sih, bus->sih->buscoreidx, addr, ~0,
+						PCIE_DB7_MAGIC_NUMBER_DPC_LPM);
+					/* wait 500ms */
+					OSL_DELAY(500000);
+					/* read trap data to confirm */
+					trap_data = dhd_prot_process_trapbuf(bus->dhd);
+					DHD_ERROR(("trap data in response to LPM mode entry"
+						" is 0x%x\n", trap_data));
+					/* force memory bits down */
+					if (trap_data) {
+						dhd_pcie_handle_lpm_memkill(bus);
+					}
+				}
+				DHD_ERROR(("Doing the D3\n"));
 				rc = dhdpcie_pci_suspend_resume(bus, state);
 				if (!rc) {
 					bus->last_suspend_end_time = OSL_LOCALTIME_NS();
 				}
+				DHD_ERROR(("Doing the FLR, lpm_mode %d, lpm_force_flr %d,"
+					" fwsupport %d\n",
+					bus->lpm_mode, bus->lpm_force_flr,
+					bus->dhd->fw_lpm_support));
+				if (bus->lpm_mode && bus->dhd->fw_lpm_support &&
+					bus->lpm_force_flr) {
+					bus->lpm_keep_in_reset = TRUE;
+					dhd_bus_perform_flr(bus, FALSE);
+					bus->lpm_keep_in_reset = FALSE;
+				}
+				else {
+					DHD_ERROR(("NO FLR\n"));
+				}
+				DHD_ERROR(("FLR done\n"));
 			}
 		} else if (timeleft == 0) { /* D3 ACK Timeout */
 #ifdef DHD_FW_COREDUMP
@@ -9196,8 +9342,6 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			DHD_ERROR(("%s: resumed on timeout for D3 ACK%s d3_inform_cnt %d\n",
 				__FUNCTION__, bus->dhd->is_sched_error ?
 				" due to scheduling problem" : "", bus->dhd->d3ackcnt_timeout));
-			// DEBUG ONLY: Trigger D-state dump
-			handle_sysrq('w');
 #if defined(DHD_KERNEL_SCHED_DEBUG) && defined(DHD_FW_COREDUMP)
 			/* XXX DHD triggers Kernel panic if the resumed on timeout occurrs
 			 * due to tasklet or workqueue scheduling problems in the Linux Kernel.
@@ -10907,10 +11051,13 @@ void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		OSL_ATOMIC_READ(dhdp->osh, &dhdp->multi_client_flow_rings),
 		dhdp->max_multi_client_flow_rings);
 #endif /* DHD_LIMIT_MULTI_CLIENT_FLOWRINGS */
-#if defined(DHD_HTPUT_TUNABLES)
-	bcm_bprintf(strbuf, "htput_flow_ring_start:%d total_htput:%d client_htput=%d\n",
-		dhdp->htput_flow_ring_start, HTPUT_TOTAL_FLOW_RINGS, dhdp->htput_client_flow_rings);
-#endif /* DHD_HTPUT_TUNABLES */
+
+	if (dhdp->htput_support) {
+		bcm_bprintf(strbuf, "htput_flow_ring_start:%d total_htput:%d client_htput=%d\n",
+			dhdp->htput_flow_ring_start, HTPUT_TOTAL_FLOW_RINGS,
+			dhdp->htput_client_flow_rings);
+	}
+
 	bcm_bprintf(strbuf,
 		"%4s %4s %2s %4s %17s %4s %4s %6s %10s %17s %17s %17s %17s %14s %14s %10s ",
 		"Num:", "Flow", "If", "Prio", ":Dest_MacAddress:", "Qlen", "CLen", "L2CLen",
@@ -13231,6 +13378,10 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		/* add an option to let the user select ?? */
 		bus->dhd->db7_trap.db7_magic_number = PCIE_DB7_MAGIC_NUMBER_DPC_TRAP;
 	}
+	if (sh->flags2 & PCIE_SHARED2_LPM_SUPPORT) {
+		bus->dhd->fw_lpm_support = TRUE;
+		DHD_ERROR(("FW supports LPM mode\n"));
+	}
 
 #ifdef BTLOG
 	bus->dhd->bt_logging = (sh->flags2 & PCIE_SHARED2_BT_LOGGING) ? TRUE : FALSE;
@@ -13479,6 +13630,8 @@ int dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 	} else {
 		bus->use_d0_inform = FALSE;
 	}
+	bus->lpm_mode = FALSE;
+	bus->lpm_mem_kill = FALSE;
 
 	bus->hostready_count = 0;
 
@@ -16423,9 +16576,10 @@ dhd_pcie_intr_count_dump(dhd_pub_t *dhd)
 	DHD_ERROR(("oob_irq_enabled=%d oob_gpio_level=%d\n",
 		dhdpcie_get_oob_irq_status(bus),
 		dhdpcie_get_oob_irq_level()));
-#ifdef PRINT_WAKEUP_GPIO_STATUS
-	exynos_pin_dbg_show(dhdpcie_get_oob_gpio_number(), "gpa0");
-#endif /* PRINT_WAKEUP_GPIO_STATUS */
+
+#if defined(__linux__)
+	dhd_plat_pin_dbg_show(bus->dhd->plat_info);
+#endif /* __linux__ */
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 	DHD_ERROR(("dpc_return_busdown_count=%lu non_ours_irq_count=%lu\n",
 		bus->dpc_return_busdown_count, bus->non_ours_irq_count));
@@ -17244,3 +17398,11 @@ dhdpcie_fill_sssr_reg_info(dhd_pub_t *dhd)
 }
 
 #endif /* DHD_SSSR_DUMP */
+
+#if defined(NDIS)
+void *
+dhd_bus_get_socram_buf(struct dhd_bus *bus, struct dhd_pub *dhdp)
+{
+	return dhd_get_fwdump_buf(dhdp, bus->ramsize);
+}
+#endif /* NDIS */

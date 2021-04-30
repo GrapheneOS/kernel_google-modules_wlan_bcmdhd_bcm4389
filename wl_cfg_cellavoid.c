@@ -576,6 +576,25 @@ wl_cellavoid_mandatory_isset(void *cai, enum nl80211_iftype type)
 	return mandatory;
 }
 
+wifi_interface_mode
+wl_cellavoid_mandatory_to_usable_channel_filter(void *cai)
+{
+	wifi_interface_mode mode = 0;
+	wl_cellavoid_info_t *cellavoid_info = cai;
+
+	if (cellavoid_info->mandatory_flag & WL_CELL_AVOID_WIFI_DIRECT) {
+		mode |= ((1U << WIFI_INTERFACE_P2P_GO) | (1U << WIFI_INTERFACE_P2P_CLIENT));
+	}
+	if (cellavoid_info->mandatory_flag & WL_CELL_AVOID_SOFTAP) {
+		mode |= (1U << WIFI_INTERFACE_SOFTAP);
+	}
+	if (cellavoid_info->mandatory_flag & WL_CELL_AVOID_NAN) {
+		mode |= (1U << WIFI_INTERFACE_NAN);
+	}
+
+	return mode;
+}
+
 /* Check the chanspec is whether safe or unsafe */
 bool
 wl_cellavoid_operation_allowed(void *cai, chanspec_t chanspec,
@@ -742,8 +761,13 @@ wl_cellavoid_alloc_avail_chan_list_band(wl_cellavoid_info_t *cellavoid_info,
 			band = CHSPEC_BAND(chan_info->chanspec);
 			ASSERT(band == WL_CHANSPEC_BAND_5G);
 			for (j = 0; j < (sizeof(bandwidth) / sizeof(uint16)); j++) {
+#ifdef WL_6G_320_SUPPORT
+				chanspec = wf_create_chspec_from_primary(ctlchan,
+					bandwidth[j], band, 0);
+#else
 				chanspec = wf_create_chspec_from_primary(ctlchan,
 					bandwidth[j], band);
+#endif /* WL_6G_320_SUPPORT */
 				if (chanspec == INVCHANSPEC) {
 					WL_ERR(("invalid chanspec ctlchan %d, band %d "
 						"bandwidth %d\n", ctlchan, band, bandwidth[j]));

@@ -52,6 +52,22 @@ extern int dhd_init_wlan_mem(void);
 extern void *dhd_wlan_mem_prealloc(int section, unsigned long size);
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
+#define MSM_PCIE_VENDOR_ID 0x17cb
+#if defined(CONFIG_ARCH_APQ8084)
+#define MSM_PCIE_DEVICE_ID 0x0101
+#elif defined(CONFIG_ARCH_MSM8994)
+#define MSM_PCIE_DEVICE_ID 0x0300
+#elif defined(CONFIG_ARCH_MSM8996)
+#define MSM_PCIE_DEVICE_ID 0x0104
+#elif defined(CONFIG_ARCH_MSM8998)
+#define MSM_PCIE_DEVICE_ID 0x0105
+#elif defined(CONFIG_ARCH_SDM845) || defined(CONFIG_ARCH_SM8150) || \
+	defined(CONFIG_ARCH_KONA) || defined(CONFIG_ARCH_LAHAINA)
+#define MSM_PCIE_DEVICE_ID 0x0106
+#else
+#error "Not supported platform"
+#endif
+
 #define WIFI_TURNON_DELAY       200
 static int wlan_reg_on = -1;
 #define DHD_DT_COMPAT_ENTRY		"android,bcmdhd_wlan"
@@ -345,6 +361,16 @@ dhd_wlan_deinit(void)
 	dhd_exit_wlan_mem();
 #endif /*  CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 	return 0;
+}
+
+uint32 dhd_plat_get_rc_vendor_id(void)
+{
+	return MSM_PCIE_VENDOR_ID;
+}
+
+uint32 dhd_plat_get_rc_device_id(void)
+{
+	return MSM_PCIE_DEVICE_ID;
 }
 
 #ifndef BCMDHD_MODULAR

@@ -232,6 +232,7 @@
 #define CMD_GETROAMTRIGLEGACY "GETROAMTRIGGER_LEGACY"
 #define CMD_SETROAMTRIGLEGACY "SETROAMTRIGGER_LEGACY"
 #define CMD_REASSOCLEGACY "REASSOC_LEGACY"
+#define CMD_REASSOCFREQLEGACY "REASSOC_FREQUENCY_LEGACY"
 
 #define CMD_GETROAMSCANCONTROL "GETROAMSCANCONTROL"
 #define CMD_SETROAMSCANCONTROL "SETROAMSCANCONTROL"
@@ -258,6 +259,7 @@
 
 #define CMD_SENDACTIONFRAME "SENDACTIONFRAME"
 #define CMD_REASSOC "REASSOC"
+#define CMD_REASSOCFREQ "REASSOC_FREQUENCY"
 
 #define CMD_GETWESMODE "GETWESMODE"
 #define CMD_SETWESMODE "SETWESMODE"
@@ -876,7 +878,7 @@ static char* legacy_cmdlist[] =
 	CMD_GETROAMSCANCHLEGACY, CMD_ADDROAMSCANCHLEGACY,
 	CMD_GETROAMSCANFQLEGACY, CMD_ADDROAMSCANFQLEGACY,
 	CMD_GETROAMTRIGLEGACY, CMD_SETROAMTRIGLEGACY,
-	CMD_REASSOCLEGACY,
+	CMD_REASSOCLEGACY, CMD_REASSOCFREQLEGACY,
 	CMD_GETSCANCHANNELTIMELEGACY, CMD_SETSCANCHANNELTIMELEGACY,
 	CMD_GETSCANUNASSOCTIMELEGACY, CMD_SETSCANUNASSOCTIMELEGACY,
 	CMD_GETSCANPASSIVETIMELEGACY, CMD_SETSCANPASSIVETIMELEGACY,
@@ -896,7 +898,7 @@ static char* ncho_cmdlist[] =
 	CMD_GETROAMSCANCHANNELS, CMD_SETROAMSCANCHANNELS, CMD_ADDROAMSCANCHANNELS,
 	CMD_GETROAMSCANFREQS, CMD_SETROAMSCANFREQS, CMD_ADDROAMSCANFREQS,
 	CMD_SENDACTIONFRAME,
-	CMD_REASSOC,
+	CMD_REASSOC, CMD_REASSOCFREQ,
 	CMD_GETSCANCHANNELTIME,	CMD_SETSCANCHANNELTIME,
 	CMD_GETSCANUNASSOCTIME,	CMD_SETSCANUNASSOCTIME,
 	CMD_GETSCANPASSIVETIME,	CMD_SETSCANPASSIVETIME,
@@ -1604,40 +1606,114 @@ wl_android_set_disable_dtim_in_suspend(struct net_device *dev, char *command)
 }
 #endif /* DISABLE_DTIM_IN_SUSPEND */
 
-static int wl_android_get_band(struct net_device *dev, char *command, int total_len)
+typedef enum band_define {
+	BAND_DEF_2G5G = 0,	/* 0: Auto (2.4GHz + 5GHz) */
+	BAND_DEF_5G,		/* 1: 5GHz */
+	BAND_DEF_2G,		/* 2: 2.4GHz */
+	BAND_DEF_2G5G6G,	/* 3, Auto (2.4GHz + 5GHz + 6GHz) */
+	BAND_DEF_6G,		/* 4: 6GHz */
+	BAND_DEF_5G6G,		/* 5: 5GHz + 6GHz */
+	BAND_DEF_2G6G,		/* 6: 2.4GHz + 6GHz */
+	BAMD_DEF_MAX
+} band_define_t;
+
+static int
+wl_android_get_band(struct net_device *dev, char *command, int total_len)
 {
-	uint band;
+	uint band, band_def = 0;
 	int bytes_written;
 	int error = BCME_OK;
+#ifdef WL_6G_BAND
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+#endif /* WL_6G_BAND */
 
 	error = wldev_iovar_getint(dev, "if_band", &band);
 	if (error == BCME_UNSUPPORTED) {
 		error = wldev_get_band(dev, &band);
 		if (error) {
-			return error;
+			return BCME_ERROR;
 		}
 	}
-	bytes_written = snprintf(command, total_len, "Band %d", band);
+
+	/* Changed Band types to Band Definition */
+	switch (band) {
+		case WLC_BAND_AUTO:
+#ifdef WL_6G_BAND
+			if (cfg->band_6g_supported) {
+				band_def = BAND_DEF_2G5G6G;
+				break;
+			}
+#endif /* WL_6G_BAND */
+			band_def = BAND_DEF_2G5G;
+			break;
+		case WLC_BAND_2G:
+			band_def = BAND_DEF_2G;
+			break;
+		case WLC_BAND_5G:
+#ifdef WL_6G_BAND
+		case WLC_BAND_6G:
+			if (cfg->band_6g_supported) {
+				band_def = BAND_DEF_5G6G;
+				break;
+			}
+#endif /* WL_6G_BAND */
+			band_def = BAND_DEF_5G;
+			break;
+		default:
+			WL_ERR(("Unkown band: %d\n", band));
+			return BCME_ERROR;
+	}
+
+	bytes_written = snprintf(command, total_len, "Band %d", band_def);
 	return bytes_written;
 }
 
 static int
 wl_android_set_band(struct net_device *dev, char *command)
 {
-	int error = 0;
-	uint band = *(command + strlen(CMD_SETBAND) + 1) - '0';
+	int error = BCME_OK;
+	uint band_def, band = 0;
+	band_def = *(command + strlen(CMD_SETBAND) + 1) - '0';
+
+	/* Changed Band Definition to Band types */
+	switch (band_def) {
+		case BAND_DEF_2G:
+			band = WLC_BAND_2G;
+			break;
+#ifndef WL_6G_BAND
+		case BAND_DEF_2G5G:
+			band = WLC_BAND_AUTO;
+			break;
+		case BAND_DEF_5G:
+			band = WLC_BAND_5G;
+			break;
+#else
+		case BAND_DEF_2G5G6G:
+			band = WLC_BAND_AUTO;
+			break;
+		case BAND_DEF_5G6G:
+			band = WLC_BAND_5G;
+			break;
+		/* Can't set only 5GHz or 6GHz band on 6GHz supported device. */
+		case BAND_DEF_6G:
+		case BAND_DEF_2G6G:
+#endif /* !WL_6G_BAND */
+		default:
+			WL_ERR(("Unsupported band definition: %d\n", band_def));
+			return BCME_ERROR;
+	}
+
 #ifdef WL_HOST_BAND_MGMT
-	int ret = 0;
-	if ((ret = wl_cfg80211_set_band(dev, band)) < 0) {
-		if (ret == BCME_UNSUPPORTED) {
+	if ((error = wl_cfg80211_set_band(dev, band)) < 0) {
+		if (error == BCME_UNSUPPORTED) {
 			/* If roam_var is unsupported, fallback to the original method */
 			WL_ERR(("WL_HOST_BAND_MGMT defined, "
 				"but roam_band iovar unsupported in the firmware\n"));
 		} else {
-			error = -1;
+			error = BCME_ERROR;
 		}
 	}
-	if (((ret == 0) && (band == WLC_BAND_AUTO)) || (ret == BCME_UNSUPPORTED)) {
+	if (((error == BCME_OK) && (band == WLC_BAND_AUTO)) || (error == BCME_UNSUPPORTED)) {
 		/* Apply if roam_band iovar is not supported or band setting is AUTO */
 		error = wldev_set_band(dev, band);
 	}
@@ -2786,13 +2862,12 @@ send_action_frame_out:
 }
 
 int
-wl_android_reassoc(struct net_device *dev, char *command, int total_len)
+wl_android_reassoc_chan(struct net_device *dev, char *command, int total_len)
 {
 	int error = BCME_OK;
 	android_wifi_reassoc_params_t *params = NULL;
-	chanspec_t channel;
-	u32 params_size;
-	wl_reassoc_params_t reassoc_params;
+	struct ether_addr bssid;
+	chanspec_t chanspec;
 	char pcmd[WL_PRIV_CMD_LEN + 1];
 
 	sscanf(command, "%"S(WL_PRIV_CMD_LEN)"s *", pcmd);
@@ -2802,36 +2877,72 @@ wl_android_reassoc(struct net_device *dev, char *command, int total_len)
 	}
 	params = (android_wifi_reassoc_params_t *)(command + strlen(pcmd) + 1);
 
-	bzero(&reassoc_params, WL_REASSOC_PARAMS_FIXED_SIZE);
-
-	if (bcm_ether_atoe((const char *)params->bssid,
-	(struct ether_addr *)&reassoc_params.bssid) == 0) {
-		WL_ERR(("Invalid bssid \n"));
+	bzero(&bssid, ETHER_ADDR_LEN);
+	if (bcm_ether_atoe((const char *)params->bssid, (struct ether_addr *)&bssid) == 0) {
+		WL_ERR(("Invalid BSSID \n"));
 		return BCME_BADARG;
 	}
 
-	if (params->channel < 0) {
-		WL_ERR(("Invalid Channel %d\n", params->channel));
-		return BCME_BADARG;
+	if (!CHANNEL_IS_2G(params->channel) && !CHANNEL_IS_5G(params->channel)) {
+		WL_ERR(("Invalied Channel %d\n", params->channel));
+		return BCME_BADCHAN;
 	}
+	chanspec = wf_channel2chspec(params->channel, WL_CHANSPEC_BW_20);
 
-	reassoc_params.chanspec_num = 1;
-
-	channel = params->channel;
-	if (CHANNEL_IS_2G(channel) || CHANNEL_IS_5G(channel)) {
-		/* If reassoc Param is BSSID and Channel */
-		reassoc_params.chanspec_list[0] = wf_channel2chspec(channel, WL_CHANSPEC_BW_20);
-	} else {
-		/* If reassoc Param is BSSID and Frequency */
-		reassoc_params.chanspec_list[0] = wl_freq_to_chanspec(channel);
-	}
-	params_size = WL_REASSOC_PARAMS_FIXED_SIZE + sizeof(chanspec_t);
-
-	error = wldev_ioctl_set(dev, WLC_REASSOC, &reassoc_params, params_size);
+	WL_INFORM_MEM(("Reassoc " MACDBG " Channel %d(0x%04x)\n",
+		MAC2STRDBG(bssid.octet), params->channel, chanspec));
+	error = wl_cfg80211_reassoc(dev, &bssid, chanspec);
 	if (error) {
-		WL_ERR(("failed to reassoc, error=%d\n", error));
-		return error;
+		WL_ERR(("failed reassoc with channel, error=%d\n", error));
 	}
+
+	return error;
+}
+
+int
+wl_android_reassoc_freq(struct net_device *dev, char *command, int total_len)
+{
+	char *params, *token;
+	int error = BCME_OK;
+	struct ether_addr bssid;
+	chanspec_t chanspec, frequency;
+	char pcmd[WL_PRIV_CMD_LEN + 1];
+
+	sscanf(command, "%"S(WL_PRIV_CMD_LEN)"s *", pcmd);
+	params = (command + strlen(pcmd) + 1);
+
+	/* Parse Reassoc BSSID */
+	token = bcmstrtok(&params, " ", NULL);
+	if (!token) {
+	    WL_ERR(("Bad argument!\n"));
+	    return BCME_BADARG;
+	}
+	bzero(&bssid, ETHER_ADDR_LEN);
+	if (bcm_ether_atoe(token, (struct ether_addr *)&bssid) == 0) {
+		WL_ERR(("Invalid BSSID \n"));
+		return BCME_BADARG;
+	}
+	/* Parse Reassoc Frequency */
+	token = bcmstrtok(&params, " ", NULL);
+	if (!token) {
+	    WL_ERR(("Bad argument!\n"));
+	    return BCME_BADARG;
+	}
+	frequency = bcm_atoi(token);
+
+	chanspec = wl_freq_to_chanspec(frequency);
+	if (chanspec == INVCHANSPEC) {
+		WL_ERR(("Invalid Frequency %d\n", frequency));
+		return BCME_BADCHAN;
+	}
+
+	WL_INFORM_MEM(("Reassoc " MACDBG " Frequency %d(0x%04x)\n",
+		MAC2STRDBG(bssid.octet), frequency, chanspec));
+	error = wl_cfg80211_reassoc(dev, &bssid, chanspec);
+	if (error) {
+		WL_ERR(("failed reassoc with frequency, error=%d\n", error));
+	}
+
 	return error;
 }
 
@@ -3116,8 +3227,11 @@ wl_android_legacy_private_command(struct net_device *net, char *command, int tot
 	else if (strnicmp(command, CMD_SETROAMTRIGLEGACY, strlen(CMD_SETROAMTRIGLEGACY)) == 0) {
 		bytes_written = wl_android_set_roam_trigger_legacy(net, command);
 	}
+	else if (strnicmp(command, CMD_REASSOCFREQLEGACY, strlen(CMD_REASSOCFREQLEGACY)) == 0) {
+		bytes_written = wl_android_reassoc_freq(net, command, total_len);
+	}
 	else if (strnicmp(command, CMD_REASSOCLEGACY, strlen(CMD_REASSOCLEGACY)) == 0) {
-		bytes_written = wl_android_reassoc(net, command, total_len);
+		bytes_written = wl_android_reassoc_chan(net, command, total_len);
 	}
 	else if (strnicmp(command, CMD_GETSCANCHANNELTIMELEGACY,
 		strlen(CMD_GETSCANCHANNELTIMELEGACY)) == 0) {
@@ -3272,8 +3386,11 @@ wl_android_ncho_private_command(struct net_device *net, char *command, int total
 	else if (strnicmp(command, CMD_SENDACTIONFRAME, strlen(CMD_SENDACTIONFRAME)) == 0) {
 		bytes_written = wl_android_send_action_frame(net, command, total_len);
 	}
+	else if (strnicmp(command, CMD_REASSOCFREQ, strlen(CMD_REASSOCFREQ)) == 0) {
+		bytes_written = wl_android_reassoc_freq(net, command, total_len);
+	}
 	else if (strnicmp(command, CMD_REASSOC, strlen(CMD_REASSOC)) == 0) {
-		bytes_written = wl_android_reassoc(net, command, total_len);
+		bytes_written = wl_android_reassoc_chan(net, command, total_len);
 	}
 	else if (strnicmp(command, CMD_GETSCANCHANNELTIME, strlen(CMD_GETSCANCHANNELTIME)) == 0) {
 		bytes_written = wl_android_get_scan_channel_time(net, command, total_len);
@@ -10080,7 +10197,7 @@ exit:
 		*/
 		if (
 #ifdef WL_TWT
-			!((ret == -EBUSY) &&
+			!(((ret == -EBUSY) || (ret == -EOPNOTSUPP)) &&
 			((strnicmp(command, CMD_TWT_SETUP, strlen(CMD_TWT_SETUP)) == 0) ||
 			(strnicmp(command, CMD_TWT_TEARDOWN, strlen(CMD_TWT_TEARDOWN)) == 0) ||
 			(strnicmp(command, CMD_TWT_INFO, strlen(CMD_TWT_INFO)) == 0))) &&
@@ -14219,6 +14336,7 @@ wl_android_uwbcx_get_enable(struct net_device *dev, char *command, int tot_len)
 	bool is_bit_set = FALSE;
 
 	bcm_iov_batch_subcmd_t *sub_cmd_ret;
+	uwbcx_coex_bitmap_v2_t *coex_bitmap_cfg;
 	uwbcx_coex_bitmap_t *coex_bitmap;
 
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
@@ -14235,7 +14353,14 @@ wl_android_uwbcx_get_enable(struct net_device *dev, char *command, int tot_len)
 	if (!ret) {
 		sub_cmd_ret = (bcm_iov_batch_subcmd_t *)(resp_buf +
 				OFFSETOF(bcm_iov_batch_buf_t, cmds[0]));
-		coex_bitmap = (uwbcx_coex_bitmap_t *)(sub_cmd_ret->data);
+		coex_bitmap_cfg = (uwbcx_coex_bitmap_v2_t *)(sub_cmd_ret->data);
+		coex_bitmap = (uwbcx_coex_bitmap_t *)(&coex_bitmap_cfg->coex_bitmap);
+
+		if (coex_bitmap_cfg->version !=  UWBCX_COEX_BITMAP_VERSION_V2) {
+			WL_ERR(("%s - Failed due to UWB coex bitmap ver mismatch\n", __FUNCTION__));
+			ret = BCME_VERSION;
+			goto exit;
+		}
 
 		for (i = 0; i < UWB_COEX_CH_MAP_NUM; i++) {
 			is_bit_set = FALSE;

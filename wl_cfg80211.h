@@ -109,6 +109,11 @@ struct wl_ibss;
 /* mandatory for Android 11 */
 #define WL_ACT_FRAME_MAC_RAND
 
+#if defined(WL_6G_BAND) && !defined(WL_DISABLE_SOFTAP_6G)
+/* Unless exlicitly disabled, enable softap 6G when 6G band support is present */
+#define WL_SOFTAP_6G
+#endif /* WL_6G_BAND && !WL_DISABLE_SOFTAP_6G */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0) && !defined(WL_NMI_IF))
 #define WL_NMI_IF
 #endif /* LINUX_VERSION_CODE >= (4, 17, 0) && !(WL_NMI_IF) */
@@ -1762,6 +1767,7 @@ typedef struct usable_channel {
 	wifi_channel freq;
 	wifi_channel_width_t width;
 	u32 iface_mode_mask;
+	chanspec_t chspec;	/* used only for inter processing */
 } usable_channel_t;
 
 typedef struct usable_channel_info {
@@ -1772,7 +1778,6 @@ typedef struct usable_channel_info {
 	u32 size;
 	usable_channel_t *channels;
 } usable_channel_info_t;
-#define USABLE_CHAN_SIZE sizeof(usable_channel_t)
 #endif /* WL_USABLE_CHAN */
 
 #ifdef TPUT_DEBUG_DUMP
@@ -2084,6 +2089,11 @@ struct bcm_cfg80211 {
 	struct net_device *inet_ndev;
 	struct wireless_dev *nmi_wdev;	/* representing cfg cfg80211 device for NAN NMI */
 	struct net_device *nmi_ndev;    /* reference to NAN NMI interface */
+
+#if defined(DHD_DSCP_POLICY)
+	void *dscp_policy_info;
+#endif /* defined(DHD_DSCP_POLICY) */
+
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -3368,4 +3378,7 @@ extern int wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t ba
 #ifdef WL_USABLE_CHAN
 int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_info);
 #endif /* WL_USABLE_CHAN */
+
+extern int wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid,
+	chanspec_t chanspec);
 #endif /* _wl_cfg80211_h_ */

@@ -52,6 +52,7 @@
 #define WLC_EVENT_MSG_GROUP		0x04	/* group MIC error */
 #define WLC_EVENT_MSG_UNKBSS		0x08	/* unknown source bsscfg */
 #define WLC_EVENT_MSG_UNKIF		0x10	/* unknown source OS i/f */
+#define WLC_EVENT_MSG_MULTILINK		0x20	/* used to indicate that connection is multilink */
 
 /* these fields are stored in network order */
 
@@ -306,10 +307,10 @@ typedef union bcm_event_msg_u {
 #define WLC_E_TWT			195	/* TWT event */
 #define WLC_E_AMT			196	/* Address Management Table (AMT) */
 #define WLC_E_ROAM_SCAN_RESULT		197	/* roam/reassoc scan result event */
-#define WLC_E_LAST			200	/* highest val + 1 for range checking */
-#if (WLC_E_LAST > 200)
-#error "WLC_E_LAST: Invalid value for last event; must be <= 199."
-#endif /* WLC_E_LAST */
+
+#define WLC_E_MSCS			200	/* MSCS success/failure events */
+
+#define WLC_E_LAST			201	/* highest val + 1 for range checking */
 
 /* define an API for getting the string name of an event */
 extern const char *bcmevent_get_name(uint event_type);
@@ -565,6 +566,7 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_SUP_PTK_UPDATE		21	/* PTK update */
 #define WLC_E_SUP_MSG1_PMKID_MISMATCH	22	/* MSG1 PMKID not matched to PMKSA cache list */
 #define WLC_E_SUP_GTK_UPDATE		23	/* GTK update */
+#define WLC_E_SUP_KDK_UPDATE_FAIL	24	/* KDK update failure */
 
 /* event msg for WLC_E_SUP_PTK_UPDATE */
 typedef struct wlc_sup_ptk_update {
@@ -1154,6 +1156,7 @@ typedef enum wl_twt_setup_rc {
 	WL_TWT_SETUP_RC_TIMEOUT	= 2u,	/* TWT Setup Time-out */
 	WL_TWT_SETUP_RC_IE	= 3u,	/* TWT Setup IE Validation failed */
 	WL_TWT_SETUP_RC_PARAMS	= 4u,	/* TWT Setup IE Params invalid */
+	WL_TWT_SETUP_RC_INF_UNAVAIL	= 5u,	/* TWT Info Frame Disabled Peer device */
 	/* Any new reason code add before this */
 	WL_TWT_SETUP_RC_ERROR	= 255u,	/* Generic Error cases */
 } wl_twt_setup_rc_t;
@@ -1591,5 +1594,16 @@ typedef struct wl_csa_event {
 	wl_csa_switch_event_t csa;	/**< Channel Switch Announcement parameters */
 	uint32 switch_time;		/**< csa switch time: TSF + BI * count, msec */
 } wl_csa_event_t;
+
+/* Event structure for WLC_E_MSCS */
+typedef struct wl_event_mscs {
+	uint16 version;		/* structure version */
+	uint16 length;		/* length of this structure */
+	uint8  data[];		/* MSCS event data */
+	/* The data is of type wl_qos_rav_mscs_config_t -- defined in wlioctl.h */
+} wl_event_mscs_t;
+
+/* WLC_E_MSCS event structure version */
+#define WL_MSCS_EVENT_VERSION	1u
 
 #endif /* _BCMEVENT_H_ */

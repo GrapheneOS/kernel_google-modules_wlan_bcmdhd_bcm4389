@@ -874,7 +874,7 @@ wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
 			__FUNCTION__, MAC2STRDBG(mac_addr)));
 
 #if defined(SPECIFIC_MAC_GEN_SCHEME)
-	if ((wl_iftype == WL_IF_TYPE_P2P_DISC) || (wl_iftype == WL_IF_TYPE_AP) ||
+	if ((wl_iftype == WL_IF_TYPE_P2P_DISC) ||
 		(wl_iftype == WL_IF_TYPE_P2P_GO) || (wl_iftype == WL_IF_TYPE_P2P_GC)) {
 		/* Avoid invoking release mac addr code for interfaces using
 		 * fixed mac addr.
@@ -943,7 +943,7 @@ wl_get_vif_macaddr(struct bcm_cfg80211 *cfg, u16 wl_iftype, u8 *mac_addr)
  * the mac address.
  */
 #if defined(SPECIFIC_MAC_GEN_SCHEME)
-	if (wl_iftype == WL_IF_TYPE_P2P_DISC ||	wl_iftype == WL_IF_TYPE_AP) {
+	if (wl_iftype == WL_IF_TYPE_P2P_DISC) {
 		mac_addr[0] |= 0x02;
 	} else if ((wl_iftype == WL_IF_TYPE_P2P_GO) || (wl_iftype == WL_IF_TYPE_P2P_GC)) {
 		mac_addr[0] |= 0x02;
@@ -1603,6 +1603,13 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 			return -ENOTSUPP;
 		}
 
+#ifndef WL_SOFTAP_6G
+	if (IS_AP_IFACE(dev->ieee80211_ptr) && (CHSPEC_IS6G(chspec))) {
+		WL_ERR(("AP not allowed on 6G\n"));
+		return -ENOTSUPP;
+	}
+#endif /* WL_SOFTAP_6G */
+
 #ifdef NOT_YET
 	switch (channel_type) {
 		case NL80211_CHAN_HT40MINUS:
@@ -1694,8 +1701,13 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 #endif /* WL_CELLULAR_CHAN_AVOID */
 set_channel:
 	WL_DBG(("bw = %x, chspec =%x, chspec band = %x\n", bw, chspec, CHSPEC_BAND(chspec)));
+#ifdef WL_6G_320_SUPPORT
+	cur_chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(chspec),
+		bw, CHSPEC_BAND(chspec), 0);
+#else
 	cur_chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(chspec),
 		bw, CHSPEC_BAND(chspec));
+#endif /* WL_6G_320_SUPPORT */
 #ifdef WL_6G_BAND
 	if (cfg->acs_chspec &&
 		CHSPEC_IS6G(cfg->acs_chspec) &&
@@ -3713,7 +3725,10 @@ fail:
 		wl_cfg80211_stop_ap(wiphy, dev);
 		if (dev_role == NL80211_IFTYPE_AP) {
 #ifdef BCMDONGLEHOST
-			dhd->op_mode &= ~DHD_FLAG_HOSTAP_MODE;
+			/* If there are no other APs active, clear the AP mode */
+			if (wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) == 0) {
+				dhd->op_mode &= ~DHD_FLAG_HOSTAP_MODE;
+			}
 			/* Enable packet filter */
 			if (dhd->early_suspended) {
 				WL_ERR(("Enable pkt_filter\n"));
@@ -3766,11 +3781,6 @@ wl_cfg80211_stop_ap(
 
 	cancel_delayed_work_sync(&cfg->ap_work);
 
-	if (wl_cfg80211_get_bus_state(cfg)) {
-		/* since bus is down, iovar will fail. recovery path will bringup the bus. */
-		WL_ERR(("bus is not ready\n"));
-		return BCME_OK;
-	}
 #if defined(BCMDONGLEHOST)
 	is_rsdb_supported = DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_RSDB_MODE);
 	if (is_rsdb_supported < 0)
@@ -3808,6 +3818,13 @@ wl_cfg80211_stop_ap(
 
 	/* Clear AP/GO connected status */
 	wl_clr_drv_status(cfg, CONNECTED, dev);
+
+	if (wl_cfg80211_get_bus_state(cfg)) {
+		/* since bus is down, iovar will fail. recovery path will bringup the bus. */
+		WL_ERR(("bus is not ready\n"));
+		return BCME_OK;
+	}
+
 	if ((err = wl_cfg80211_bss_up(cfg, dev, bssidx, 0)) < 0) {
 		WL_ERR(("bss down error %d\n", err));
 	}
@@ -3902,8 +3919,10 @@ exit:
 
 #ifdef BCMDONGLEHOST
 	if (dev_role == NL80211_IFTYPE_AP) {
-		/* clear the AP mode */
-		dhd->op_mode &= ~DHD_FLAG_HOSTAP_MODE;
+		/* If there are no other APs active, clear the AP mode */
+		if (wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) == 0) {
+			dhd->op_mode &= ~DHD_FLAG_HOSTAP_MODE;
+		}
 	}
 #endif /* BCMDONGLEHOST */
 	return err;
@@ -5058,8 +5077,13 @@ wl_cfg80211_set_monitor_channel(struct wiphy *wiphy, struct cfg80211_chan_def *c
 
 	WL_DBG(("%s: chandef->width(%u), bw(%u)\n",
 		__FUNCTION__, chandef->width, bw));
+#ifdef WL_6G_320_SUPPORT
+	chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(chspec),
+		bw, CHSPEC_BAND(chspec), 0);
+#else
 	chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(chspec),
 		bw, CHSPEC_BAND(chspec));
+#endif /* WL_6G_320_SUPPORT */
 
 	if (!wf_chspec_valid(chspec)) {
 		WL_ERR(("Invalid chanspec 0x%x\n", chspec));

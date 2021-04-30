@@ -45,7 +45,6 @@
 #include <linux/spinlock.h>
 #include <linux/ethtool.h>
 #include <linux/proc_fs.h>
-#include <linux/sysrq.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
 #include <linux/fs.h>
@@ -491,6 +490,9 @@ enum dhd_op_flags {
 #define DHD_JOIN_MAX_TIME_DEFAULT 10000 /* ms: Max time out for joining AP */
 #define DHD_SCAN_DEF_TIMEOUT 10000 /* ms: Max time out for scan in progress */
 #endif /* DHD_DEBUG */
+
+/* Enable Flow ring pre-memory allocation by default for Android */
+#define FLOW_RING_PREALLOC
 
 #ifndef CONFIG_BCMDHD_CLM_PATH
 #define CONFIG_BCMDHD_CLM_PATH "/etc/wifi/bcmdhd_clm.blob"
@@ -995,6 +997,7 @@ typedef enum {
 
 #define PCIE_DB7_MAGIC_NUMBER_ISR_TRAP	0xdead0001
 #define PCIE_DB7_MAGIC_NUMBER_DPC_TRAP	0xdead0002
+#define PCIE_DB7_MAGIC_NUMBER_DPC_LPM	0xdead0003
 
 typedef struct dhd_db7_info {
 	bool	fw_db7w_trap;
@@ -1079,6 +1082,21 @@ typedef struct tx_cpl_info {
 
 #define DHD_PTM_GET_CLKID(ts) (((ts) & DHD_PTM_CLK_ID_MASK) >> DHD_PTM_CLK_ID_SHIFT)
 #define DHD_PTM_CLKID(ts) (DHD_PTM_GET_CLKID(ts) == DHD_PTM_CLK_ID)
+
+#ifdef DHD_USE_STATIC_CTRLBUF
+#define PKTFREE_CTRLBUF(osh, p, flag) PKTFREE_STATIC(osh, p, flag);
+#else
+#define PKTFREE_CTRLBUF(osh, p, flag) PKTFREE(osh, p, flag);
+#endif /* DHD_USE_STATIC_CTRLBUF */
+
+#define RX_PKTFREE(osh, pkt_type, p, flag) \
+do { \
+	if (ntoh16(pkt_type) == ETHER_TYPE_BRCM) { \
+		PKTFREE_CTRLBUF(osh, p, flag); \
+	} else { \
+		PKTCFREE(osh, p, flag); \
+	} \
+} while (0);
 
 #if defined(SHOW_LOGTRACE) && defined(DHD_USE_KTHREAD_FOR_LOGTRACE)
 /* Timestamps to trace dhd_logtrace_thread() */
@@ -1362,11 +1380,9 @@ typedef struct dhd_pub {
 	bool	flow_rings_inited;	/* set this flag after initializing flow rings */
 #endif /* PCIE_FULL_DONGLE */
 	void    *flowid_allocator;  /* unique flowid allocator */
-#if defined(DHD_HTPUT_TUNABLES)
 	void    *htput_flowid_allocator;  /* unique htput flowid allocator */
-	uint8	htput_client_flow_rings;  /* current number of htput client flowrings */
-	uint8	htput_flow_ring_start;	  /* start index of htput flow rings */
-#endif /* DHD_HTPUT_TUNABLES */
+	uint16	htput_client_flow_rings;  /* current number of htput client flowrings */
+	uint16	htput_flow_ring_start;	  /* start index of htput flow rings */
 	void	*flow_ring_table;   /* flow ring table, include prot and bus info */
 	void	*if_flow_lkup;      /* per interface flowid lkup hash table */
 	void    *flowid_lock;       /* per os lock for flowid info protection */
@@ -1761,6 +1777,17 @@ typedef struct dhd_pub {
 	/* Pointer to Platform Layer */
 	void *plat_info;
 	uint32 plat_info_size;
+	bool htput_support;
+#ifdef FLOW_RING_PREALLOC
+	uint16 non_htput_total_flow_rings;
+#endif /* FLOW_RING_PREALLOC */
+	bool fw_lpm_support; /* fw supports LPM mode */
+	bool igmpo_enable; /* fw supports igmp offload */
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC
+	void* dbg_ring_send_buf;
+	uint32 dbg_ring_send_buf_len;
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -2426,6 +2453,10 @@ void dhd_intr_poll_pkt_thresholds(dhd_pub_t *dhd);
 #ifdef DHD_DEBUG
 void dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int substr_type);
 #endif /* DHD_DEBUG */
+
+#ifdef DHD_COREDUMP
+void dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len);
+#endif /* DHD_COREDUMP */
 
 extern void
 dhd_pcie_dump_core_regs(dhd_pub_t * pub, uint32 index, uint32 first_addr, uint32 last_addr);
@@ -3301,6 +3332,7 @@ void dhd_aoe_arp_clr(dhd_pub_t *dhd, int idx);
 int dhd_arp_get_arp_hostip_table(dhd_pub_t *dhd, void *buf, int buflen, int idx);
 void dhd_arp_offload_add_ip(dhd_pub_t *dhd, uint32 ipaddr, int idx);
 #endif /* ARP_OFFLOAD_SUPPORT */
+
 #ifdef WLTDLS
 int dhd_tdls_enable(struct net_device *dev, bool tdls_on, bool auto_on, struct ether_addr *mac);
 int dhd_tdls_set_mode(dhd_pub_t *dhd, bool wfd_mode);
@@ -3669,18 +3701,18 @@ void dhd_schedule_dmaxfer_free(dhd_pub_t *dhdp, dmaxref_mem_map_t *dmmap);
 
 extern int ring_size_version;
 
-extern uint16 h2d_max_txpost;
-extern uint16 h2d_htput_max_txpost;
-extern uint16 d2h_max_txcpl;
+extern uint h2d_max_txpost;
+extern uint h2d_htput_max_txpost;
+extern uint d2h_max_txcpl;
 
-extern uint16 h2d_max_rxpost;
-extern uint16 d2h_max_rxcpl;
+extern uint h2d_max_rxpost;
+extern uint d2h_max_rxcpl;
 
-extern uint16 h2d_max_ctrlpost;
-extern uint16 d2h_max_ctrlcpl;
+extern uint h2d_max_ctrlpost;
+extern uint d2h_max_ctrlcpl;
 
-extern uint16 rx_buf_burst;
-extern uint16 rx_bufpost_threshold;
+extern uint rx_buf_burst;
+extern uint rx_bufpost_threshold;
 
 #endif  /* PCIE_FULL_DONGLE */
 
@@ -4322,14 +4354,14 @@ void dhd_ctrl_tcp_limit_output_bytes(int level);
 #if defined(__linux__)
 extern void dhd_schedule_delayed_dpc_on_dpc_cpu(dhd_pub_t *dhdp, ulong delay);
 extern void dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata,
-	uint32 pktid, uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, bool tx, int pkt_wake,
-	bool pkt_log);
+	uint32 pktid, uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, uint8 *dhd_igmp,
+	bool tx, int pkt_wake, bool pkt_log);
 #else
 static INLINE void dhd_schedule_delayed_dpc_on_dpc_cpu(dhd_pub_t *dhdp, ulong delay)
 	{ return; }
 static INLINE void dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata,
-	uint32 pktid, uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, bool tx, int pkt_wake,
-	bool pkt_log) { return; }
+	uint32 pktid, uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, uint8 *dhd_igmp,
+	bool tx, int pkt_wake, bool pkt_log) { return; }
 #endif /* __linux */
 
 #if defined(BCMPCIE) && defined(__linux__)

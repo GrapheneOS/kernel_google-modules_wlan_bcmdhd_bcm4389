@@ -4839,6 +4839,9 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		}
 		break;
 	case WLC_E_ESCAN_RESULT:
+#if defined(NDIS)
+		break;
+#endif
 		if (datalen >= sizeof(wl_escan_result_v2_t)) {
 			const wl_escan_result_v2_t *escan_result =
 				(wl_escan_result_v2_t *)event_data;
@@ -11483,3 +11486,75 @@ int dhd_set_ap_powersave(dhd_pub_t *dhdp, int ifidx, int enable)
 	return 0;
 }
 #endif /* SUPPORT_AP_POWERSAVE */
+#ifdef DHD_COREDUMP
+void
+dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
+{
+	char *type_str = NULL;
+
+	switch (reason) {
+		case HANG_REASON_BUS_DOWN:
+			type_str = "BUS_DOWN";
+			break;
+		case HANG_REASON_PCIE_RC_LINK_UP_FAIL:
+			type_str = "PCIE_RC_LINK_UP_FAIL";
+			break;
+		case HANG_REASON_IOCTL_SUSPEND_ERROR:
+			type_str = "IOCTL_SUSPEND_ERROR";
+			break;
+		case HANG_REASON_PCIE_LINK_DOWN_RC_DETECT:
+			type_str = "PCIE_LINK_DONW_RC_DETECT";
+			break;
+		case HANG_REASON_PCIE_LINK_DOWN_EP_DETECT:
+			type_str = "PCIE_LINK_DOWN_EP_DETECT";
+			break;
+		case HANG_REASON_MSGBUF_LIVELOCK:
+			type_str = "BY_LIVELOCK";
+			break;
+		case HANG_REASON_IOCTL_RESP_TIMEOUT:
+		case HANG_REASON_IOCTL_RESP_TIMEOUT_SCHED_ERROR:
+			type_str = "resumed_on_timeout";
+			break;
+		case HANG_REASON_D3_ACK_TIMEOUT:
+		case HANG_REASON_D3_ACK_TIMEOUT_SCHED_ERROR:
+			type_str = "D3_ACK_timeout";
+			break;
+		case HANG_REASON_DONGLE_TRAP:
+			type_str = "Dongle_Trap";
+			break;
+		case HANG_REASON_PCIE_PKTID_ERROR:
+			type_str = "PKTID_INVALID";
+			break;
+		case HANG_REASON_SCAN_TIMEOUT:
+		case HANG_REASON_SCAN_TIMEOUT_SCHED_ERROR:
+			type_str = "SCAN_timeout";
+			break;
+		case HANG_REASON_SCAN_BUSY:
+			type_str = "SCAN_Busy";
+			break;
+		case HANG_REASON_IFACE_DEL_FAILURE:
+		case HANG_REASON_IFACE_ADD_FAILURE:
+		case HANG_REASON_BSS_UP_FAILURE:
+		case HANG_REASON_BSS_DOWN_FAILURE:
+			type_str = "BY_IFACE_OP_FAILURE";
+			break;
+		case HANG_REASON_PCIE_CTO_DETECT:
+			type_str = "CTO_RECOVERY";
+			break;
+		case HANG_REASON_SEQUENTIAL_PRIVCMD_ERROR:
+			type_str = "SEQUENTIAL_PRIVCMD_ERROR";
+			break;
+		case HANG_REASON_ESCAN_SYNCID_MISMATCH:
+			type_str = "ESCAN_SYNCID_MISMATCH";
+			break;
+		case HANG_REASON_P2P_DISC_BUSY:
+			type_str = "P2P_DISC_BUSY";
+			break;
+		default:
+			type_str = "Unknown_type";
+			break;
+	}
+
+	strlcpy(buf, type_str, buf_len);
+}
+#endif /* DHD_COREDUMP */

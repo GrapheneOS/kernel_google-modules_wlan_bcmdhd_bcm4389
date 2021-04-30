@@ -996,7 +996,7 @@ wl_cfgp2p_escan(struct bcm_cfg80211 *cfg, struct net_device *dev, u16 active_sca
 
 	pri_dev = wl_to_p2p_bss_ndev(cfg, P2PAPI_BSSCFG_PRIMARY);
 	/* Allocate scan params which need space for 3 channels and 0 ssids */
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		eparams_size = (WL_SCAN_PARAMS_V3_FIXED_SIZE +
 			OFFSETOF(wl_escan_params_v3_t, params)) +
 			num_chans * sizeof(eparams->params.channel_list[0]);
@@ -1086,11 +1086,11 @@ wl_cfgp2p_escan(struct bcm_cfg80211 *cfg, struct net_device *dev, u16 active_sca
 
 	wl_escan_set_sync_id(sync_id, cfg);
 	/* Fill in the Scan structure that follows the P2P scan structure */
-	if (IS_SCAN_PARAMS_V3(cfg)) {
+	if (IS_SCAN_PARAMS_V3_V2(cfg)) {
 		eparams_v3 = (wl_escan_params_v3_t*) (p2p_params + 1);
-		eparams_v3->version = htod16(ESCAN_REQ_VERSION_V2);
+		eparams_v3->version = htod16(cfg->scan_params_ver);
 		eparams_v3->action =  htod16(action);
-		eparams_v3->params.version = htod16(WL_SCAN_PARAMS_VERSION_V2);
+		eparams_v3->params.version = htod16(cfg->scan_params_ver);
 		eparams_v3->params.length = htod16(sizeof(wl_scan_params_v3_t));
 		eparams_v3->params.bss_type = DOT11_BSSTYPE_ANY;
 		eparams_v3->params.scan_type = htod32(scan_type);
@@ -1200,12 +1200,21 @@ wl_cfgp2p_act_frm_search(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			default_chan_list[i] = channel;
 		}
 	} else {
+#ifdef WL_6G_320_SUPPORT
+		default_chan_list[0] = wf_create_chspec_from_primary(SOCIAL_CHAN_1,
+			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G, 0);
+		default_chan_list[1] = wf_create_chspec_from_primary(SOCIAL_CHAN_2,
+			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G, 0);
+		default_chan_list[2] = wf_create_chspec_from_primary(SOCIAL_CHAN_3,
+			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G, 0);
+#else
 		default_chan_list[0] = wf_create_chspec_from_primary(SOCIAL_CHAN_1,
 			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G);
 		default_chan_list[1] = wf_create_chspec_from_primary(SOCIAL_CHAN_2,
 			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G);
 		default_chan_list[2] = wf_create_chspec_from_primary(SOCIAL_CHAN_3,
 			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G);
+#endif /* WL_6G_320_SUPPORT */
 	}
 	ret = wl_cfgp2p_escan(cfg, ndev, true, chan_cnt,
 		default_chan_list, WL_P2P_DISC_ST_SEARCH,

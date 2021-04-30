@@ -188,6 +188,7 @@ typedef enum {
 	/* define all init/deinit related commands between 0x2160 and 0x216F */
 	ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_START = 0x2160,
 	ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_END   = 0x216F,
+
 	/* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -693,6 +694,7 @@ typedef enum wl_vendor_event {
 	BRCM_VENDOR_EVENT_TWT			= 43,
 	BRCM_VENDOR_EVENT_TPUT_DUMP		= 44,
 	GOOGLE_NAN_EVENT_MATCH_EXPIRY		= 45,
+	BRCM_VENDOR_EVENT_RCC_FREQ_INFO		= 46,
 	BRCM_VENDOR_EVENT_LAST
 } wl_vendor_event_t;
 

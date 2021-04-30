@@ -3064,6 +3064,25 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	ring_buf = &g_ring_buf;
 	ring_buf->dhd_pub = dhdp;
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC
+	/* To avoid memory allocation failure, try to prealloc using vmalloc */
+	dhdp->dbg_ring_send_buf = NULL;
+	dhdp->dbg_ring_send_buf_len = dhd_get_max_ring_buf_size(dhdp);
+	if (!dhdp->dbg_ring_send_buf_len) {
+		DHD_ERROR(("%s: Failed to get max ringbuf size\n", __func__));
+		goto error;
+	}
+
+	dhdp->dbg_ring_send_buf = VMALLOCZ(dhdp->osh, dhdp->dbg_ring_send_buf_len);
+	if (!dhdp->dbg_ring_send_buf) {
+		DHD_ERROR(("%s: Failed to allocate dbg ring send buf len:%u\n",
+			__func__, dhdp->dbg_ring_send_buf_len));
+		goto error;
+	}
+	DHD_ERROR_MEM(("%s: dbg_ring_send_buf is allocated len:%u\n",
+			__func__, dhdp->dbg_ring_send_buf_len));
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC */
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 	return BCME_OK;
 
@@ -3131,6 +3150,11 @@ dhd_dbg_detach(dhd_pub_t *dhdp)
 		}
 	}
 	MFREE(dhdp->osh, dhdp->dbg, sizeof(dhd_dbg_t));
+
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC
+	VMFREE(dhdp->osh, dhdp->dbg_ring_send_buf, dhdp->dbg_ring_send_buf_len);
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC */
+
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	g_ring_buf.dhd_pub = NULL;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */

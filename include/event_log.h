@@ -127,37 +127,46 @@ typedef struct event_log_block {
 	/* Start of packet sent for log tracing */
 	uint16 pktlen;			/* Size of rest of block */
 	uint16 count;			/* Logtrace counter */
-	uint32 extra_hdr_info;		/* LSB: 6 bits set id. MSB 24 bits reserved */
+	uint32 extra_hdr_info;		/* LSB: 6 bits set id. 18 bits rsvd, 8 bits block flags */
 	uint32 event_logs;		/* Pointer to BEGINNING of event logs */
 	/* Event logs go here. Do not put extra fields below. */
 } event_log_block_t;
 
+/* Block specific data */
+#define EVENT_LOG_PRESERVE_BLOCK	(1u)
+#define EVENT_LOG_BLOCK_FLAG_MASK	0xFFu	/* MSB 8 bits of extra_hdr_info for block flags */
+#define EVENT_LOG_BLOCK_FLAG_SHIFT	(24u)
+#define EVENT_LOG_SETID_MASK		(0x3Fu) /* set id: LSB 6 bits of extra_hdr_info */
+#define EVENT_LOG_SETID_EXT_RSVD	(0xC0u)	/* 2 bits after setid_mask rsvd for extension */
+
 /* Relative offset of extra_hdr_info field frpm pktlen field in log block */
 #define EVENT_LOG_BUF_EXTRA_HDR_INFO_REL_PKTLEN_OFFSET		\
 	(OFFSETOF(event_log_block_t, extra_hdr_info) -	OFFSETOF(event_log_block_t, pktlen))
-
-#define EVENT_LOG_SETID_MASK	(0x3Fu)
 
 #define EVENT_LOG_BLOCK_HDRLEN		(sizeof(((event_log_block_t *) 0)->pktlen) \
 					+ sizeof(((event_log_block_t *) 0)->count) \
 					+ sizeof(((event_log_block_t *) 0)->extra_hdr_info))
 #define EVENT_LOG_BLOCK_LEN		(EVENT_LOG_BLOCK_HDRLEN	+ sizeof(event_log_hdr_t))
 
-#define EVENT_LOG_PRESERVE_BLOCK	(1 << 0)
-#define EVENT_LOG_BLOCK_FLAG_MASK	0xff000000u
-#define EVENT_LOG_BLOCK_FLAG_SHIFT	24u
+#define EVENT_LOG_BLOCK_GET_PREV_BLOCK(block)	((block)->prev_block)
 
-#define EVENT_LOG_BLOCK_GET_PREV_BLOCK(block)	((_EL_BLOCK_PTR)(((uint32)((block)->prev_block)) & \
-	~EVENT_LOG_BLOCK_FLAG_MASK))
-#define EVENT_LOG_BLOCK_SET_PREV_BLOCK(block, prev)	((block)->prev_block = \
-	((_EL_BLOCK_PTR)((((uint32)(block)->prev_block) & EVENT_LOG_BLOCK_FLAG_MASK) | \
-	(((uint32)(prev)) & ~EVENT_LOG_BLOCK_FLAG_MASK))))
-#define EVENT_LOG_BLOCK_GET_FLAG(block)	((((uint32)(block)->prev_block) &	\
-	EVENT_LOG_BLOCK_FLAG_MASK) >> EVENT_LOG_BLOCK_FLAG_SHIFT)
-#define EVENT_LOG_BLOCK_SET_FLAG(block, flag) ((block)->prev_block =	\
-		(_EL_BLOCK_PTR)(((uint32)EVENT_LOG_BLOCK_GET_PREV_BLOCK(block)) | flag))
-#define EVENT_LOG_BLOCK_OR_FLAG(block, flag)	EVENT_LOG_BLOCK_SET_FLAG(block,	\
-		(EVENT_LOG_BLOCK_GET_FLAG(block) | flag) << EVENT_LOG_BLOCK_FLAG_SHIFT)
+#define EVENT_LOG_BLOCK_SET_PREV_BLOCK(block, prev)	((block)->prev_block = (prev))
+
+#define EVENT_LOG_BLOCK_GET_FLAG(block)						\
+	(((uint32)(block)->extra_hdr_info) >> EVENT_LOG_BLOCK_FLAG_SHIFT)
+
+#define EVENT_LOG_BLOCK_SET_FLAG(block, flag)					\
+	((block)->extra_hdr_info |= (((flag) & EVENT_LOG_BLOCK_FLAG_MASK) <<	\
+		EVENT_LOG_BLOCK_FLAG_SHIFT))
+
+#define EVENT_LOG_BLOCK_OR_FLAG(block, flag)					\
+	EVENT_LOG_BLOCK_SET_FLAG(block,	(EVENT_LOG_BLOCK_GET_FLAG(block) | (flag)))
+
+#define EVENT_LOG_BLOCK_GET_SETNUM(block)					\
+	(((uint32)(block)->extra_hdr_info) & EVENT_LOG_SETID_MASK)
+
+#define EVENT_LOG_BLOCK_SET_SETNUM(block, setnum)				\
+	((block)->extra_hdr_info |= (((uint32)(setnum)) & EVENT_LOG_SETID_MASK))
 
 typedef enum {
 	SET_DESTINATION_INVALID = -1,

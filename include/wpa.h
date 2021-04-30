@@ -285,6 +285,10 @@ typedef struct rsn_ie_info {
 	uint8 ptk_len;				/* EAPOL PTK */
 	uint8 kck2_len;				/* EAPOL KCK2 */
 	uint8 kek2_len;				/* EAPOL KEK2 */
+	uint8 rsnxe_len;			/* RSNXE IE from assoc request */
+	uint8 *rsnxe;				/* RSNXE IE length */
+	uint8 kdk_len;				/* EAPOL KDK */
+	uint8 pad[3];
 } rsn_ie_info_t;
 #endif /* RSN_IE_INFO_STRUCT_RELOCATED */
 

@@ -2356,9 +2356,11 @@ dll_pool_detach(void * osh, dll_pool_t * pool, uint16 elems_max, uint16 elem_siz
 {
 	uint32 mem_size;
 	mem_size = (uint32)sizeof(dll_pool_t) + ((uint32)elems_max * (uint32)elem_size);
-	if (pool)
+	if (pool) {
 		MFREE(osh, pool, mem_size);
+	}
 }
+
 dll_pool_t *
 dll_pool_init(void * osh, uint16 elems_max, uint16 elem_size)
 {

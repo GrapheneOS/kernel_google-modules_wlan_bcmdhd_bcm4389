@@ -1640,7 +1640,11 @@ dhd_rtt_convert_to_chspec(wifi_channel_info channel)
 	}
 
 	if ((bw != INVCHANSPEC)) {
+#ifdef WL_6G_320_SUPPORT
+		chanspec = wf_create_chspec_from_primary(primary_chan, bw, band, 0);
+#else
 		chanspec = wf_create_chspec_from_primary(primary_chan, bw, band);
+#endif /* WL_6G_320_SUPPORT */
 	}
 
 done:

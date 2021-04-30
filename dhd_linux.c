@@ -118,12 +118,6 @@
 #include <linux/compat.h>
 #endif
 
-#ifdef CONFIG_ARCH_EXYNOS
-#ifndef SUPPORT_EXYNOS7420
-#include <linux/exynos-pci-ctrl.h>
-#endif /* SUPPORT_EXYNOS7420 */
-#endif /* CONFIG_ARCH_EXYNOS */
-
 #ifdef DHD_WMF
 #include <dhd_wmf_linux.h>
 #endif /* DHD_WMF */
@@ -652,30 +646,30 @@ module_param(dhd_napi_weight, int, 0644);
 #endif /* DHD_LB_RXP && PCIE_FULL_DONGLE */
 
 #ifdef PCIE_FULL_DONGLE
-extern uint16 h2d_max_txpost;
-module_param(h2d_max_txpost, short, 0644);
+extern uint h2d_max_txpost;
+module_param(h2d_max_txpost, uint, 0644);
 
-extern uint16 h2d_htput_max_txpost;
-module_param(h2d_htput_max_txpost, short, 0644);
+extern uint h2d_htput_max_txpost;
+module_param(h2d_htput_max_txpost, uint, 0644);
 
-extern uint16 d2h_max_txcpl;
-module_param(d2h_max_txcpl, short, 0644);
+extern uint d2h_max_txcpl;
+module_param(d2h_max_txcpl, uint, 0644);
 
-extern uint16 h2d_max_ctrlpost;
-module_param(h2d_max_ctrlpost, short, 0644);
-extern uint16 d2h_max_ctrlcpl;
-module_param(d2h_max_ctrlcpl, short, 0644);
+extern uint h2d_max_ctrlpost;
+module_param(h2d_max_ctrlpost, uint, 0644);
+extern uint d2h_max_ctrlcpl;
+module_param(d2h_max_ctrlcpl, uint, 0644);
 
-extern uint16 h2d_max_rxpost;
-module_param(h2d_max_rxpost, short, 0644);
-extern uint16 d2h_max_rxcpl;
-module_param(d2h_max_rxcpl, short, 0644);
+extern uint h2d_max_rxpost;
+module_param(h2d_max_rxpost, uint, 0644);
+extern uint d2h_max_rxcpl;
+module_param(d2h_max_rxcpl, uint, 0644);
 
-extern uint16 rx_buf_burst;
-module_param(rx_buf_burst, short, 0644);
+extern uint rx_buf_burst;
+module_param(rx_buf_burst, uint, 0644);
 
-extern uint16 rx_bufpost_threshold;
-module_param(rx_bufpost_threshold, short, 0644);
+extern uint rx_bufpost_threshold;
+module_param(rx_bufpost_threshold, uint, 0644);
 
 #ifdef AGG_H2D_DB
 extern bool agg_h2d_db_enab;
@@ -3963,11 +3957,7 @@ dhd_event_logtrace_process_items(dhd_info_t *dhd)
 			dhd_netif_rx_ni(skb);
 		} else	{
 			/* Don't send up. Free up the packet. */
-#ifdef DHD_USE_STATIC_CTRLBUF
-			PKTFREE_STATIC(dhdp->osh, skb, FALSE);
-#else
-			PKTFREE(dhdp->osh, skb, FALSE);
-#endif /* DHD_USE_STATIC_CTRLBUF */
+			PKTFREE_CTRLBUF(dhdp->osh, skb, FALSE);
 		}
 	}
 
@@ -4185,11 +4175,7 @@ dhd_event_logtrace_flush_queue(dhd_pub_t *dhdp)
 	struct sk_buff *skb;
 
 	while ((skb = skb_dequeue(&dhd->evt_trace_queue)) != NULL) {
-#ifdef DHD_USE_STATIC_CTRLBUF
-		PKTFREE_STATIC(dhdp->osh, skb, FALSE);
-#else
-		PKTFREE(dhdp->osh, skb, FALSE);
-#endif /* DHD_USE_STATIC_CTRLBUF */
+		PKTFREE_CTRLBUF(dhdp->osh, skb, FALSE);
 	}
 }
 
@@ -4260,11 +4246,7 @@ dhd_bt_log_process(struct work_struct *work)
 	/* Run while(1) loop till all skbs are dequeued */
 	while ((skb = skb_dequeue(&dhd->bt_log_queue)) != NULL) {
 		dhd_bt_log_pkt_process(dhdp, skb);
-#ifdef DHD_USE_STATIC_CTRLBUF
-		PKTFREE_STATIC(dhdp->osh, skb, FALSE);
-#else
-		PKTFREE(dhdp->osh, skb, FALSE);
-#endif /* DHD_USE_STATIC_CTRLBUF */
+		PKTFREE_CTRLBUF(dhdp->osh, skb, FALSE);
 	}
 }
 
@@ -4884,6 +4866,7 @@ dhd_dpc(ulong data)
 {
 	dhd_info_t *dhd = (dhd_info_t *)data;
 	int curr_cpu = get_cpu();
+
 	put_cpu();
 
 	/* Store current cpu as dpc_cpu */
@@ -4899,9 +4882,9 @@ dhd_dpc(ulong data)
 		DHD_LB_STATS_INCR(dhd->dhd_dpc_cnt);
 #endif /* DHD_LB_STATS && PCIE_FULL_DONGLE */
 		if (dhd_bus_dpc(dhd->pub.bus)) {
- 			tasklet_schedule(&dhd->tasklet);
+			tasklet_schedule(&dhd->tasklet);
 			dhd_plat_report_bh_sched(dhd->pub.plat_info, 1);
- 		} else {
+		} else {
 			dhd_plat_report_bh_sched(dhd->pub.plat_info, 0);
 		}
 	} else {
@@ -6306,8 +6289,7 @@ dhd_stop(struct net_device *net)
 #if defined(WL_STATIC_IF) && defined(WL_CFG80211)
 	/* If static if is operational, don't reset the chip */
 	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg) ||
-		((wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) > 0) &&
-		(!dhd->pub.hang_was_sent))) {
+		(wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) > 0)) {
 		DHD_ERROR(("static/ap if operational. skip chip reset.\n"));
 		skip_reset = true;
 		wl_cfg80211_sta_ifdown(net);
@@ -9820,20 +9802,15 @@ dhd_bus_start(dhd_pub_t *dhdp)
 		return ret;
 	}
 
-#if defined(CONFIG_ARCH_EXYNOS) && defined(BCMPCIE)
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(SUPPORT_EXYNOS7420)
+#if defined(BCMPCIE)
 	/* XXX: JIRA SWWLAN-139454: Added L1ss enable
 	 * after firmware download completion due to link down issue
 	 * JIRA SWWLAN-142236: Amendment - Changed L1ss enable point
 	 */
 	DHD_RPM(("%s: Enable L1ss EP side\n", __FUNCTION__));
-#if defined(CONFIG_SOC_GS101)
-	exynos_pcie_rc_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI, 1);
-#else
-	exynos_pcie_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_GS101 */
-#endif /* !CONFIG_SOC_EXYNOS8890 && !SUPPORT_EXYNOS7420 */
-#endif /* CONFIG_ARCH_EXYNOS && BCMPCIE */
+	dhd_plat_l1ss_ctrl(1);
+#endif /* BCMPCIE */
+
 #if defined(DHD_DEBUG) && defined(BCMSDIO)
 	f2_sync_end = OSL_SYSUPTIME();
 	DHD_ERROR(("Time taken for FW download and F2 ready is: %d msec\n",
@@ -15325,22 +15302,16 @@ dhd_net_bus_devreset(struct net_device *dev, uint8 flag)
 			dhd->fw_path, dhd->nv_path);
 	}
 #endif /* BCMSDIO */
-#if defined(CONFIG_ARCH_EXYNOS) && defined(BCMPCIE)
-#if !defined(CONFIG_SOC_EXYNOS8890) && !defined(SUPPORT_EXYNOS7420)
+#if defined(BCMPCIE)
 	/* XXX: JIRA SWWLAN-139454: Added L1ss enable
 	 * after firmware download completion due to link down issue
 	 * JIRA SWWLAN-142236: Amendment - Changed L1ss enable point
 	 */
-	DHD_RPM(("%s Disable L1ss EP side\n", __FUNCTION__));
 	if (flag == FALSE && dhd->pub.busstate == DHD_BUS_DOWN) {
-#if defined(CONFIG_SOC_GS101)
-		exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
-#else
-		exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_GS101  */
+		DHD_RPM(("%s Disable L1ss EP side\n", __FUNCTION__));
+		dhd_plat_l1ss_ctrl(0);
 	}
-#endif /* !CONFIG_SOC_EXYNOS8890 && !defined(SUPPORT_EXYNOS7420)  */
-#endif /* CONFIG_ARCH_EXYNOS && BCMPCIE */
+#endif /* BCMPCIE */
 
 	ret = dhd_bus_devreset(&dhd->pub, flag);
 
@@ -17138,7 +17109,7 @@ int dhd_os_send_hang_message(dhd_pub_t *dhdp)
 		dhdp->hang_was_pending = 1;
 		return BCME_OK;
 	}
-#endif /* WL_CFG80211 && (DHD_FILE_DUMP_EVENT || DHD_COREDUMP)*/
+#endif /* WL_CFG80211 && (DHD_FILE_DUMP_EVENT || DHD_COREDUMP) */
 
 #ifdef WL_CFG80211
 	primary_ndev = dhd_linux_get_primary_netdev(dhdp);
@@ -17168,12 +17139,13 @@ int dhd_os_send_hang_message(dhd_pub_t *dhdp)
 #endif /* DHD_HANG_SEND_UP_TEST */
 
 #ifdef DHD_COREDUMP
-	if (dhdp->memdump_type != DUMP_TYPE_DONGLE_TRAP) {
+	if (!dhdp->memdump_type) {
 		memset_s(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN, 0, DHD_MEMDUMP_LONGSTR_LEN);
-		dhd_convert_memdump_type_to_str(dhdp->memdump_type, dhdp->memdump_str,
-			DHD_MEMDUMP_LONGSTR_LEN, dhdp->debug_dump_subcmd);
+		dhd_convert_hang_reason_to_str(dhdp->hang_reason, dhdp->memdump_str,
+			DHD_MEMDUMP_LONGSTR_LEN);
 	}
 #endif /* DHD_COREDUMP */
+
 	if (!dhdp->hang_was_sent) {
 #ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
 		if (dhdp->op_mode & DHD_FLAG_MFG_MODE) {

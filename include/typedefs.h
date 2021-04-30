@@ -88,7 +88,7 @@ typedef unsigned long long int uintptr;
 #endif
 #endif /* TYPEDEF_UINTPTR */
 
-#if defined(_RTE_)
+#if defined(_RTE_) || defined(COEX_CPU_BUILD)
 #define _NEED_SIZE_T_
 #endif
 
@@ -144,7 +144,7 @@ typedef unsigned __int64 uint64;
 #endif	/* linux && !EFI */
 
 #if !defined(__linux__) && !defined(_WIN32) && !defined(_RTE_) && !defined(__DJGPP__) \
-	&& !defined(__BOB__) && !defined(EFI)
+	&& !defined(__BOB__) && !defined(EFI) && !defined(COEX_CPU_BUILD)
 #define TYPEDEF_UINT
 #define TYPEDEF_USHORT
 #endif
@@ -168,8 +168,8 @@ typedef unsigned __int64 uint64;
 
 #endif /* __ICL */
 
-#if !defined(_WIN32) && !defined(_RTE_) && !defined(__DJGPP__) && !defined(__BOB__) && \
-	!defined(EFI)
+#if !defined(_WIN32) && !defined(_RTE_) && !defined(COEX_CPU_BUILD) && \
+	!defined(__DJGPP__) && !defined(__BOB__) && !defined(EFI)
 
 /* pick up ushort & uint from standard types.h */
 #if defined(__linux__) && defined(__KERNEL__)
