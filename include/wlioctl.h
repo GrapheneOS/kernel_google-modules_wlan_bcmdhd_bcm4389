@@ -1460,6 +1460,46 @@ typedef struct {
 	uint8 num_antcfg;			/**< number of available antenna configurations */
 } wlc_antselcfg_t;
 
+#define WIFI_RADIO_STAT_VERSION_1  (1u)
+#define WIFI_RADIO_STAT_VERSION_2  (2u)
+
+#define WIFI_RADIO_STAT_FIXED_LEN	OFFSETOF(wifi_radio_stat, channels)
+
+typedef struct wifi_radio_stat_v1 {
+	uint16 version;
+	uint16 length;
+	uint32 radio;
+	uint32 on_time;
+	uint32 tx_time;
+	uint32 rx_time;
+	uint32 on_time_scan;
+	uint32 on_time_nbd;
+	uint32 on_time_gscan;
+	uint32 on_time_roam_scan;
+	uint32 on_time_pno_scan;
+	uint32 on_time_hs20;
+	uint32 num_channels;
+	uint8 channels[];
+} wifi_radio_stat_v1_t;
+
+typedef struct wifi_radio_stat_v2 {
+	uint16 version;
+	uint16 length;
+	uint32 radio;
+	uint32 on_time;
+	uint32 tx_time;
+	uint32 rx_time;
+	uint32 on_time_scan;
+	uint32 on_time_nbd;
+	uint32 on_time_gscan;
+	uint32 on_time_roam_scan;
+	uint32 on_time_pno_scan;
+	uint32 on_time_hs20;
+	uint32 myrx_time;
+	uint32 num_channels;
+	uint8 channels[];
+} wifi_radio_stat_v2_t;
+
 /* This is obsolete.Pls add new fields by extending versioned structure.
  * cca_congest_ext_vX_t [X is latest version]
  */

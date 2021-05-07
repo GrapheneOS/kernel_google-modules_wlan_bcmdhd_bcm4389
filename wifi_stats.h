@@ -191,44 +191,6 @@ typedef struct {
 					*/
 } wifi_channel_stat;
 
-/* radio statistics */
-typedef struct {
-	struct {
-		uint16 version;
-		uint16 length;
-	};
-	wifi_radio radio;               /* wifi radio (if multiple radio supported) */
-	uint32 on_time;                    /* msecs the radio is awake (32 bits number
-					    * accruing over time)
-					    */
-	uint32 tx_time;                    /* msecs the radio is transmitting (32 bits
-					    * number accruing over time)
-					    */
-	uint32 rx_time;                    /* msecs the radio is in active receive (32 bits
-					    * number accruing over time)
-					    */
-	uint32 on_time_scan;               /* msecs the radio is awake due to all scan (32 bits
-					    * number accruing over time)
-					    */
-	uint32 on_time_nbd;                /* msecs the radio is awake due to NAN (32 bits
-					    * number accruing over time)
-					    */
-	uint32 on_time_gscan;              /* msecs the radio is awake due to G?scan (32 bits
-					    * number accruing over time)
-					    */
-	uint32 on_time_roam_scan;          /* msecs the radio is awake due to roam?scan (32 bits
-					    * number accruing over time)
-					    */
-	uint32 on_time_pno_scan;           /* msecs the radio is awake due to PNO scan (32 bits
-					    * number accruing over time)
-					    */
-	uint32 on_time_hs20;               /* msecs the radio is awake due to HS2.0 scans and
-					    * GAS exchange (32 bits number accruing over time)
-					    */
-	uint32 num_channels;               /* number of channels */
-	wifi_channel_stat channels[1];   /* channel statistics */
-} wifi_radio_stat;
-
 typedef struct {
 	wifi_radio radio;
 	uint32 on_time;

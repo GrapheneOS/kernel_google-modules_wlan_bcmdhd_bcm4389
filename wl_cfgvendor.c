@@ -7075,10 +7075,12 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	struct net_device *inet_ndev = wdev_to_ndev(wdev);
 	int err = 0, ret = 0, i;
-	wifi_radio_stat *radio;
 	wifi_radio_stat_h radio_h;
 	wifi_channel_stat *chan_stats = NULL;
 	uint chan_stats_size = 0;
+	wifi_radio_stat_v1_t *radio_v1;
+	wifi_radio_stat_v2_t *radio_v2;
+	wifi_radio_stat_v2_t radio_req_v2;
 #ifdef LINKSTAT_EXT_SUPPORT
 	wifi_channel_stat *all_chan_stats = NULL;
 	cca_congest_ext_channel_req_v2_t *per_chspec_stats = NULL;
@@ -7149,25 +7151,52 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	bzero(outdata, WLC_IOCTL_MAXLEN);
 	output = outdata;
 
-	err = wldev_iovar_getbuf(inet_ndev, "radiostat", NULL, 0,
-		iovar_buf, WLC_IOCTL_MAXLEN, NULL);
-	if (err != BCME_OK && err != BCME_UNSUPPORTED) {
-		WL_ERR(("error (%d) - size = %zu\n", err, sizeof(wifi_radio_stat)));
+	bzero(&radio_h, sizeof(wifi_radio_stat_h));
+	radio_h.num_channels = NUM_PEER;
+
+	/* Try the VERSION_2 first */
+	radio_req_v2.version = WIFI_RADIO_STAT_VERSION_2;
+	radio_req_v2.length = sizeof(radio_req_v2);
+	err = wldev_iovar_getbuf(inet_ndev, "radiostat", &radio_req_v2,
+		sizeof(radio_req_v2), iovar_buf, sizeof(iovar_buf), NULL);
+
+	if (err != BCME_OK && err != BCME_UNSUPPORTED && err != BCME_VERSION) {
+		WL_ERR(("error (%d) - size = %zu\n",
+			err, sizeof(wifi_radio_stat_v2_t)));
 		goto exit;
 	}
-	radio = (wifi_radio_stat *)iovar_buf;
 
-	bzero(&radio_h, sizeof(wifi_radio_stat_h));
-	radio_h.on_time = radio->on_time;
-	radio_h.tx_time = radio->tx_time;
-	radio_h.rx_time = radio->rx_time;
-	radio_h.on_time_scan = radio->on_time_scan;
-	radio_h.on_time_nbd = radio->on_time_nbd;
-	radio_h.on_time_gscan = radio->on_time_gscan;
-	radio_h.on_time_roam_scan = radio->on_time_roam_scan;
-	radio_h.on_time_pno_scan = radio->on_time_pno_scan;
-	radio_h.on_time_hs20 = radio->on_time_hs20;
-	radio_h.num_channels = NUM_PEER;
+	radio_v2 = (wifi_radio_stat_v2_t *)iovar_buf;
+	if ((err == BCME_OK) &&
+			(dtoh16(radio_v2->version) == WIFI_RADIO_STAT_VERSION_2)) {
+#ifdef LINKSTAT_EXT_SUPPORT
+		radio_h.rx_time = radio_v2->myrx_time;
+#else
+		radio_h.rx_time = radio_v2->rx_time;
+#endif /* LINKSTAT_EXT_SUPPORT  */
+		radio_h.on_time = radio_v2->on_time;
+		radio_h.tx_time = radio_v2->tx_time;
+		radio_h.on_time_nbd = radio_v2->on_time_nbd;
+		radio_h.on_time_gscan = radio_v2->on_time_gscan;
+		radio_h.on_time_hs20 = radio_v2->on_time_hs20;
+	} else {
+		/* Retry the VERSION_1 */
+		err = wldev_iovar_getbuf(inet_ndev, "radiostat", NULL, 0,
+			iovar_buf, sizeof(iovar_buf), NULL);
+
+		if (err != BCME_OK && err != BCME_UNSUPPORTED) {
+			WL_ERR(("error (%d) - size = %zu\n",
+				err, sizeof(wifi_radio_stat_v1_t)));
+			goto exit;
+		}
+		radio_v1 = (wifi_radio_stat_v1_t *)iovar_buf;
+		radio_h.rx_time = radio_v1->rx_time;
+		radio_h.on_time = radio_v1->on_time;
+		radio_h.tx_time = radio_v1->tx_time;
+		radio_h.on_time_nbd = radio_v1->on_time_nbd;
+		radio_h.on_time_gscan = radio_v1->on_time_gscan;
+		radio_h.on_time_hs20 = radio_v1->on_time_hs20;
+	}
 
 	scan_query.length = 1;
 	scan_query.type[0] = WL_PWRSTATS_TYPE_SCAN;
