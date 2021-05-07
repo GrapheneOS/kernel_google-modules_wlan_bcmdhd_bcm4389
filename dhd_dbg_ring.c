@@ -541,24 +541,3 @@ dhd_dbg_ring_start(dhd_dbg_ring_t *ring)
 	memset(&ring->stat, 0, sizeof(struct ring_statistics));
 	memset(ring->ring_buf, 0, ring->ring_size);
 }
-
-uint32
-dhd_get_max_ring_buf_size(dhd_pub_t *dhdp)
-{
-	dhd_dbg_t *dbg;
-	dhd_dbg_ring_t *ring = NULL;
-	int ring_id = 0;
-	uint32 ring_max_size = 0;
-
-	dbg = dhdp->dbg;
-
-	for (ring_id = DEBUG_RING_ID_INVALID + 1; ring_id < DEBUG_RING_ID_MAX; ring_id++) {
-		if (VALID_RING(dbg->dbg_rings[ring_id].id)) {
-			ring = &dbg->dbg_rings[ring_id];
-			if (ring_max_size < ring->ring_size) {
-				ring_max_size = ring->ring_size;
-			}
-		}
-	}
-	return ring_max_size;
-}

@@ -149,5 +149,4 @@ void dhd_dbg_ring_sched_pull(dhd_dbg_ring_t *ring, uint32 pending_len,
 		os_pullreq_t pull_fn, void *os_pvt, const int id);
 int dhd_dbg_ring_config(dhd_dbg_ring_t *ring, int log_level, uint32 threshold);
 void dhd_dbg_ring_start(dhd_dbg_ring_t *ring);
-uint32 dhd_get_max_ring_buf_size(dhd_pub_t *dhdp);
 #endif /* __DHD_DBG_RING_H__ */

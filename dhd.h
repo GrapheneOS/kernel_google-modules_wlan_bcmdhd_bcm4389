@@ -1783,11 +1783,6 @@ typedef struct dhd_pub {
 #endif /* FLOW_RING_PREALLOC */
 	bool fw_lpm_support; /* fw supports LPM mode */
 	bool igmpo_enable; /* fw supports igmp offload */
-
-#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC
-	void* dbg_ring_send_buf;
-	uint32 dbg_ring_send_buf_len;
-#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING_PREALLOC */
 } dhd_pub_t;
 
 #if defined(__linux__)
