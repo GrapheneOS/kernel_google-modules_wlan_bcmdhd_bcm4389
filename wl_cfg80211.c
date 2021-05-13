@@ -7830,6 +7830,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 	u32 dhd_assoc_state = 0;
 #endif
 	void *buf;
+	s32 ifidx = DHD_BAD_IF;
 
 	RETURN_EIO_IF_NOT_UP(cfg);
 
@@ -7865,8 +7866,9 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 			}
 #if defined(BCMDONGLEHOST)
 			dhd_assoc_state = wl_get_drv_status(cfg, CONNECTED, dev);
+			ifidx = dhd_net2idx(dhd->info, dev);
 			DHD_OS_WAKE_LOCK(dhd);
-			fw_assoc_state = dhd_is_associated(dhd, 0, &err);
+			fw_assoc_state = dhd_is_associated(dhd, ifidx, &err);
 			if (dhd_assoc_state && !fw_assoc_state) {
 				/* check roam (join) status */
 				if (wl_check_assoc_state(cfg, dev)) {
@@ -7914,7 +7916,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 				goto error;
 			}
 #if defined(BCMDONGLEHOST)
-			if (dhd_is_associated(dhd, 0, NULL)) {
+			if (dhd_is_associated(dhd, ifidx, NULL)) {
 				fw_assoc_watchdog_started = FALSE;
 			}
 #endif /* defined(BCMDONGLEHOST) */
