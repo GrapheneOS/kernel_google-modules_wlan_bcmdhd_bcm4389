@@ -1032,6 +1032,15 @@ typedef enum wl_assoc_state {
 	WL_STATE_LINKDOWN
 } wl_assoc_state_t;
 
+typedef enum wl_roam_conf {
+	ROAM_CONF_INVALID,
+	ROAM_CONF_ASSOC_REQ,
+	ROAM_CONF_LINKDOWN,
+	ROAM_CONF_PRIMARY_STA,
+	ROAM_CONF_ROAM_ENAB_REQ,
+	ROAM_CONF_ROAM_DISAB_REQ,
+} wl_roam_conf_t;
+
 typedef enum wl_link_action {
 	WL_LINK_NONE,
 	WL_LINK_ASSOC_FAIL,
@@ -2101,6 +2110,7 @@ struct bcm_cfg80211 {
 	uint32 prev_roam_scan_time;
 	uint32 cached_roam_scan_time;
 #endif /* LINKSTAT_EXT_SUPPORT */
+	bool disable_fw_roam;
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for

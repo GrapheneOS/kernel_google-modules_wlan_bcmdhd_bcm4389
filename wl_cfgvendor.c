@@ -78,6 +78,7 @@
 #include <wl_cfg80211.h>
 #include <wl_cfgp2p.h>
 #include <wl_cfgscan.h>
+#include <wl_cfgvif.h>
 #ifdef WL_NAN
 #include <wl_cfgnan.h>
 #endif /* WL_NAN */
@@ -2838,10 +2839,8 @@ exit:
 
 #ifdef ROAMEXP_SUPPORT
 typedef enum {
-	FW_ROAMING_ENABLE = 1,
 	FW_ROAMING_DISABLE,
-	FW_ROAMING_PAUSE,
-	FW_ROAMING_RESUME
+	FW_ROAMING_ENABLE
 } fw_roaming_state_t;
 
 static int
@@ -2851,6 +2850,8 @@ wl_cfgvendor_set_fw_roaming_state(struct wiphy *wiphy,
 	fw_roaming_state_t requested_roaming_state;
 	int type;
 	int err = 0;
+	wl_roam_conf_t roam_req;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(wdev_to_ndev(wdev));
 
 	if (!data) {
 		WL_ERR(("data is not available\n"));
@@ -2871,18 +2872,20 @@ wl_cfgvendor_set_fw_roaming_state(struct wiphy *wiphy,
 
 	requested_roaming_state = nla_get_u32(data);
 	WL_INFORM(("setting FW roaming state to %d\n", requested_roaming_state));
+	WL_INFORM(("[Isaac] test patch\n"));
 
-	if ((requested_roaming_state == FW_ROAMING_ENABLE) ||
-		(requested_roaming_state == FW_ROAMING_RESUME)) {
-		err = wldev_iovar_setint(wdev_to_ndev(wdev), "roam_off", FALSE);
-		ROAMOFF_DBG_SAVE(wdev_to_ndev(wdev), SET_ROAM_VNDR_POLICY, FALSE);
-	} else if ((requested_roaming_state == FW_ROAMING_DISABLE) ||
-		(requested_roaming_state == FW_ROAMING_PAUSE)) {
-		err = wldev_iovar_setint(wdev_to_ndev(wdev), "roam_off", TRUE);
-		ROAMOFF_DBG_SAVE(wdev_to_ndev(wdev), SET_ROAM_VNDR_POLICY, TRUE);
+	if (requested_roaming_state == FW_ROAMING_ENABLE) {
+		roam_req = ROAM_CONF_ROAM_ENAB_REQ;
+	} else if (requested_roaming_state == FW_ROAMING_DISABLE) {
+		roam_req = ROAM_CONF_ROAM_DISAB_REQ;
 	} else {
-		err = -EINVAL;
+		WL_ERR(("unexpected roam_state_request:%d\n", requested_roaming_state));
+		return -EINVAL;
 	}
+
+	wl_cfgvif_roam_config(cfg, wdev->netdev, roam_req);
+
+	ROAMOFF_DBG_SAVE(wdev_to_ndev(wdev), SET_ROAM_VNDR_POLICY, !cfg->disable_fw_roam);
 
 	return err;
 }
@@ -9939,11 +9942,7 @@ wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 	cfg->inet_ndev = wdev_to_ndev(wdev);
 	WL_INFORM_MEM(("Mark interface (%s) as primary\n", cfg->inet_ndev->name));
 
-	/* Enable roam on primary connection interface */
-	err = wldev_iovar_setint(cfg->inet_ndev, "roam_off", FALSE);
-	if (err) {
-		WL_ERR(("Failed to enable roam for primary interface err:%d\n", err));
-	}
+	wl_cfgvif_roam_config(cfg, wdev->netdev, ROAM_CONF_PRIMARY_STA);
 
 	return err;
 }

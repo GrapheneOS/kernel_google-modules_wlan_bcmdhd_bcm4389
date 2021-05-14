@@ -5803,7 +5803,7 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 		prhex(NULL, sme->ie, sme->ie_len);
 	}
 #ifdef WL_DUAL_APSTA
-	wl_cfgvif_dualsta_roam_config(cfg, dev, WL_STATE_ASSOCIATING);
+	wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_ASSOC_REQ);
 #endif /* WL_DUAL_APSTA */
 	/* Connection attempted via linux-wireless */
 	wl_set_drv_status(cfg, CFG80211_CONNECT, dev);
@@ -11770,7 +11770,7 @@ wl_post_linkdown_ops(struct bcm_cfg80211 *cfg,
 #endif /* WLTDLS */
 
 #ifdef WL_DUAL_APSTA
-	wl_cfgvif_dualsta_roam_config(cfg, ndev, WL_STATE_LINKDOWN);
+	wl_cfgvif_roam_config(cfg, ndev, ROAM_CONF_LINKDOWN);
 #endif /* WL_DUAL_APSTA */
 
 	/* clear RSSI monitor, framework will set new cfg */
