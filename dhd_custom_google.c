@@ -79,7 +79,9 @@ static int wlan_host_wake_irq = 0;
 static int resched_streak = 0;
 static int resched_streak_max = 0;
 static uint64 last_resched_cnt_check_time_ns = 0;
-static bool is_irq_on_big_core = FALSE;
+static uint64 last_affinity_update_time_ns = 0;
+/* force to switch to small core at beginning */
+static bool is_irq_on_big_core = TRUE;
 
 static int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
 #if defined(CONFIG_SOC_GOOGLE)
@@ -483,25 +485,36 @@ set_affinity(unsigned int irq, const struct cpumask *cpumask)
 }
 
 static void
-irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max)
+irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max, uint64 curr_time_ns)
 {
 	int err = 0;
+	bool has_recent_affinity_update = (curr_time_ns - last_affinity_update_time_ns)
+		< (AFFINITY_UPDATE_MIN_PERIOD_SEC * NSEC_PER_SEC);
 	if (!pdev) {
 		DHD_ERROR(("%s : pdev is NULL\n", __FUNCTION__));
 		return;
 	}
-	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH)) {
+
+	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH)
+			&& !has_recent_affinity_update) {
 		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_BIG_CORE));
 		if (!err) {
 			is_irq_on_big_core = TRUE;
-			DHD_INFO(("%s switches to big core \n", __FUNCTION__));
+			last_affinity_update_time_ns = curr_time_ns;
+			DHD_INFO(("%s switches to big core successfully\n", __FUNCTION__));
+		} else {
+			DHD_ERROR(("%s switches to big core unsuccessfully!\n", __FUNCTION__));
 		}
 	}
-	if (is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW)) {
-		err = set_affinity(pdev->irq, &(CPU_MASK_ALL));
+	if (is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW)
+			&& !has_recent_affinity_update) {
+		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_SMALL_CORE));
 		if (!err) {
 			is_irq_on_big_core = FALSE;
-			DHD_INFO(("%s switches to all cores\n", __FUNCTION__));
+			last_affinity_update_time_ns = curr_time_ns;
+			DHD_INFO(("%s switches to all cores successfully\n", __FUNCTION__));
+		} else {
+			DHD_ERROR(("%s switches to all cores unsuccessfully\n", __FUNCTION__));
 		}
 	}
 }
@@ -538,7 +551,7 @@ void dhd_plat_report_bh_sched(void *plat_info, int resched)
 	DHD_INFO(("%s resched_streak_max=%d\n",
 		__FUNCTION__, resched_streak_max));
 
-	irq_affinity_hysteresis_control(p->pdev, resched_streak_max);
+	irq_affinity_hysteresis_control(p->pdev, resched_streak_max, curr_time_ns);
 
 	resched_streak_max = 0;
 	return;
