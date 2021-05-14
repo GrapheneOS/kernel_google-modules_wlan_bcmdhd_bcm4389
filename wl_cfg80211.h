@@ -2089,11 +2089,18 @@ struct bcm_cfg80211 {
 	struct net_device *inet_ndev;
 	struct wireless_dev *nmi_wdev;	/* representing cfg cfg80211 device for NAN NMI */
 	struct net_device *nmi_ndev;    /* reference to NAN NMI interface */
-
 #if defined(DHD_DSCP_POLICY)
 	void *dscp_policy_info;
 #endif /* defined(DHD_DSCP_POLICY) */
-
+#ifdef LINKSTAT_EXT_SUPPORT
+	uint32 prev_core_idx;
+	uint32 prev_scan_time;
+	uint32 cached_scan_time;
+	uint32 prev_pno_scan_time;
+	uint32 cached_pno_scan_time;
+	uint32 prev_roam_scan_time;
+	uint32 cached_roam_scan_time;
+#endif /* LINKSTAT_EXT_SUPPORT */
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for

@@ -7068,6 +7068,9 @@ static void fill_chanspec_to_channel_info(chanspec_t cur_chanspec,
 	}
 }
 
+#define LSTAT_SLICE_MAIN	0	/* SLICE ID for 5/6GHZ */
+#define LSTAT_SLICE_AUX		1	/* SLICE ID for 2GHZ */
+
 static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
 {
@@ -7088,6 +7091,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	cca_congest_ext_channel_req_v3_t *all_chan_results;
 	cca_congest_ext_channel_req_v3_t all_chan_req;
 	wl_bssload_t *bssload;
+	uint32 curr_band, curr_core_idx;
 #else
 	/* cca_get_stats_ext iovar for Wifi channel statics */
 	cca_congest_ext_channel_req_v2_t *cca_v2_results = NULL;
@@ -7274,6 +7278,34 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		err = BCME_ERROR;
 		goto exit;
 	}
+
+#ifdef LINKSTAT_EXT_SUPPORT
+	curr_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(cur_chansp));
+	if (curr_band == WLC_BAND_2G) {
+		curr_core_idx = LSTAT_SLICE_AUX;
+	} else if (curr_band == WLC_BAND_5G || curr_band == WLC_BAND_6G) {
+		curr_core_idx = LSTAT_SLICE_MAIN;
+	} else {
+		WL_ERR(("Invalid band : %x\n", curr_band));
+		err = BCME_ERROR;
+		goto exit;
+	}
+
+	if (curr_core_idx != cfg->prev_core_idx) {
+		cfg->cached_scan_time = cfg->prev_scan_time;
+		cfg->cached_pno_scan_time = cfg->prev_pno_scan_time;
+		cfg->cached_roam_scan_time = cfg->prev_roam_scan_time;
+	} else {
+		cfg->prev_scan_time = radio_h.on_time_scan;
+		cfg->prev_pno_scan_time = radio_h.on_time_pno_scan;
+		cfg->prev_roam_scan_time = radio_h.on_time_roam_scan;
+	}
+
+	radio_h.on_time_scan += cfg->cached_scan_time;
+	radio_h.on_time_pno_scan += cfg->cached_pno_scan_time;
+	radio_h.on_time_roam_scan += cfg->cached_roam_scan_time;
+	cfg->prev_core_idx = curr_core_idx;
+#endif /* LINKSTAT_EXT_SUPPORT  */
 
 	fill_chanspec_to_channel_info(cur_chanspec, &cur_channel_stat.channel, &cur_band);
 	WL_TRACE(("chanspec : %x, BW : %d, Cur Band : %x, freq : %d, freq0 :%d, freq1 : %d\n",
