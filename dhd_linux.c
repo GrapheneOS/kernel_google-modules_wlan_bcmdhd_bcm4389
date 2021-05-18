@@ -17138,14 +17138,6 @@ int dhd_os_send_hang_message(dhd_pub_t *dhdp)
 	}
 #endif /* DHD_HANG_SEND_UP_TEST */
 
-#ifdef DHD_COREDUMP
-	if (!dhdp->memdump_type) {
-		memset_s(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN, 0, DHD_MEMDUMP_LONGSTR_LEN);
-		dhd_convert_hang_reason_to_str(dhdp->hang_reason, dhdp->memdump_str,
-			DHD_MEMDUMP_LONGSTR_LEN);
-	}
-#endif /* DHD_COREDUMP */
-
 	if (!dhdp->hang_was_sent) {
 #ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
 		if (dhdp->op_mode & DHD_FLAG_MFG_MODE) {

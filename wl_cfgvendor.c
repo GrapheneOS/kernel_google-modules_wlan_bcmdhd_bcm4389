@@ -12889,6 +12889,7 @@ wl_cfgvendor_simple_hang_event(struct net_device *dev, u16 reason)
 	int hang_event_len = 0;
 #ifdef DHD_COREDUMP
 	dhd_pub_t *dhd;
+	char hang_reason_str[DHD_MEMDUMP_LONGSTR_LEN];
 #endif
 	WL_ERR(("0x%x\n", reason));
 
@@ -12918,9 +12919,15 @@ wl_cfgvendor_simple_hang_event(struct net_device *dev, u16 reason)
 
 #ifdef DHD_COREDUMP
 	dhd = (dhd_pub_t *)(cfg->pub);
+	memset_s(hang_reason_str, sizeof(hang_reason_str), 0, DHD_MEMDUMP_LONGSTR_LEN);
+	if (reason == HANG_REASON_DONGLE_TRAP && dhd->memdump_type == DUMP_TYPE_DONGLE_TRAP) {
+		strncpy(hang_reason_str, dhd->memdump_str, DHD_MEMDUMP_LONGSTR_LEN);
+	} else {
+		dhd_convert_hang_reason_to_str(reason, hang_reason_str, DHD_MEMDUMP_LONGSTR_LEN);
+	}
 
-	WL_ERR(("hang reason: %s\n", dhd->memdump_str));
-	nla_put(msg, DEBUG_ATTRIBUTE_HANG_REASON, DHD_MEMDUMP_LONGSTR_LEN, dhd->memdump_str);
+	WL_ERR(("hang reason: %s\n", hang_reason_str));
+	nla_put(msg, DEBUG_ATTRIBUTE_HANG_REASON, DHD_MEMDUMP_LONGSTR_LEN, hang_reason_str);
 #endif
 
 	cfg80211_vendor_event(msg, kflags);

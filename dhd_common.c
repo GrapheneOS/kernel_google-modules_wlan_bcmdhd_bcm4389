@@ -11503,7 +11503,7 @@ dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
 			type_str = "IOCTL_SUSPEND_ERROR";
 			break;
 		case HANG_REASON_PCIE_LINK_DOWN_RC_DETECT:
-			type_str = "PCIE_LINK_DONW_RC_DETECT";
+			type_str = "PCIE_LINK_DOWN_RC_DETECT";
 			break;
 		case HANG_REASON_PCIE_LINK_DOWN_EP_DETECT:
 			type_str = "PCIE_LINK_DOWN_EP_DETECT";
