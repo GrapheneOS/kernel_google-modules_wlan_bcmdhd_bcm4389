@@ -3327,12 +3327,6 @@ wl_cfgnan_send_stop_event(struct bcm_cfg80211 *cfg)
 	bzero(nan_event_data, sizeof(nan_event_data_t));
 
 	nan_event_data->status = NAN_STATUS_SUCCESS;
-	ret = memcpy_s(nan_event_data->nan_reason, NAN_ERROR_STR_LEN,
-			"NAN_STATUS_SUCCESS", strlen("NAN_STATUS_SUCCESS"));
-	if (ret != BCME_OK) {
-		WL_ERR(("Failed to copy nan reason string, ret = %d\n", ret));
-		goto exit;
-	}
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 13, 0)) || defined(WL_VENDOR_EXT_SUPPORT)
 	ret = wl_cfgvendor_send_nan_event(cfg->wdev->wiphy, bcmcfg_to_prmry_ndev(cfg),
 			GOOGLE_NAN_EVENT_DISABLED, nan_event_data);
@@ -8546,24 +8540,8 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				pev->reason == NAN_TERM_REASON_USER_REQ ||
 				pev->reason == NAN_TERM_REASON_COUNT_REACHED) {
 			nan_event_data->status = NAN_STATUS_SUCCESS;
-			ret = memcpy_s(nan_event_data->nan_reason,
-				sizeof(nan_event_data->nan_reason),
-				"NAN_STATUS_SUCCESS",
-				strlen("NAN_STATUS_SUCCESS"));
-			if (ret != BCME_OK) {
-				WL_ERR(("Failed to copy nan_reason\n"));
-				goto exit;
-			}
 		} else {
 			nan_event_data->status = NAN_STATUS_INTERNAL_FAILURE;
-			ret = memcpy_s(nan_event_data->nan_reason,
-				sizeof(nan_event_data->nan_reason),
-				"NAN_STATUS_INTERNAL_FAILURE",
-				strlen("NAN_STATUS_INTERNAL_FAILURE"));
-			if (ret != BCME_OK) {
-				WL_ERR(("Failed to copy nan_reason\n"));
-				goto exit;
-			}
 		}
 
 		if (pev->svctype == NAN_SC_SUBSCRIBE) {
@@ -8598,14 +8576,6 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 			WL_INFORM_MEM(("TXS success for type %s(%d) token %d\n",
 				nan_frm_type_to_str(txs->type), txs->type, txs->host_seq));
 			nan_event_data->status = NAN_STATUS_SUCCESS;
-			ret = memcpy_s(nan_event_data->nan_reason,
-				sizeof(nan_event_data->nan_reason),
-				"NAN_STATUS_SUCCESS",
-				strlen("NAN_STATUS_SUCCESS"));
-			if (ret != BCME_OK) {
-				WL_ERR(("Failed to copy nan_reason\n"));
-				goto exit;
-			}
 		} else {
 			/* TODO : populate status based on reason codes
 			For now adding it as no ACK, so that app/framework can retry
@@ -8614,14 +8584,6 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				nan_frm_type_to_str(txs->type), txs->type, txs->status,
 				txs->host_seq));
 			nan_event_data->status = NAN_STATUS_NO_OTA_ACK;
-			ret = memcpy_s(nan_event_data->nan_reason,
-				sizeof(nan_event_data->nan_reason),
-				"NAN_STATUS_NO_OTA_ACK",
-				strlen("NAN_STATUS_NO_OTA_ACK"));
-			if (ret != BCME_OK) {
-				WL_ERR(("Failed to copy nan_reason\n"));
-				goto exit;
-			}
 		}
 		nan_event_data->reason = txs->reason_code;
 		nan_event_data->token = txs->host_seq;
