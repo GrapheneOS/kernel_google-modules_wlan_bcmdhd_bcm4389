@@ -2872,7 +2872,6 @@ wl_cfgvendor_set_fw_roaming_state(struct wiphy *wiphy,
 
 	requested_roaming_state = nla_get_u32(data);
 	WL_INFORM(("setting FW roaming state to %d\n", requested_roaming_state));
-	WL_INFORM(("[Isaac] test patch\n"));
 
 	if (requested_roaming_state == FW_ROAMING_ENABLE) {
 		roam_req = ROAM_CONF_ROAM_ENAB_REQ;
