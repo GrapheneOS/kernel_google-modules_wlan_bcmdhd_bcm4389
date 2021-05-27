@@ -46,7 +46,7 @@ CONFIG_BCMDHD_PCIE=y
 CONFIG_BCM43752=
 CONFIG_BCM4389=y
 CONFIG_DHD_OF_SUPPORT=y
-ifneq ($(CONFIG_SOC_GS101),)
+ifneq ($(CONFIG_SOC_GOOGLE),)
  CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcmdhd.bin\""
  CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
  CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
@@ -229,7 +229,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Perform Backplane Reset else FLR will happen
 #	DHDCFLAGS += -DDHD_USE_BP_RESET_SS_CTRL
 
-ifneq ($(CONFIG_SOC_GS101),)
+ifneq ($(CONFIG_SOC_GOOGLE),)
 	# Tasklet load detection and balancing
 	DHDCFLAGS += -DRESCHED_CNT_CHECK_PERIOD_SEC=2
 	DHDCFLAGS += -DRESCHED_STREAK_MAX_HIGH=10
@@ -271,7 +271,7 @@ endif
 ifneq ($(CONFIG_FIB_RULES),)
 # Debugability
 # HAL File dump is supported only for iptable builds(brcm_wlan_iptables_defconfig)
-ifneq ($(CONFIG_SOC_GS101),)
+ifneq ($(CONFIG_SOC_GOOGLE),)
 DHDCFLAGS += -DDHD_DEBUGABILITY_DEBUG_DUMP
 # Pixel platform only, to support ring data flushing properly
 DHDCFLAGS += -DDHD_DUMP_START_COMMAND
@@ -322,7 +322,7 @@ DHDCFLAGS += -DSUPPORT_5G_1024QAM_VHT
 DHDCFLAGS += -DSUPPORT_LTECX
 DHDCFLAGS += -DSUPPORT_LQCM
 DHDCFLAGS += -DSUPPORT_SET_CAC
-ifeq ($(CONFIG_SOC_GS101),)
+ifeq ($(CONFIG_SOC_GOOGLE),)
 DHDCFLAGS += -DSUPPORT_WL_TXPOWER
 endif
 # Roaming feature
@@ -839,7 +839,7 @@ ifeq ($(DRIVER_TYPE),m)
 endif
 
 DHDCFLAGS += -DDHD_CAP_CUSTOMER="\"hw2 \""
-ifneq ($(CONFIG_SOC_GS101),)
+ifneq ($(CONFIG_SOC_GOOGLE),)
 	# The flag will be enabled only on customer platform
 	DHDCFLAGS += -DCUSTOMER_HW2_DEBUG
 	DHDCFLAGS += -DDHD_SET_PCIE_DMA_MASK_FOR_GS101
@@ -933,7 +933,7 @@ ifneq ($(filter -DDHD_STATUS_LOGGING,$(DHDCFLAGS)),)
 	DHDOFILES += dhd_statlog.o
 endif
 
-ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
+ifneq ($(filter y, $(CONFIG_SOC_GOOGLE) $(CONFIG_SOC_EXYNOS9820)),)
 	DHDOFILES += dhd_custom_google.o
 else ifneq ($(CONFIG_ARCH_HISI),)
 	DHDOFILES += dhd_custom_hikey.o

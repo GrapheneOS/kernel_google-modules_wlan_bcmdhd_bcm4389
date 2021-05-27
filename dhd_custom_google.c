@@ -42,21 +42,21 @@
 #include <dhd_dbg.h>
 #include <dhd.h>
 
-#if defined(CONFIG_SOC_GS101)
+#if defined(CONFIG_SOC_GOOGLE)
 #include <linux/exynos-pci-ctrl.h>
-#endif /* CONFIG_SOC_GS101 */
+#endif /* CONFIG_SOC_GOOGLE */
 
 #ifdef DHD_COREDUMP
 #include <linux/platform_data/sscoredump.h>
 #endif /* DHD_COREDUMP */
 
 #define EXYNOS_PCIE_VENDOR_ID 0x144d
-#if defined(CONFIG_SOC_GS101)
+#if defined(CONFIG_SOC_GOOGLE)
 #define EXYNOS_PCIE_DEVICE_ID 0xecec
 #define EXYNOS_PCIE_CH_NUM 0
 #else
 #error "Not supported platform"
-#endif /* CONFIG_SOC_GS101 */
+#endif /* CONFIG_SOC_GOOGLE */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern int dhd_init_wlan_mem(void);
@@ -82,12 +82,12 @@ static uint64 last_resched_cnt_check_time_ns = 0;
 static bool is_irq_on_big_core = FALSE;
 
 static int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
-#if defined(CONFIG_SOC_GS101)
+#if defined(CONFIG_SOC_GOOGLE)
 #define EXYNOS_PCIE_RC_ONOFF
 extern int exynos_pcie_pm_resume(int);
 extern void exynos_pcie_pm_suspend(int);
 extern int exynos_pcie_l1_exit(int ch_num);
-#endif /* CONFIG_SOC_GS101 */
+#endif /* CONFIG_SOC_GOOGLE */
 
 #ifdef EXYNOS_PCIE_DEBUG
 extern void exynos_pcie_register_dump(int ch_num);
@@ -659,10 +659,10 @@ dhd_wlan_deinit(void)
 
 void dhd_plat_l1ss_ctrl(bool ctrl)
 {
-#if defined(CONFIG_SOC_GS101)
+#if defined(CONFIG_SOC_GOOGLE)
 	printk(KERN_DEBUG "%s: Control L1ss RC side %d \n", __FUNCTION__, ctrl);
 	exynos_pcie_rc_l1ss_ctrl(ctrl, PCIE_L1SS_CTRL_WIFI, 1);
-#endif /* CONFIG_SOC_GS101 */
+#endif /* CONFIG_SOC_GOOGLE */
 	return;
 }
 
