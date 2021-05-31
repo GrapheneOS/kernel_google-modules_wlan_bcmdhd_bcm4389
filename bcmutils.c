@@ -48,7 +48,7 @@
 
 #endif /* !BCMDRIVER */
 
-#if defined(_WIN32) || defined(NDIS)
+#if defined(_WIN32) || defined(NDIS) || defined(DONGLEBUILD)
 /* Debatable */
 #include <bcmstdlib.h>
 #endif
@@ -2450,21 +2450,33 @@ dll_pool_dump(dll_pool_t * dll_pool_p, dll_elem_dump elem_dump)
 
 #if defined(BCMDRIVER) || defined(WL_UNITTEST)
 
+#ifndef DONGLEBUILD
 /* triggers bcm_bprintf to print to kernel log */
 bool bcm_bprintf_bypass = FALSE;
+#endif /* !DONGLEBUILD */
+
+#if !(defined(_WIN32) || defined(NDIS))
+/* TODO: add vprintf to ndis OSL and remove this conditional */
+#define BCM_BPRINTF_ALLOW_NULL_B
+#endif
 
 /* Initialization of bcmstrbuf structure */
 void
 BCMPOSTTRAPFN(bcm_binit)(struct bcmstrbuf *b, char *buf, uint size)
 {
+#ifdef BCM_BPRINTF_ALLOW_NULL_B
+	/* pass NULL to struct bcmstrbuf *b to indicate the output is console */
+	if (b == NULL) {
+		return;
+	}
+#endif /* BCM_BPRINTF_ALLOW_NULL_B */
+
 	b->origsize = b->size = size;
 	b->origbuf = b->buf = buf;
 	if (size > 0) {
 		buf[0] = '\0';
 	}
 }
-
-static const char BCMPOST_TRAP_RODATA(bcm_bprintf_ptstr_1)[] = "%s";
 
 /* Buffer sprintf wrapper to guard against buffer overflow */
 int
@@ -2475,11 +2487,23 @@ BCMPOSTTRAPFN(bcm_bprintf)(struct bcmstrbuf *b, const char *fmt, ...)
 
 	va_start(ap, fmt);
 
+#ifdef BCM_BPRINTF_ALLOW_NULL_B
+	/* pass NULL to struct bcmstrbuf *b to indicate the output is console */
+	if (b == NULL) {
+		r = vprintf(fmt, ap);
+		goto exit;
+	}
+#endif /* BCM_BPRINTF_ALLOW_NULL_B */
+
 	r = vsnprintf(b->buf, b->size, fmt, ap);
+
+#ifndef DONGLEBUILD
 	if (bcm_bprintf_bypass == TRUE) {
+		static const char BCMPOST_TRAP_RODATA(bcm_bprintf_ptstr_1)[] = "%s";
 		printf(bcm_bprintf_ptstr_1, b->buf);
 		goto exit;
 	}
+#endif /* !DONGLEBUILD */
 
 	/* Non Ansi C99 compliant returns -1,
 	 * Ansi compliant return r >= b->size,
@@ -6054,3 +6078,13 @@ prhexstr(const char *prefix, const uint8 *buf, uint len, bool newline)
 		}
 	}
 }
+
+#ifdef DONGLEBUILD
+static const char BCMPOST_TRAP_RODATA(bcm_print_string)[] = "%s";
+
+int
+BCMPOSTTRAPFN(print_string)(const char *str)
+{
+	return printf(bcm_print_string, str);
+}
+#endif /* DONGLEBUILD */

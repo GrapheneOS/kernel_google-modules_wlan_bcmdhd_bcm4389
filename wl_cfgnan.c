@@ -82,6 +82,7 @@ static nan_ndp_peer_t* wl_cfgnan_data_get_peer(struct bcm_cfg80211 *cfg,
 static int wl_cfgnan_disable(struct bcm_cfg80211 *cfg);
 static s32 wl_cfgnan_del_ndi_data(struct bcm_cfg80211 *cfg, char *name);
 static s32 wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx, char *name);
+static int wl_nan_print_stats_tlvs(void *ctx, const uint8 *data, uint16 type, uint16 len);
 
 #ifdef RTT_SUPPORT
 static int wl_cfgnan_clear_disc_cache(struct bcm_cfg80211 *cfg, wl_nan_instance_id_t sub_id);
@@ -229,6 +230,8 @@ nan_event_to_str(u16 cmd)
 	C2S(WL_NAN_EVENT_OOB_AF_TXS);
 		break;
 	C2S(WL_NAN_EVENT_OOB_AF_RX);
+		break;
+	C2S(WL_NAN_EVENT_SCHED_CHANGE);
 		break;
 	C2S(WL_NAN_EVENT_INVALID);
 		break;
@@ -933,7 +936,6 @@ wl_cfgnan_set_vars_cbfn(void *ctx, const uint8 *data, uint16 type, uint16 len)
 	nan_event_data_t *tlv_data = ((nan_event_data_t *)(ctx_tlv_data->nan_evt_data));
 	int ret = BCME_OK;
 
-	NAN_DBG_ENTER();
 	if (!data || !len) {
 		WL_ERR(("data length is invalid\n"));
 		ret = BCME_ERROR;
@@ -1036,13 +1038,15 @@ wl_cfgnan_set_vars_cbfn(void *ctx, const uint8 *data, uint16 type, uint16 len)
 	case WL_NAN_XTLV_DAM_NA_ATTR:
 		/* No action -intentionally added to avoid prints when these events are rcvd */
 		break;
+	case WL_NAN_XTLV_GEN_AVAIL_STATS_SCHED:
+		ret = wl_nan_print_stats_tlvs(ctx, data, type, len);
+		break;
 	default:
 		WL_ERR(("Not available for tlv type = 0x%x\n", type));
 		ret = BCME_ERROR;
 		break;
 	}
 fail:
-	NAN_DBG_EXIT();
 	return ret;
 }
 
@@ -1918,6 +1922,43 @@ wl_cfgnan_enable_handler(wl_nan_iov_t *nan_iov_data, bool val)
 }
 
 static int
+wl_cfgnan_set_instant_chan(nan_config_cmd_data_t *cmd_data, wl_nan_iov_t *nan_iov_data)
+{
+	s32 ret = BCME_OK;
+	bcm_iov_batch_subcmd_t *sub_cmd = NULL;
+	chanspec_t chspec;
+	uint16 subcmd_len;
+	NAN_DBG_ENTER();
+
+	sub_cmd = (bcm_iov_batch_subcmd_t*)(nan_iov_data->nan_iov_buf);
+
+	ret = wl_cfg_nan_check_cmd_len(nan_iov_data->nan_iov_len,
+			sizeof(chanspec_t), &subcmd_len);
+	if (unlikely(ret)) {
+		WL_ERR(("nan_sub_cmd check failed\n"));
+		return ret;
+	}
+	/* Fill the sub_command block */
+	sub_cmd->id = htod16(WL_NAN_CMD_CFG_INSTANT_CHAN);
+	sub_cmd->len = sizeof(sub_cmd->u.options) + sizeof(chspec);
+	sub_cmd->u.options = htol32(BCM_XTLV_OPTION_ALIGN32);
+	chspec = CH20MHZ_CHSPEC(cmd_data->instant_chan);
+
+	ret = memcpy_s(sub_cmd->data, sizeof(chanspec_t),
+			(uint8*)&chspec, sizeof(chanspec_t));
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to copy enab instant chspec\n"));
+		return ret;
+	}
+
+	nan_iov_data->nan_iov_len -= subcmd_len;
+	nan_iov_data->nan_iov_buf += subcmd_len;
+
+	NAN_DBG_EXIT();
+	return ret;
+}
+
+static int
 wl_cfgnan_warmup_time_handler(nan_config_cmd_data_t *cmd_data,
 		wl_nan_iov_t *nan_iov_data)
 {
@@ -2108,7 +2149,7 @@ wl_cfgnan_set_rssi_mid_or_close(nan_config_cmd_data_t *cmd_data,
 }
 
 static int
-check_for_valid_5gchan(struct net_device *ndev, uint8 chan)
+wl_cfgnan_check_for_valid_5gchan(struct net_device *ndev, uint8 chan)
 {
 	s32 ret = BCME_OK;
 	uint bitmap;
@@ -2136,6 +2177,30 @@ check_for_valid_5gchan(struct net_device *ndev, uint8 chan)
 
 	if (!(bitmap & WL_CHAN_VALID_SW)) {
 		WL_ERR(("Not supported in current locale\n"));
+		ret = BCME_BADCHAN;
+		goto exit;
+	}
+
+	if (bitmap & WL_CHAN_RADAR) {
+		WL_ERR(("Radar channel, NAN can not operate\n"));
+		ret = BCME_BADCHAN;
+		goto exit;
+	}
+
+	if (bitmap & WL_CHAN_PASSIVE) {
+		WL_ERR(("Passive channel, NAN can not operate\n"));
+		ret = BCME_BADCHAN;
+		goto exit;
+	}
+
+	if (bitmap & WL_CHAN_RESTRICTED) {
+		WL_ERR(("Use restricted channel, NAN can not operate\n"));
+		ret = BCME_BADCHAN;
+		goto exit;
+	}
+
+	if (bitmap & WL_CHAN_CLM_RESTRICTED) {
+		WL_ERR(("CLM restricted channel, NAN can not operate\n"));
 		ret = BCME_BADCHAN;
 		goto exit;
 	}
@@ -2182,9 +2247,9 @@ wl_cfgnan_set_nan_soc_chans(struct net_device *ndev, nan_config_cmd_data_t *cmd_
 		} else {
 			soc_chans->soc_chan_5g = NAN_DEF_SOCIAL_CHAN_5G;
 		}
-		ret = check_for_valid_5gchan(ndev, soc_chans->soc_chan_5g);
+		ret = wl_cfgnan_check_for_valid_5gchan(ndev, soc_chans->soc_chan_5g);
 		if (ret != BCME_OK) {
-			ret = check_for_valid_5gchan(ndev, NAN_DEF_SEC_SOCIAL_CHAN_5G);
+			ret = wl_cfgnan_check_for_valid_5gchan(ndev, NAN_DEF_SEC_SOCIAL_CHAN_5G);
 			if (ret == BCME_OK) {
 				soc_chans->soc_chan_5g = NAN_DEF_SEC_SOCIAL_CHAN_5G;
 			} else {
@@ -2857,6 +2922,7 @@ wl_cfgnan_start_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	nan_hal_capabilities_t capabilities;
 	uint32 cfg_ctrl1_flags = 0;
 	uint32 cfg_ctrl2_flags1 = 0;
+	uint32 cfg_ctrl2_reset_flags1 = 0;
 	wl_nancfg_t *nancfg = cfg->nancfg;
 
 	NAN_DBG_ENTER();
@@ -3096,6 +3162,15 @@ wl_cfgnan_start_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 		goto fail;
 	}
 	nan_buf->count++;
+
+	if (cmd_data->instant_chan) {
+		ret = wl_cfgnan_set_instant_chan(cmd_data, nan_iov_data);
+		if (unlikely(ret)) {
+			WL_ERR(("NAN 3.1 Instant disc channel sub_cmd set failed\n"));
+			goto fail;
+		}
+		nan_buf->count++;
+	}
 	nan_buf->is_set = true;
 
 	nan_buf_size -= nan_iov_data->nan_iov_len;
@@ -3188,7 +3263,21 @@ wl_cfgnan_start_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 		nancfg->ndpe_enabled = true;
 	} else {
 		/* reset NDPE capability in FW */
-		ret = wl_cfgnan_config_control_flag(ndev, cfg, WL_NAN_CTRL2_FLAG1_NDPE_CAP,
+		cfg_ctrl2_reset_flags1 |= WL_NAN_CTRL2_FLAG1_NDPE_CAP;
+		nancfg->ndpe_enabled = false;
+	}
+
+	/* NAN 3.1 Instant communication config mode */
+	if (cmd_data->instant_mode_en) {
+		cfg_ctrl2_flags1 |= WL_NAN_CTRL2_FLAG1_INSTANT_MODE;
+	} else {
+		/* reset NAN 3.1 Instant communication mode in FW */
+		cfg_ctrl2_reset_flags1 |= WL_NAN_CTRL2_FLAG1_INSTANT_MODE;
+	}
+
+	/* Reset ctrl2 flags */
+	if (cfg_ctrl2_reset_flags1) {
+		ret = wl_cfgnan_config_control_flag(ndev, cfg, cfg_ctrl2_reset_flags1,
 				0, WL_NAN_CMD_CFG_NAN_CONFIG2,
 				&(cmd_data->status), false);
 		if (unlikely(ret) || unlikely(cmd_data->status)) {
@@ -3196,7 +3285,6 @@ wl_cfgnan_start_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 					ret, cmd_data->status));
 			goto fail;
 		}
-		nancfg->ndpe_enabled = false;
 	}
 
 	/* set CFG CTRL2 flags1 and flags2 */
@@ -3327,6 +3415,12 @@ wl_cfgnan_send_stop_event(struct bcm_cfg80211 *cfg)
 	bzero(nan_event_data, sizeof(nan_event_data_t));
 
 	nan_event_data->status = NAN_STATUS_SUCCESS;
+	ret = memcpy_s(nan_event_data->nan_reason, NAN_ERROR_STR_LEN,
+			"NAN_STATUS_SUCCESS", strlen("NAN_STATUS_SUCCESS"));
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to copy nan reason string, ret = %d\n", ret));
+		goto exit;
+	}
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 13, 0)) || defined(WL_VENDOR_EXT_SUPPORT)
 	ret = wl_cfgvendor_send_nan_event(cfg->wdev->wiphy, bcmcfg_to_prmry_ndev(cfg),
 			GOOGLE_NAN_EVENT_DISABLED, nan_event_data);
@@ -3638,6 +3732,17 @@ wl_cfgnan_config_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 			goto fail;
 		}
 	}
+
+	/* Set NAN 3.1 Instant channel */
+	if (cmd_data->instant_chan) {
+		ret = wl_cfgnan_set_instant_chan(cmd_data, nan_iov_data);
+		if (unlikely(ret)) {
+			WL_ERR(("NAN 3.1 Instant communication channel sub_cmd set failed\n"));
+			goto fail;
+		}
+		nan_buf->count++;
+	}
+
 	nan_buf->is_set = true;
 	nan_buf_size -= nan_iov_data->nan_iov_len;
 
@@ -3653,6 +3758,27 @@ wl_cfgnan_config_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 		}
 	} else {
 		WL_DBG(("No commands to send\n"));
+	}
+
+	/* NAN 3.1 Instant communication config mode */
+	if (nan_attr_mask & NAN_ATTR_INSTANT_MODE_CONFIG) {
+		uint8 set;
+		uint32 flags1 = WL_NAN_CTRL2_FLAG1_INSTANT_MODE;
+
+		if (cmd_data->instant_mode_en) {
+			set = TRUE;
+		} else {
+			set = FALSE;
+		}
+		/* trigger nan ctrl2 iovar to config NAN 3.1 instant mode */
+		ret = wl_cfgnan_config_control_flag(ndev, cfg, flags1,
+				0, WL_NAN_CMD_CFG_NAN_CONFIG2,
+				&(cmd_data->status), set);
+		if (unlikely(ret) || unlikely(cmd_data->status)) {
+			WL_ERR(("nan ctrl2 config flags setting failed, ret = %d status = %d \n",
+					ret, cmd_data->status));
+			goto fail;
+		}
 	}
 
 	if ((!cmd_data->bmap) || (cmd_data->avail_params.duration == NAN_BAND_INVALID) ||
@@ -6282,6 +6408,7 @@ wl_cfgnan_get_capability(struct net_device *ndev,
 	capabilities->is_ndp_security_supported = fw_cap->is_ndp_security_supported;
 	capabilities->ndp_supported_bands = fw_cap->ndp_supported_bands;
 	capabilities->cipher_suites_supported = fw_cap->cipher_suites_supported_mask;
+	capabilities->is_instant_mode_supported = fw_cap->is_instant_mode_supported;
 	if (fw_cap->flags1 & WL_NAN_FW_CAP_FLAG1_NDPE) {
 		capabilities->ndpe_attr_supported = true;
 	}
@@ -7752,7 +7879,6 @@ wl_nan_dp_cmn_event_data(struct bcm_cfg80211 *cfg, void *event_data,
 				wl_cfgnan_data_set_peer_dp_state(cfg, &ev_dp->peer_nmi,
 					NAN_PEER_DP_CONNECTED);
 				wl_cfgnan_update_dp_info(cfg, true, nan_event_data->ndp_id);
-				wl_cfgnan_get_stats(cfg);
 			} else if (ev_dp->status == NAN_NDP_STATUS_REJECT) {
 				nan_event_data->status = NAN_DP_REQUEST_REJECT;
 #ifdef WL_NAN_DISC_CACHE
@@ -8540,8 +8666,24 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				pev->reason == NAN_TERM_REASON_USER_REQ ||
 				pev->reason == NAN_TERM_REASON_COUNT_REACHED) {
 			nan_event_data->status = NAN_STATUS_SUCCESS;
+			ret = memcpy_s(nan_event_data->nan_reason,
+				sizeof(nan_event_data->nan_reason),
+				"NAN_STATUS_SUCCESS",
+				strlen("NAN_STATUS_SUCCESS"));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy nan_reason\n"));
+				goto exit;
+			}
 		} else {
 			nan_event_data->status = NAN_STATUS_INTERNAL_FAILURE;
+			ret = memcpy_s(nan_event_data->nan_reason,
+				sizeof(nan_event_data->nan_reason),
+				"NAN_STATUS_INTERNAL_FAILURE",
+				strlen("NAN_STATUS_INTERNAL_FAILURE"));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy nan_reason\n"));
+				goto exit;
+			}
 		}
 
 		if (pev->svctype == NAN_SC_SUBSCRIBE) {
@@ -8576,6 +8718,14 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 			WL_INFORM_MEM(("TXS success for type %s(%d) token %d\n",
 				nan_frm_type_to_str(txs->type), txs->type, txs->host_seq));
 			nan_event_data->status = NAN_STATUS_SUCCESS;
+			ret = memcpy_s(nan_event_data->nan_reason,
+				sizeof(nan_event_data->nan_reason),
+				"NAN_STATUS_SUCCESS",
+				strlen("NAN_STATUS_SUCCESS"));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy nan_reason\n"));
+				goto exit;
+			}
 		} else {
 			/* TODO : populate status based on reason codes
 			For now adding it as no ACK, so that app/framework can retry
@@ -8584,6 +8734,14 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				nan_frm_type_to_str(txs->type), txs->type, txs->status,
 				txs->host_seq));
 			nan_event_data->status = NAN_STATUS_NO_OTA_ACK;
+			ret = memcpy_s(nan_event_data->nan_reason,
+				sizeof(nan_event_data->nan_reason),
+				"NAN_STATUS_NO_OTA_ACK",
+				strlen("NAN_STATUS_NO_OTA_ACK"));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy nan_reason\n"));
+				goto exit;
+			}
 		}
 		nan_event_data->reason = txs->reason_code;
 		nan_event_data->token = txs->host_seq;
@@ -8871,6 +9029,14 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		/* No action -intentionally added to avoid prints when this event is rcvd */
 		break;
 	}
+	case WL_NAN_EVENT_SCHED_CHANGE:
+	{
+		tlvs_offset = OFFSETOF(wl_nan_ev_sched_info_t, opt_tlvs) +
+			OFFSETOF(bcm_xtlv_t, data);
+		nan_opts_len = data_len - tlvs_offset;
+		xtlv_opt = BCM_IOV_CMD_OPT_ALIGN_NONE;
+		break;
+	}
 	default:
 		WL_ERR_RLMT(("WARNING: unimplemented NAN APP EVENT = %d\n", event_num));
 		ret = BCME_ERROR;
@@ -8885,6 +9051,11 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		if (ret != BCME_OK) {
 			WL_ERR(("Failed to unpack tlv data, ret=%d\n", ret));
 		}
+	}
+
+	if (event_num == WL_NAN_EVENT_SCHED_CHANGE) {
+		/* no need to send this event to HAL */
+		goto exit;
 	}
 
 #ifdef WL_NAN_DISC_CACHE

@@ -94,5 +94,6 @@ extern void dhd_plat_l1_exit(void);
 extern uint32 dhd_plat_get_rc_vendor_id(void);
 extern uint32 dhd_plat_get_rc_device_id(void);
 
+extern uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz);
 #endif /* __linux__ */
 #endif /* __DHD_PLAT_H__ */

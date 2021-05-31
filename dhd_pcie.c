@@ -94,6 +94,7 @@
 #include <dngl_rtlv.h>
 #if defined(FW_SIGNATURE)
 #include <bootrommem.h>
+#include <fwpkg_utils.h>
 #endif /* FW_SIGNATURE */
 
 #ifdef DNGL_AXI_ERROR_LOGGING
@@ -222,6 +223,7 @@ static int dhdpcie_download_firmware(dhd_bus_t *bus, osl_t *osh);
 
 #if defined(FW_SIGNATURE)
 static int dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write);
+static int dhdpcie_bus_write_fw_signature(dhd_bus_t *bus);
 static int dhdpcie_bus_download_ram_bootloader(dhd_bus_t *bus);
 static int dhdpcie_bus_write_fws_status(dhd_bus_t *bus);
 static int dhdpcie_bus_write_fws_mem_info(dhd_bus_t *bus);
@@ -268,8 +270,10 @@ static int dhdpcie_cc_nvmshadow(dhd_bus_t *bus, struct bcmstrbuf *b);
 static void dhd_bus_dump_rxlat_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
 static void dhd_bus_dump_rxlat_histo(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
 static void dhd_bus_dump_txcpl_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
-static void dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
-static void dhd_bus_sboot_disable(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
+static bool dhd_bus_support_dar_sec_status(dhd_bus_t *bus);
+static int dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
+static int dhd_bus_sboot_disable(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
+static int dhd_bus_get_security_status(dhd_bus_t *bus, uint32 *status);
 static void dhdpcie_fw_trap(dhd_bus_t *bus);
 static void dhd_fillup_ring_sharedptr_info(dhd_bus_t *bus, ring_info_t *ring_info);
 static void dhdpcie_handle_mb_data(dhd_bus_t *bus);
@@ -3763,10 +3767,11 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 	int offset = 0;
 	int len = 0;
 	bool store_reset;
-	char *imgbuf = NULL; /**< XXX a file pointer, contradicting its name and type */
+	void *filep = NULL;
 	uint8 *memblock = NULL, *memptr = NULL;
 	int offset_end = bus->ramsize;
 	uint32 file_size = 0, read_len = 0;
+	fwpkg_info_t *fwpkg;
 
 #if defined(CACHE_FW_IMAGES)
 	int buf_offset, total_len, residual_len;
@@ -3799,18 +3804,30 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 	DHD_ERROR_MEM(("%s: download firmware %s\n", __FUNCTION__, pfw_path));
 #endif /* DHD_EFI */
 
+	bcmerror = fwpkg_init(&bus->fwpkg, pfw_path);
+	if (bcmerror == BCME_ERROR) {
+		goto err;
+	}
+	fwpkg = &bus->fwpkg;
 	/* Should succeed in opening image if it is actually given through registry
 	 * entry or in module param.
 	 */
-	imgbuf = dhd_os_open_image1(bus->dhd, pfw_path);
-	if (imgbuf == NULL) {
+	bcmerror = fwpkg_open_firmware_img(fwpkg, pfw_path, &filep);
+	if (bcmerror == BCME_ERROR) {
 		goto err;
 	}
 
-	file_size = dhd_os_get_image_size(imgbuf);
-	if (!file_size) {
-		DHD_ERROR(("%s: get file size fails ! \n", __FUNCTION__));
-		goto err;
+	if (bcmerror == BCME_UNSUPPORTED) {
+		file_size = fwpkg->file_size;
+		DHD_INFO(("%s Using SINGLE image (size %d)\n",
+			__FUNCTION__, file_size));
+	} else {
+		file_size = fwpkg_get_firmware_img_size(fwpkg);
+		strlcpy(bus->fwsig_filename, pfw_path, sizeof(bus->fwsig_filename));
+		bus->fw_download_len = file_size;
+		bus->fw_download_addr = bus->dongle_ram_base;
+		DHD_INFO(("%s Using COMBINED image (size %d)\n",
+			__FUNCTION__, file_size));
 	}
 
 	memptr = memblock = MALLOC(bus->dhd->osh, MEMBLOCK + DHD_SDALIGN);
@@ -3828,8 +3845,8 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 			si_setcore(bus->sih, ARMCA7_CORE_ID, 0));
 #if defined(CACHE_FW_IMAGES)
 	total_len = bus->ramsize;
-	dhd_os_close_image(imgbuf);
-	imgbuf = NULL;
+	dhd_os_close_image(filep);
+	filep = NULL;
 	buf_offset = 0;
 	bcmerror = dhd_get_download_buffer(bus->dhd, pfw_path, FW, &dnld_buf, &total_len);
 	if (bcmerror != BCME_OK) {
@@ -3845,7 +3862,7 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 		buf_offset += len;
 #else
 	/* Download image with MEMBLOCK size */
-	while ((len = dhd_os_get_image_block((char*)memptr, MEMBLOCK, imgbuf))) {
+	while ((len = dhd_os_get_image_block((char*)memptr, MEMBLOCK, filep))) {
 		if (len < 0) {
 			DHD_ERROR(("%s: dhd_os_get_image_block failed (%d)\n", __FUNCTION__, len));
 			bcmerror = BCME_ERROR;
@@ -3854,7 +3871,7 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 #endif /* CACHE_FW_IMAGE */
 
 		read_len += len;
-		if (read_len > file_size) {
+		if ((read_len > file_size) && IS_FWPKG_SINGLE(fwpkg)) {
 			DHD_ERROR(("%s: WARNING! reading beyond EOF, len=%d; read_len=%u;"
 				" file_size=%u truncating len to %d \n", __FUNCTION__,
 				len, read_len, file_size, (len - (read_len - file_size))));
@@ -3900,8 +3917,8 @@ err:
 	}
 #endif /* CACHE_FW_IMAGES */
 
-	if (imgbuf) {
-		dhd_os_close_image1(bus->dhd, imgbuf);
+	if (filep) {
+		dhd_os_close_image1(bus->dhd, filep);
 	}
 
 	return bcmerror;
@@ -5225,6 +5242,9 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 		case DUMP_TYPE_INVALID_SHINFO_NRFRAGS:
 			/* intentional fall through */
 		case DUMP_TYPE_P2P_DISC_BUSY:
+			/* intentional fall through */
+		case DUMP_TYPE_CONT_EXCESS_PM_AWAKE:
+			/* intentional fall through */
 			if (dhdp->db7_trap.fw_db7w_trap) {
 				/* Set fw_db7w_trap_inprogress here and clear from DPC */
 				dhdp->db7_trap.fw_db7w_trap_inprogress = TRUE;
@@ -8712,7 +8732,7 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 
 		bcm_binit(&strbuf, arg, len);
 		DHD_GENERAL_LOCK(bus->dhd, flags);
-		dhd_bus_security_info(bus->dhd, &strbuf);
+		bcmerror = dhd_bus_security_info(bus->dhd, &strbuf);
 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 		break;
 	}
@@ -8724,7 +8744,7 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 
 		bcm_binit(&strbuf, arg, len);
 		DHD_GENERAL_LOCK(bus->dhd, flags);
-		dhd_bus_sboot_disable(bus->dhd, &strbuf);
+		bcmerror = dhd_bus_sboot_disable(bus->dhd, &strbuf);
 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 		break;
 	}
@@ -9841,7 +9861,7 @@ dhdpcie_bus_download_state(dhd_bus_t *bus, bool enter)
 #endif /* FW_SIGNATURE */
 
 			if (do_wr_flops) {
-				uint32 resetinstr_data;
+				uint32 resetinstr_data = 0;
 
 				/* switch back to arm core again */
 				if (!(si_setcore(bus->sih, ARMCA7_CORE_ID, 0))) {
@@ -9851,20 +9871,22 @@ dhdpcie_bus_download_state(dhd_bus_t *bus, bool enter)
 					goto fail;
 				}
 
-				/*
-				 * read address 0 with reset instruction,
-				 * to validate that is not secured
-				 */
-				bcmerror = dhdpcie_bus_membytes(bus, FALSE, 0,
-					(uint8 *)&resetinstr_data, sizeof(resetinstr_data));
-
-				if (resetinstr_data == 0xFFFFFFFF) {
+				bcmerror = dhd_bus_get_security_status(bus, &resetinstr_data);
+				if (bcmerror == BCME_UNSUPPORTED) {
+					/*
+					 * read address 0 with reset instruction,
+					 * to validate that is not secured
+					 */
+					bcmerror = dhdpcie_bus_membytes(bus, FALSE, 0,
+						(uint8 *)&resetinstr_data, sizeof(resetinstr_data));
+				}
+				if ((resetinstr_data == 0xFFFFFFFF) ||
+					(resetinstr_data & DAR_SEC_SBOOT_MASK)) {
 					DHD_ERROR(("%s: **** FLOPS Vector is secured, "
 						"Signature file is missing! ***\n", __FUNCTION__));
 					bcmerror = BCME_NO_SIG_FILE;
 					goto fail;
 				}
-
 				/* write address 0 with reset instruction */
 				bcmerror = dhdpcie_bus_membytes(bus, TRUE, 0,
 					(uint8 *)&bus->resetinstr, sizeof(bus->resetinstr));
@@ -10047,6 +10069,35 @@ dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write)
 		goto exit;
 	}
 
+	/* Write FW signature to memory */
+	if ((bcmerror = dhdpcie_bus_write_fw_signature(bus))) {
+		DHD_ERROR(("%s: could not write FWsig , err %d\n",
+			__FUNCTION__, bcmerror));
+		goto exit;
+	}
+
+	/* In case of BL RAM, do write flops */
+	if (bus->bootloader_filename[0] != 0) {
+		*do_write = TRUE;
+	} else {
+		*do_write = FALSE;
+	}
+
+exit:
+	return bcmerror;
+}
+
+/* Complete RAM structure, write the followings
+ * signature image
+ * signature verification status
+ * FW memory map
+ * end-of-TLVs marker
+ */
+static int
+dhdpcie_bus_write_fw_signature(dhd_bus_t *bus)
+{
+	int bcmerror = BCME_OK;
+
 	/* Write FW signature rTLV to TCM */
 	if ((bcmerror = dhdpcie_bus_write_fwsig(bus, bus->fwsig_filename,
 		NULL))) {
@@ -10074,13 +10125,6 @@ dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write)
 		DHD_ERROR(("%s: could not write rTLV-end marker to TCM, err %d\n",
 			__FUNCTION__, bcmerror));
 		goto exit;
-	}
-
-	/* In case of BL RAM, do write flops */
-	if (bus->bootloader_filename[0] != 0) {
-		*do_write = TRUE;
-	} else {
-		*do_write = FALSE;
 	}
 
 exit:
@@ -10317,7 +10361,7 @@ dhdpcie_bus_save_download_info(dhd_bus_t *bus, uint32 download_addr,
 	return BCME_OK;
 } /* dhdpcie_bus_save_download_info */
 
-/* Read a small binary file and write it to the specified socram dest address */
+/* Read a binary file and write it to the specified socram dest address */
 static int
 dhdpcie_download_sig_file(dhd_bus_t *bus, char *path, uint32 type)
 {
@@ -10327,6 +10371,7 @@ dhdpcie_download_sig_file(dhd_bus_t *bus, char *path, uint32 type)
 	int srcsize = 0;
 	int len;
 	uint32 dest_size = 0;	/* dongle RAM dest size */
+	fwpkg_info_t *fwpkg = NULL;
 
 	if (path == NULL || path[0] == '\0') {
 		DHD_ERROR(("%s: no file\n", __FUNCTION__));
@@ -10334,14 +10379,25 @@ dhdpcie_download_sig_file(dhd_bus_t *bus, char *path, uint32 type)
 		goto exit;
 	}
 
-	/* Open file, get size */
-	filep = dhd_os_open_image1(bus->dhd, path);
-	if (filep == NULL) {
-		DHD_ERROR(("%s: error opening file %s\n", __FUNCTION__, path));
-		bcmerror = BCME_NOTFOUND;
+	bcmerror = fwpkg_init(&bus->fwpkg, path);
+	if (bcmerror == BCME_ERROR) {
 		goto exit;
 	}
-	srcsize = dhd_os_get_image_size(filep);
+	fwpkg = &bus->fwpkg;
+
+	/* Open file, get size */
+	bcmerror = fwpkg_open_signature_img(fwpkg, path, &filep);
+	if (bcmerror == BCME_ERROR) {
+		DHD_ERROR(("%s: error opening file %s\n", __FUNCTION__, path));
+		goto exit;
+	}
+
+	if (bcmerror == BCME_UNSUPPORTED) {
+		/* provided single binary formate */
+		srcsize = fwpkg->file_size;
+	} else {
+		srcsize = fwpkg_get_signature_img_size(fwpkg);
+	}
 	if (srcsize <= 0 || srcsize > MEMBLOCK) {
 		DHD_ERROR(("%s: invalid fwsig size %u\n", __FUNCTION__, srcsize));
 		bcmerror = BCME_BUFTOOSHORT;
@@ -10592,6 +10648,9 @@ dhdpcie_downloadvars(dhd_bus_t *bus, void *arg, int len)
 #ifdef GDB_PROXY
 	const char nodeadman_record[] = "deadman_to=0";
 #endif /* GDB_PROXY */
+#ifdef DHD_SUPPORT_SPMI_MODE
+	char tag_spmi_mode[16] = {0};
+#endif /* DHD_SUPPORT_SPMI_MODE */
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
@@ -10608,6 +10667,13 @@ dhdpcie_downloadvars(dhd_bus_t *bus, void *arg, int len)
 		len += sizeof(nodeadman_record);
 	}
 #endif /* GDB_PROXY */
+#ifdef DHD_SUPPORT_SPMI_MODE
+	if (bus->dhd->dhd_spmi_mode) {
+		snprintf(tag_spmi_mode, sizeof(tag_spmi_mode), "spmi_mode=%d\n",
+			bus->dhd->dhd_spmi_mode);
+		len += sizeof(tag_spmi_mode);
+	}
+#endif /* DHD_SUPPORT_SPMI_MODE */
 
 	bus->vars = MALLOC(bus->dhd->osh, len);
 	bus->varsz = bus->vars ? len : 0;
@@ -10626,6 +10692,27 @@ dhdpcie_downloadvars(dhd_bus_t *bus, void *arg, int len)
 		goto err;
 	}
 #endif /* GDB_PROXY */
+#ifdef DHD_SUPPORT_SPMI_MODE
+	if (bus->dhd->dhd_spmi_mode) {
+		char *pos = NULL;
+		char tag_spmi[] = "spmi=";
+		uint spmi = 0;
+
+		/* check if the spmi feature is enabled */
+		pos = bcmstrnstr(bus->vars, bus->varsz, tag_spmi, strlen(tag_spmi));
+		if (pos) {
+			sscanf(pos, "spmi=%u\n", &spmi);
+			DHD_INFO(("%s: spmi feature is %s\n", __FUNCTION__,
+				spmi ? "enabled" : "disabled"));
+		}
+
+		if (spmi && !replace_nvram_variable(bus->vars,
+			bus->varsz, tag_spmi_mode, NULL)) {
+			bcmerror = BCME_NOMEM;
+			goto err;
+		}
+	}
+#endif /* DHD_SUPPORT_SPMI_MODE */
 
 	/* Re-Calculate htclkratio only for QT, for FPGA it is fixed at 30 */
 #ifdef BCMQT_HW
@@ -11219,17 +11306,50 @@ dhd_bus_dump_txcpl_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, "\n");
 }
 
-static void
-dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
+static bool
+dhd_bus_support_dar_sec_status(dhd_bus_t *bus)
 {
-	dhd_bus_t *bus = dhdp->bus;
-	uint32 dar_sec_val, dar_sec_reg;
+	DHD_ERROR(("%s: buscorerev=%d chipid=0x%x\n",
+		__FUNCTION__, bus->sih->buscorerev, si_chipid(bus->sih)));
 
+	/* Support for DAR security status register provided for pcie core
+	 * generation2 at revisions > 73 and for generation3 at revisions > 128
+	 */
+	if ((bus->sih->buscorerev < 74) || (bus->sih->buscorerev == 128)) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static int
+dhd_bus_get_security_status(dhd_bus_t *bus, uint32 *status)
+{
+	uint32 dar_sec_reg;
+
+	if (!dhd_bus_support_dar_sec_status(bus)) {
+		return BCME_UNSUPPORTED;
+	}
 	/* DAR Security Status Register address */
 	dar_sec_reg = (uint32)DAR_SEC_STATUS(bus->sih->buscorerev);
 
 	/* read DAR Security Status Register */
-	dar_sec_val = si_corereg(bus->sih, bus->sih->buscoreidx, dar_sec_reg, 0, 0);
+	*status = si_corereg(bus->sih, bus->sih->buscoreidx, dar_sec_reg, 0, 0);
+
+	return BCME_OK;
+}
+
+static int
+dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
+{
+	int ret = BCME_OK;
+	dhd_bus_t *bus = dhdp->bus;
+	uint32 dar_sec_val;
+
+	ret = dhd_bus_get_security_status(bus, &dar_sec_val);
+	if (ret != BCME_OK) {
+		return ret;
+	}
 
 	bcm_bprintf(strbuf, "\nDAR Security Status Reg\n");
 	bcm_bprintf(strbuf, "  Jtag Disable:     %d\n", (dar_sec_val & DAR_SEC_JTAG_MASK));
@@ -11239,23 +11359,24 @@ dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		DAR_SEC_ARM_DBG_SHIFT);
 	bcm_bprintf(strbuf, "  Transient Unlock: %d\n", (dar_sec_val & DAR_SEC_UNLOCK_MASK) >>
 		DAR_SEC_UNLOCK_SHIFT);
+
+	return BCME_OK;
 }
 
-static void
+static int
 dhd_bus_sboot_disable(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 {
+	int ret = BCME_OK;
 	dhd_bus_t *bus = dhdp->bus;
 	uint32 save_idx, val;
 	sysmemregs_t *regs;
-	uint32 dar_sec_val, dar_sec_reg;
+	uint32 dar_sec_val;
 
 	save_idx = si_coreidx(bus->sih);
-
-	/* DAR Security Status Register address */
-	dar_sec_reg = (uint32)DAR_SEC_STATUS(bus->sih->buscorerev);
-
-	/* read DAR Security Status Register */
-	dar_sec_val = si_corereg(bus->sih, bus->sih->buscoreidx, dar_sec_reg, 0, 0);
+	ret = dhd_bus_get_security_status(bus, &dar_sec_val);
+	if (ret != BCME_OK) {
+		goto exit;
+	}
 
 	/* check if chip is Transient Unlocked */
 	if (!(dar_sec_val & DAR_SEC_UNLOCK_MASK)) {
@@ -11286,6 +11407,7 @@ dhd_bus_sboot_disable(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	}
 exit:
 	si_setcoreidx(bus->sih, save_idx);
+	return ret;
 }
 
 static void

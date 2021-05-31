@@ -180,6 +180,7 @@ typedef enum {
 	SET_DESTINATION_FLUSH_ON_WATERMARK = 3, /* Buffers are sent to host when the watermark is
 						 * reached, defined by the feature /chip
 						 */
+	SET_DESTINATION_LOCAL	= 4,	/* Same as none but must stay in dongle at all times */
 	SET_DESTINATION_MAX
 } event_log_set_destination_t;
 

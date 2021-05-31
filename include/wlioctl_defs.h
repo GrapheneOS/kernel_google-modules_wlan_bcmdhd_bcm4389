@@ -638,6 +638,7 @@ typedef uint32 ratespec_t;
 #define WPA3_AUTH_1X_SUITE_B_SHA384	0x400000 /* Suite B-192 SHA384 */
 #define WPA3_AUTH_PSK_SHA384		0x800000 /* PSK with SHA384 key derivation */
 #define WPA3_AUTH_SAE_AP_ONLY		0x1000000 /* SAE restriction to connect to pure SAE APs */
+#define WPA3_AUTH_PASN			0x2000000 /* PASN */
 /* WPA2_AUTH_SHA256 not used anymore. Just kept here to avoid build issue in DINGO */
 #define WPA2_AUTH_SHA256		0x8000
 #define WPA_AUTH_PFN_ANY		0xffffffff	/* for PFN, match only ssid */

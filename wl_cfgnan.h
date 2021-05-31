@@ -208,6 +208,8 @@
 #define	NAN_ATTR_OUI_CONFIG			(1<<27)
 #define	NAN_ATTR_SUB_SID_BEACON_CONFIG		(1<<28)
 #define NAN_ATTR_DISC_BEACON_INTERVAL		(1<<29)
+#define NAN_ATTR_INSTANT_MODE_CONFIG		(1<<30)
+
 #define NAN_IOVAR_NAME_SIZE	4u
 #define NAN_XTLV_ID_LEN_SIZE OFFSETOF(bcm_xtlv_t, data)
 #define NAN_RANGING_INDICATE_CONTINUOUS_MASK   0x01
@@ -536,6 +538,8 @@ typedef struct nan_config_cmd_data {
 	uint16 cluster_high;
 	wl_nan_disc_bcn_interval_t disc_bcn_interval;
 	uint32 dw_early_termination;
+	uint32 instant_mode_en;
+	uint32 instant_chan;
 } nan_config_cmd_data_t;
 
 typedef struct nan_event_hdr {
@@ -972,7 +976,9 @@ typedef enum {
 	NAN_ATTRIBUTE_DW_EARLY_TERM			= 227,
 	NAN_ATTRIBUTE_CHANNEL_INFO			= 228,
 	NAN_ATTRIBUTE_NUM_CHANNELS			= 229,
-	NAN_ATTRIBUTE_MAX				= 230
+	NAN_ATTRIBUTE_INSTANT_MODE_ENABLE		= 230,
+	NAN_ATTRIBUTE_INSTANT_COMM_CHAN			= 231,
+	NAN_ATTRIBUTE_MAX				= 232
 } NAN_ATTRIBUTE;
 
 enum geofence_suspend_reason {

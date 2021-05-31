@@ -505,7 +505,8 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_REASON_INACTIVITY		17	/* full roam scan due to inactivity */
 #define WLC_E_REASON_ROAM_SCAN_TIMEOUT		18	/* roam scan timer timeout */
 #define WLC_E_REASON_REASSOC		19	/* roamed due to reassoc iovar */
-#define WLC_E_REASON_LAST		20	/* NOTE: increment this as you add reasons above */
+#define WLC_E_REASON_CCA		20       /* roamed due to better AP from cca measurement */
+#define WLC_E_REASON_LAST		21	/* NOTE: increment this as you add reasons above */
 
 /* prune reason codes */
 #define WLC_E_PRUNE_ENCR_MISMATCH	1	/* encryption mismatch */
@@ -976,6 +977,7 @@ typedef enum wl_nan_events {
 	WL_NAN_EVENT_OOB_AF_TXS			= 47,	/* OOB AF transmit status */
 	WL_NAN_EVENT_OOB_AF_RX			= 48,   /* OOB AF receive event */
 	WL_NAN_EVENT_NMI_ADDR			= 49,	/* NMI address change event */
+	WL_NAN_EVENT_SCHED_CHANGE		= 50,	/* Sched change event */
 
 	/* keep WL_NAN_EVENT_INVALID as the last element */
 	WL_NAN_EVENT_INVALID				/* delimiter for max value */
@@ -1185,6 +1187,7 @@ typedef enum wl_twt_td_rc {
 	WL_TWT_TD_RC_BTCX	= 5u,	/* Teardown due to BTCX */
 	WL_TWT_TD_RC_SETUP_FAIL	= 6u, /* Setup fail midway. Teardown all connections */
 	WL_TWT_TD_RC_SCHED	= 7u,	/* Teardown by TWT Scheduler */
+	WL_TWT_TD_RC_TIMEOUT	= 8u,	/* NoAck/Ack timeout for Teardown */
 	/* Any new reason code add before this */
 	WL_TWT_TD_RC_ERROR	= 255u,	/* Generic Error cases */
 } wl_twt_td_rc_t;
@@ -1206,6 +1209,7 @@ typedef struct wl_twt_teardown_cplt {
 typedef enum wl_twt_info_rc {
 	WL_TWT_INFO_RC_HOST	= 0u,	/* Host initiated Info complete */
 	WL_TWT_INFO_RC_PEER	= 1u,	/* Peer initiated TWT Info */
+	WL_TWT_INFO_RC_TIMEOUT	= 2u,	/* NoAck/Ack Timeout for TWT info Frame */
 	/* Any new reason code add before this */
 	WL_TWT_INFO_RC_ERROR	= 255u,	/* generic error conditions */
 } wl_twt_info_rc_t;

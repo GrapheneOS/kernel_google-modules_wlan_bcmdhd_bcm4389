@@ -668,7 +668,8 @@ typedef struct _agg_h2d_db_info {
 /** DHD protocol handle. Is an opaque type to other DHD software layers. */
 typedef struct dhd_prot {
 	osl_t *osh;		/* OSL handle */
-	uint16 rxbufpost_sz;
+	uint16 rxbufpost_sz;		/* Size of rx buffer posted to dongle */
+	uint16 rxbufpost_alloc_sz;	/* Actual rx buffer packet allocated in the host */
 	uint16 rxbufpost;
 	uint16 rx_buf_burst;
 	uint16 rx_bufpost_threshold;
@@ -1120,6 +1121,11 @@ dhd_prot_get_rxbufpost_sz(dhd_pub_t *dhd)
 	return dhd->prot->rxbufpost_sz;
 }
 
+uint16
+dhd_prot_get_rxbufpost_alloc_sz(dhd_pub_t *dhd)
+{
+	return dhd->prot->rxbufpost_alloc_sz;
+}
 uint16
 dhd_prot_get_h2d_rx_post_active(dhd_pub_t *dhd)
 {
@@ -5140,9 +5146,12 @@ int dhd_sync_with_dongle(dhd_pub_t *dhd)
 		}
 	}
 
+	prot->rxbufpost_alloc_sz = dhd_plat_align_rxbuf_size(prot->rxbufpost_sz);
+	DHD_ERROR(("%s: RxBuf Post Alloc : %d\n", __FUNCTION__, prot->rxbufpost_alloc_sz));
+
 #ifdef RX_PKT_POOL
 	/* Rx pkt pool creation after rxbuf size is shared by dongle */
-	dhd_rx_pktpool_create(dhd->info, prot->rxbufpost_sz);
+	dhd_rx_pktpool_create(dhd->info, prot->rxbufpost_alloc_sz);
 #endif /* RX_PKT_POOL */
 
 	/* Post buffers for packet reception */
@@ -5435,10 +5444,10 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 	msgbuf_ring_t *ring = &prot->h2dring_rxp_subn;
 	void *lcl_buf;
 	uint16 lcl_buf_size;
+
 #ifdef BCM_ROUTER_DHD
-	uint16 pktsz = DHD_FLOWRING_RX_BUFPOST_PKTSZ + BCMEXTRAHDROOM;
-#else
-	uint16 pktsz = prot->rxbufpost_sz;
+	prot->rxbufpost_sz = DHD_FLOWRING_RX_BUFPOST_PKTSZ + BCMEXTRAHDROOM;
+	prot->rxbufpost_alloc_sz = prot->rxbufpost_sz;
 #endif /* BCM_ROUTER_DHD */
 
 #ifdef PCIE_INB_DW
@@ -5465,7 +5474,8 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 		 * during rx flow control.
 		*/
 		p = dhd_rx_emerge_dequeue(dhd);
-		if ((p == NULL) && ((p = PKTGET(dhd->osh, pktsz, FALSE)) == NULL)) {
+		if ((p == NULL) &&
+			((p = PKTGET(dhd->osh, prot->rxbufpost_alloc_sz, FALSE)) == NULL)) {
 			dhd->rx_pktgetfail++;
 			DHD_ERROR_RLMT(("%s:%d: PKTGET for rxbuf failed, rx_pktget_fail :%lu\n",
 				__FUNCTION__, __LINE__, dhd->rx_pktgetfail));
@@ -5480,7 +5490,7 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 			{
 #ifdef RX_PKT_POOL
 				if ((p = PKTGET_RX_POOL(dhd->osh, dhd->info,
-					pktsz, FALSE)) == NULL) {
+					prot->rxbufpost_alloc_sz, FALSE)) == NULL) {
 					dhd->rx_pktgetpool_fail++;
 					DHD_ERROR_RLMT(("%s:%d: PKTGET_RX_POOL for rxbuf failed, "
 						"rx_pktgetpool_fail : %lu\n",
@@ -5489,6 +5499,13 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 				}
 #endif /* RX_PKT_POOL */
 			}
+		}
+
+		/* Set pktlen to the actual bufferpost size */
+		if (prot->rxbufpost_sz != prot->rxbufpost_alloc_sz) {
+			DHD_TRACE(("%s: pktlen before: %d\n", __FUNCTION__, PKTLEN(dhd->osh, p)));
+			PKTSETLEN(dhd->osh, p, prot->rxbufpost_sz);
+			DHD_TRACE(("%s: pktlen after: %d\n", __FUNCTION__, PKTLEN(dhd->osh, p)));
 		}
 
 #ifdef BCM_ROUTER_DHD

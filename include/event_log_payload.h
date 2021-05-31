@@ -31,6 +31,7 @@
 #include <bcmutils.h>
 #include <ethernet.h>
 #include <event_log_tag.h>
+#include <wlioctl.h>
 
 /**
  * A (legacy) timestamp message
@@ -2121,6 +2122,28 @@ typedef struct wlc_btc_stats_phy_logging {
 	wlc_btc_shared_stats_v1_t shared;
 } phy_periodic_btc_stats_v1_t;
 
+/* OBSS Statistics for PHY Logging */
+typedef struct phy_periodic_obss_stats_v1 {
+	uint32	obss_last_read_time;			/* last stats read time */
+	uint16	obss_mit_bw;				/* selected mitigation BW */
+	uint16	obss_stats_cnt;				/* stats count */
+	uint8	obss_mit_mode;				/* mitigation mode */
+	uint8	obss_mit_status;			/* obss mitigation status */
+	uint8	obss_curr_det[ACPHY_OBSS_SUBBAND_CNT];	/* obss curr detection */
+	uint16	dynbw_init_reducebw_cnt;		/*
+							 * bandwidth reduction cnt of
+							 * initiator (txrts+rxcts)
+							 */
+	uint16	dynbw_resp_reducebw_cnt;		/*
+							 * bandwidth reduction cnt of
+							 * responder (rxrts+txcts)
+							 */
+	uint16	dynbw_rxdata_reducebw_cnt;		/*
+							 * rx data cnt with reduced bandwidth
+							 * as txcts requested
+							 */
+} phy_periodic_obss_stats_v1_t;
+
 /* SmartCCA related PHY Logging */
 typedef struct wlc_scca_stats_phy_logging {
 	uint32 asym_intf_cmplx_pwr[2];
@@ -2795,4 +2818,25 @@ typedef struct phy_periodic_log_v10 {
 #define AMT_MATCH_INFRA_BSSID	(1 << 0)
 #define AMT_MATCH_INFRA_MYMAC	(1 << 1)
 
+#define PHY_PERIODIC_LOG_VER20	20u
+typedef struct phy_periodic_log_v20 {
+	uint8  version;		/* Logging structure version */
+	uint8  numcores;	/* Number of cores for which core specific data present */
+	uint16 length;		/* Length of the structure */
+
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v7_t phy_perilog_cmn;
+
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v8_t counters_peri_log;
+
+	/* log data for BTcoex */
+	phy_periodic_btc_stats_v1_t phy_perilog_btc_stats;
+
+	/* log data for obss/dynbw */
+	phy_periodic_obss_stats_v1_t phy_perilog_obss_stats;
+
+	/* Logs data pertaining to each core */
+	phy_periodic_log_core_v4_t phy_perilog_core[BCM_FLEX_ARRAY];
+} phy_periodic_log_v20_t;
 #endif /* _EVENT_LOG_PAYLOAD_H_ */

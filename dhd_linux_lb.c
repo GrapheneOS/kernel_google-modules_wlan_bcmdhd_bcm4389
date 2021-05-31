@@ -661,7 +661,7 @@ void dhd_lb_stats_dump_cpu_array(struct bcmstrbuf *strbuf, uint32 *p)
 uint64 dhd_lb_mem_usage(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 {
 	dhd_info_t *dhd;
-	uint16 rxbufpost_sz;
+	uint16 rxbufpost_alloc_sz;
 	uint16 rx_post_active = 0;
 	uint16 rx_cmpl_active = 0;
 	uint64 rx_path_memory_usage = 0;
@@ -677,29 +677,29 @@ uint64 dhd_lb_mem_usage(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		DHD_ERROR(("%s(): DHD pointer is NULL \n", __FUNCTION__));
 		return 0;
 	}
-	rxbufpost_sz = dhd_prot_get_rxbufpost_sz(dhdp);
-	if (rxbufpost_sz == 0) {
-		rxbufpost_sz = DHD_FLOWRING_RX_BUFPOST_PKTSZ;
+	rxbufpost_alloc_sz = dhd_prot_get_rxbufpost_alloc_sz(dhdp);
+	if (rxbufpost_alloc_sz == 0) {
+		rxbufpost_alloc_sz = DHD_FLOWRING_RX_BUFPOST_PKTSZ;
 	}
-	rx_path_memory_usage = rxbufpost_sz * (skb_queue_len(&dhd->rx_emerge_queue) +
+	rx_path_memory_usage = rxbufpost_alloc_sz * (skb_queue_len(&dhd->rx_emerge_queue) +
 		skb_queue_len(&dhd->rx_pend_queue) +
 		skb_queue_len(&dhd->rx_napi_queue) +
 		skb_queue_len(&dhd->rx_process_queue));
 	rx_post_active = dhd_prot_get_h2d_rx_post_active(dhdp);
 	if (rx_post_active != 0) {
-		rx_path_memory_usage += (rxbufpost_sz * rx_post_active);
+		rx_path_memory_usage += (rxbufpost_alloc_sz * rx_post_active);
 	}
 
 	rx_cmpl_active = dhd_prot_get_d2h_rx_cpln_active(dhdp);
 	if (rx_cmpl_active != 0) {
-		rx_path_memory_usage += (rxbufpost_sz * rx_cmpl_active);
+		rx_path_memory_usage += (rxbufpost_alloc_sz * rx_cmpl_active);
 	}
 
 	dhdp->rxpath_mem = rx_path_memory_usage;
-	bcm_bprintf(strbuf, "\nrxbufpost_sz: %d rx_post_active: %d rx_cmpl_active: %d "
+	bcm_bprintf(strbuf, "\n rxbufpost_alloc_sz: %d rx_post_active: %d rx_cmpl_active: %d "
 		"emerge_queue_len: %d pend_queue_len: %d napi_queue_len: %d"
 		" process_queue_len: %d\n",
-		rxbufpost_sz, rx_post_active, rx_cmpl_active,
+		rxbufpost_alloc_sz, rx_post_active, rx_cmpl_active,
 		skb_queue_len(&dhd->rx_emerge_queue), skb_queue_len(&dhd->rx_pend_queue),
 		skb_queue_len(&dhd->rx_napi_queue), skb_queue_len(&dhd->rx_process_queue));
 	bcm_bprintf(strbuf, "DHD rx-path memory_usage: %llubytes %lluKB \n",

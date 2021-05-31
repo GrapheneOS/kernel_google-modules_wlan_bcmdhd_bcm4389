@@ -718,21 +718,12 @@ dhd_dbg_verboselog_handler(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 		DHD_MSGTRACE_LOG(("EVENT_LOG_ROM[0x%08x]: %s",
 				log_ptr[plog_hdr->count - 1], fmtstr_loc_buf));
 
-		/* Add newline if missing */
 		if (!strlen(fmtstr_loc_buf)) {
-			DHD_ERROR(("##### ROM_PRINTF\n"));
-			DHD_ERROR(("##### tag:%u cnt:%u fmt_num_raw:%u fmt_num:%u "
-					"len:%u ext_hdr:%d bin:%d\n",
-					plog_hdr->tag, plog_hdr->count,
-					plog_hdr->fmt_num_raw,
-					plog_hdr->fmt_num, plog_hdr->payload_len,
-					plog_hdr->ext_event_log_hdr,
-					plog_hdr->binary_payload));
-			dhd_prhex("[log_ptr]", (char*)plog_hdr->log_ptr,
-					rom_str_len, DHD_ERROR_VAL);
+			DHD_ERROR(("%s fmt_str_loc_buf len can not be zero\n", __FUNCTION__));
 			return;
 		}
 
+		/* Add newline if missing */
 		if (fmtstr_loc_buf[strlen(fmtstr_loc_buf) - 1] != '\n')
 			DHD_MSGTRACE_LOG(("\n"));
 
@@ -1038,6 +1029,7 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 	uint min_expected_len = 0;
 	uint16 len_chk = 0;
 	uint32 datalen_bak = datalen;
+	uint16 block_hdr_len;
 
 	BCM_REFERENCE(ecntr_pushed);
 	BCM_REFERENCE(rtt_pushed);
@@ -1127,6 +1119,7 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 		ltoh16(*((uint16 *)(data)))));
 
 	logset = ltoh32(*((uint32 *)(data + 4)));
+	block_hdr_len = ltoh16(*((uint16 *)(data)));
 
 	if (logset >= event_log_max_sets) {
 		DHD_ERROR(("%s logset: %d max: %d out of range queried: %d\n",
@@ -1164,12 +1157,11 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 		log_hdr = (event_log_hdr_t *)(data + datalen - log_hdr_len);
 		memset(&prcd_log_hdr, 0, sizeof(prcd_log_hdr));
 		if (!dhd_dbg_process_event_log_hdr(log_hdr, &prcd_log_hdr)) {
-			DHD_ERROR(("%s: Error while parsing event log header\n",
-				__FUNCTION__));
-			DHD_ERROR(("##### data:%p datalen:%u datalen_bak:%u\n",
-				event_data, datalen, datalen_bak));
-			dhd_prhex("[event_data]", (char*)event_data, datalen_bak,
-				DHD_ERROR_VAL);
+			DHD_ERROR(("%s: Error while parsing event log header "
+				"set:%u block:%u block_hdr_len:%d "
+				"datalen:%u cur_datalen:%u msgtrace_hdr_present:%d\n",
+				__FUNCTION__, logset, block, block_hdr_len,
+				datalen_bak, datalen, msgtrace_hdr_present));
 		}
 
 		/* skip zero padding at end of frame */

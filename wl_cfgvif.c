@@ -1584,6 +1584,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	u32 bw = WL_CHANSPEC_BW_20;
 	s32 err = BCME_OK;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	wl_ap_oper_data_t ap_oper_data = {0};
 #if defined(CUSTOM_SET_CPUCORE) || defined(APSTA_RESTRICTED_CHANNEL) || \
 	defined(SUPPORT_AP_INIT_BWCONF)
 	dhd_pub_t *dhd =  (dhd_pub_t *)(cfg->pub);
@@ -1591,6 +1592,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 #if defined(SUPPORT_AP_INIT_BWCONF)
 	u32 configured_bw;
 #endif /* SUPPORT_AP_INIT_BWCONF */
+
 	dev = ndev_to_wlc_ndev(dev, cfg);
 	chspec = wl_freq_to_chanspec(chan->center_freq);
 	WL_ERR(("netdev_ifidx(%d) chspec(%x) chan_type(%d) "
@@ -1609,6 +1611,30 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 		return -ENOTSUPP;
 	}
 #endif /* WL_SOFTAP_6G */
+
+	/* Check whether AP is already operational */
+	wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	if (ap_oper_data.count >= MAX_AP_IFACES) {
+		WL_ERR(("ACS request in multi AP case!! count:%d\n",
+			ap_oper_data.count));
+		return -EINVAL;
+	}
+
+	if (ap_oper_data.count == 1) {
+		chanspec_t ch = ap_oper_data.iface[0].chspec;
+		u16 ap_band, incoming_band;
+
+		/* Single AP case. Bring up the AP in the other band */
+		ap_band = CHSPEC_TO_WLC_BAND(ch);
+		incoming_band = CHSPEC_TO_WLC_BAND(chspec);
+		WL_INFORM_MEM(("AP operational in band:%d and incoming band:%d\n",
+			ap_band, incoming_band));
+		/* if incoming and operational AP band is same, it is invalid case */
+		if (ap_band == incoming_band) {
+			WL_ERR(("DUAL AP not allowed on same band\n"));
+			return -ENOTSUPP;
+		}
+	}
 
 #ifdef NOT_YET
 	switch (channel_type) {
@@ -1632,7 +1658,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	 * - 2.4GHz Channel: CH1 - CH13
 	 * - 5GHz Channel: CH149 (it depends on the country code)
 	 * If the Android framework sent invaild channel configuration
-	 * to DHD, driver should change the channel which is sutible for
+	 * to DHD, driver should change the channel which is suitable for
 	 * STA/SoftAP concurrent mode.
 	 * - Set operating channel to CH1 (default 2.4GHz channel for
 	 *   restricted APSTA mode) if STA interface was associated to
@@ -3600,22 +3626,25 @@ wl_cfg80211_start_ap(
 		if (err) {
 			WL_ERR(("Disabling NDO Failed %d\n", err));
 		}
-		/* Disable packet filter */
-		if (dhd->early_suspended) {
-			WL_ERR(("Disable pkt_filter\n"));
-#ifdef PKT_FILTER_SUPPORT
-			dhd_enable_packet_filter(0, dhd);
-#endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-			dhd_dev_apf_disable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
-		}
 #endif /* BCMDONGLEHOST */
 	} else {
 		/* only AP or GO role need to be handled here. */
 		err = -EINVAL;
 		goto fail;
 	}
+
+#ifdef BCMDONGLEHOST
+	/* Disable packet filter */
+	if (dhd->early_suspended) {
+		WL_ERR(("Disable pkt_filter\n"));
+#ifdef PKT_FILTER_SUPPORT
+		dhd_enable_packet_filter(0, dhd);
+#endif /* PKT_FILTER_SUPPORT */
+#ifdef APF
+		dhd_dev_apf_disable_filter(dhd_linux_get_primary_netdev(dhd));
+#endif /* APF */
+	}
+#endif /* BCMDONGLEHOST */
 
 	/* disable TDLS */
 #ifdef WLTDLS
@@ -3729,21 +3758,24 @@ fail:
 			if (wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) == 0) {
 				dhd->op_mode &= ~DHD_FLAG_HOSTAP_MODE;
 			}
-			/* Enable packet filter */
-			if (dhd->early_suspended) {
-				WL_ERR(("Enable pkt_filter\n"));
-#ifdef PKT_FILTER_SUPPORT
-				dhd_enable_packet_filter(1, dhd);
-#endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-				dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
-			}
 #ifdef DISABLE_WL_FRAMEBURST_SOFTAP
 			wl_cfg80211_set_frameburst(cfg, TRUE);
 #endif /* DISABLE_WL_FRAMEBURST_SOFTAP */
 #endif /* BCMDONGLEHOST */
 		}
+#ifdef BCMDONGLEHOST
+		/* Enable packet filter */
+		if (dhd->early_suspended) {
+			WL_ERR(("Enable pkt_filter\n"));
+#ifdef PKT_FILTER_SUPPORT
+			dhd_enable_packet_filter(1, dhd);
+#endif /* PKT_FILTER_SUPPORT */
+#ifdef APF
+			dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
+#endif /* APF */
+		}
+#endif /* BCMDONGLEHOST */
+
 #ifdef WLTDLS
 		if (bssidx == 0) {
 			/* Since AP creation failed, re-enable TDLS */
@@ -3829,6 +3861,19 @@ wl_cfg80211_stop_ap(
 		WL_ERR(("bss down error %d\n", err));
 	}
 
+#ifdef BCMDONGLEHOST
+	/* Enable packet filter */
+	if (dhd->early_suspended) {
+		WL_ERR(("Enable pkt_filter\n"));
+#ifdef PKT_FILTER_SUPPORT
+		dhd_enable_packet_filter(1, dhd);
+#endif /* PKT_FILTER_SUPPORT */
+#ifdef APF
+		dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
+#endif /* APF */
+	}
+#endif /* BCMDONGLEHOST */
+
 	if (dev_role == NL80211_IFTYPE_AP) {
 		/* Clear the security settings on the Interface */
 		err = wldev_iovar_setint(dev, "wsec", 0);
@@ -3849,16 +3894,6 @@ wl_cfg80211_stop_ap(
 		wl_cfg80211_set_frameburst(cfg, TRUE);
 #endif /* DISABLE_WL_FRAMEBURST_SOFTAP */
 #endif /* BCMDONGLEHOST */
-		/* Enable packet filter */
-		if (dhd->early_suspended) {
-			WL_ERR(("Enable pkt_filter\n"));
-#ifdef PKT_FILTER_SUPPORT
-			dhd_enable_packet_filter(1, dhd);
-#endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-			dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
-		}
 
 		if (is_rsdb_supported == 0) {
 			/* For non-rsdb chips, we use stand alone AP. Do wl down on stop AP */
@@ -6700,6 +6735,8 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_roam_conf_t state)
 {
 	u32 connected_ifaces = wl_get_drv_status_all(cfg, CONNECTED);
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+	u32 ap_active = 0;
 
 	WL_DBG_MEM(("Enter. state:%d\n", state));
 
@@ -6713,6 +6750,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		return;
 	}
 
+	ap_active = (dhd->op_mode & DHD_FLAG_HOSTAP_MODE);
 	/*
 	 * We support roam only on one STA interface at a time (meant for internet
 	 * traffic. For ROAM enable cases, if more than one STA interface is in
@@ -6732,7 +6770,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	} else if (state == ROAM_CONF_ROAM_ENAB_REQ) {
 		struct net_device *roam_ndev = dev;
 		cfg->disable_fw_roam = FALSE;
-		if (connected_ifaces > 1) {
+		if ((connected_ifaces > 1) && !ap_active) {
 			WL_DBG_MEM(("Roam enable with more than one interface connected.\n"));
 			/* If roam enable comes with > 1 iface connected, enable it on primary */
 			if (!cfg->inet_ndev) {
@@ -6746,7 +6784,6 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_roam_off_config(roam_ndev, FALSE);
 		return;
 	}
-
 
 	if (cfg->disable_fw_roam) {
 		/* Framework has disabled roam, don't change roam states within the DHD */
@@ -6767,7 +6804,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 
 #ifdef WL_DUAL_APSTA
 	if ((state == ROAM_CONF_ASSOC_REQ) &&
-			(connected_ifaces >= 1))  {
+			(connected_ifaces >= 1) && !ap_active)  {
 		/* If we already have another STA connected, disable ROAM
 		 * on both STA interfaces. Enable it back from linkdown or
 		 * setPrimarySta context.

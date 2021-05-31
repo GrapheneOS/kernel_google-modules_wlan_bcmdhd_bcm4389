@@ -300,11 +300,7 @@ struct resource dhd_wlan_resources = {
 	.start	= 0, /* Dummy */
 	.end	= 0, /* Dummy */
 	.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_SHAREABLE |
-#ifdef CONFIG_BCMDHD_PCIE
-	IORESOURCE_IRQ_HIGHEDGE,
-#else
 	IORESOURCE_IRQ_HIGHLEVEL,
-#endif /* CONFIG_BCMDHD_PCIE */
 };
 EXPORT_SYMBOL(dhd_wlan_resources);
 

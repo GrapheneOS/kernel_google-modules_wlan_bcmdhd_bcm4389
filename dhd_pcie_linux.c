@@ -1202,8 +1202,6 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 #else
 	DHD_RPM(("%s: Enter\n", __FUNCTION__));
 #endif /* CUSTOMER_HW4_DEBUG */
-	dev->state_saved = TRUE;
-	pci_restore_state(dev);
 
 	/* Resture back current bar1 window */
 	OSL_PCI_WRITE_CONFIG(pch->bus->osh, PCI_BAR1_WIN, 4, pch->bus->curr_bar1_win);
@@ -1224,6 +1222,10 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 		DHD_CONS_ONLY(("%s:pci_set_power_state error %d \n", __FUNCTION__, err));
 		goto out;
 	}
+
+	dev->state_saved = TRUE;
+	pci_restore_state(dev);
+
 	BCM_REFERENCE(pch);
 	dhdpcie_suspend_dump_cfgregs(pch->bus, "AFTER_EP_RESUME");
 
@@ -2370,7 +2372,7 @@ dhdpcie_start_host_dev(dhd_bus_t *bus)
 		return BCME_ERROR;
 	}
 
-	dhd_plat_pcie_resume(bus->dhd->plat_info);
+	ret = dhd_plat_pcie_resume(bus->dhd->plat_info);
 
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
@@ -2808,6 +2810,7 @@ void dhdpcie_oob_intr_set(dhd_bus_t *bus, bool enable)
 static irqreturn_t wlan_oob_irq_isr(int irq, void *data)
 {
 	dhd_bus_t *bus = (dhd_bus_t *)data;
+	dhdpcie_oob_intr_set(bus, FALSE);
 	DHD_TRACE(("%s: IRQ ISR\n", __FUNCTION__));
 	bus->last_oob_irq_isr_time = OSL_LOCALTIME_NS();
 	return IRQ_WAKE_THREAD;
@@ -2818,11 +2821,11 @@ static irqreturn_t wlan_oob_irq(int irq, void *data)
 {
 	dhd_bus_t *bus;
 	bus = (dhd_bus_t *)data;
-	dhdpcie_oob_intr_set(bus, FALSE);
 #ifdef DHD_USE_PCIE_OOB_THREADED_IRQ
 	DHD_TRACE(("%s: IRQ Thread\n", __FUNCTION__));
 	bus->last_oob_irq_thr_time = OSL_LOCALTIME_NS();
 #else
+	dhdpcie_oob_intr_set(bus, FALSE);
 	DHD_TRACE(("%s: IRQ ISR\n", __FUNCTION__));
 	bus->last_oob_irq_isr_time = OSL_LOCALTIME_NS();
 #endif /* DHD_USE_PCIE_OOB_THREADED_IRQ */

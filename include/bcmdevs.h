@@ -129,6 +129,7 @@
 #define BCM4378_D11AX5G_ID	0x4427		/* 4378 802.11ax 5G device */
 
 #define BCM4381_D11AX_ID	0x4446		/* 4381 802.11ax dualband device */
+#define BCM4382_D11AX_ID	0x4447		/* 4382 802.11ax dualband device */
 
 #define BCM4387_D11AX_ID	0x4433		/* 4387 802.11ax dualband device */
 #define BCM4388_D11AX_ID	0x4434		/* 4388 802.11ax dualband device */
@@ -183,6 +184,7 @@
 #define BCM4377_CHIP_ID		0x4377          /* 4377 chipcommon chipid */
 #define BCM4378_CHIP_ID		0x4378          /* 4378 chipcommon chipid */
 #define BCM4381_CHIP_ID		0x4381          /* 4381 chipcommon chipid */
+#define BCM4382_CHIP_ID		0x4382          /* 4382 chipcommon chipid */
 #define BCM4385_CHIP_ID		0x4385          /* 4385 chipcommon chipid */
 #define BCM4387_CHIP_ID		0x4387          /* 4387 chipcommon chipid */
 #define BCM4388_CHIP_ID		0x4388          /* 4388 chipcommon chipid */
@@ -201,6 +203,9 @@
 
 #define BCM4381_CHIP(chipid)	(CHIPID(chipid) == BCM4381_CHIP_ID)
 #define BCM4381_CHIP_GRPID	BCM4381_CHIP_ID
+
+#define BCM4382_CHIP(chipid)	(CHIPID(chipid) == BCM4382_CHIP_ID)
+#define BCM4382_CHIP_GRPID	BCM4382_CHIP_ID
 
 #define BCM4385_CHIP(chipid)	(CHIPID(chipid) == BCM4385_CHIP_ID)
 #define BCM4385_CHIP_GRPID	BCM4385_CHIP_ID

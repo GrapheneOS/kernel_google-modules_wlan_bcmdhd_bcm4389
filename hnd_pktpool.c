@@ -438,11 +438,14 @@ pktpool_fill(osl_t *osh, pktpool_t *pktp, bool minimal)
 	if (HND_PKTPOOL_MUTEX_ACQUIRE(&pktp->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return BCME_ERROR;
 
-#ifdef BCMRXDATAPOOL
-	ASSERT((pktp->max_pkt_bytes != 0) || (pktp->type == lbuf_rxfrag));
-#else
-	ASSERT(pktp->max_pkt_bytes != 0);
-#endif /* BCMRXDATAPOOL */
+#if defined(BCMRXDATAPOOL) || defined(URB)
+	if (BCMRXDATAPOOL_ENAB() || URB_ENAB()) {
+		ASSERT((pktp->max_pkt_bytes != 0) || (pktp->type == lbuf_rxfrag));
+	} else
+#endif /* BCMRXDATAPOOL || URB */
+	{
+		ASSERT(pktp->max_pkt_bytes != 0);
+	}
 
 	maxlen = pktp->maxlen;
 	psize = minimal ? (maxlen >> 2) : maxlen;
@@ -756,6 +759,54 @@ pkpool_haddr_avail_register_cb(pktpool_t *pktp, pktpool_cb_t cb, void *arg)
 
 	return 0;
 }
+
+#ifdef URB
+/**
+ * @brief API to register the callback which gets invoked when Rx data buffer
+ * which is part of URB memory is freed while rxfrag is being freed.
+ * It is used to increment rd_ptr of URB HW in mac.
+ *
+ * @param[in] pktp Pointer to rxfrag pool
+ * @param[in] cb Callback function that needs to get registered
+ * @param[in] arg Argument that is passed to this callback while invocation
+ *
+ * @return Returns error status
+ */
+int
+pkpool_rxurb_register_cb(pktpool_t *pktp, pktpool_rxurb_cb_t cb, void *arg)
+{
+
+	ASSERT(cb != NULL);
+
+	pktp->dmarxurb.cb = cb;
+	pktp->dmarxurb.arg = arg;
+
+	return BCME_OK;
+}
+
+/**
+ * @brief API to register the callback which gets invoked during rxfrag free
+ * to remove rxcplid and host buffer is not used up in rxpath and during rxfill
+ * to post host buffers to dma rx fifo0
+ *
+ * @param[in] pktp Pointer to rxfrag pool
+ * @param[in] cb Callback function that needs to get registered
+ * @param[in] arg Argument that is passed to this callback while invocation
+ *
+ * @return Returns error status
+ */
+int
+pktpool_hostaddr_ext_fill_register(pktpool_t *pktp, pktpool_cb_extn_t cb, void *arg)
+{
+
+	ASSERT(cb != NULL);
+
+	ASSERT(pktp->cb_haddr.cb == NULL);
+	pktp->cb_haddr.cb = cb;
+	pktp->cb_haddr.arg = arg;
+	return BCME_OK;
+}
+#endif /* URB */
 
 /**
  * Registers callback functions.
@@ -1319,20 +1370,40 @@ done:
 void
 BCMFASTPATH(pktpool_nfree)(pktpool_t *pktp, void *head, void *tail, uint count)
 {
-#ifdef BCMRXDATAPOOL
 	void *_head = head;
-#endif /* BCMRXDATAPOOL */
+
+#ifdef URB
+	if (URB_ENAB() && count && PKT_IS_RX_PKT(OSH_NULL, head)) {
+		pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg, PKTHEAD(NULL, head),
+				PKTEND(head) - PKTHEAD(NULL, head));
+		PKT_CLR_RX_PKT(OSH_NULL, head);
+	}
+#endif /* URB */
 
 	if (count > 1) {
 		pktp->avail += (count - 1);
-
+		if (BCMRXDATAPOOL_ENAB() || URB_ENAB()) {
+			while (--count) {
+				_head = PKTLINK(_head);
+				ASSERT_FP(_head);
+				if (URB_ENAB()) {
+#ifdef URB
+					if (PKT_IS_RX_PKT(OSH_NULL, _head)) {
+						pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg,
+								PKTHEAD(NULL, _head),
+								PKTEND(_head) -
+								PKTHEAD(NULL, _head));
+						PKT_CLR_RX_PKT(OSH_NULL, _head);
+					}
+#endif /* URB */
+				} else {
 #ifdef BCMRXDATAPOOL
-		while (--count) {
-			_head = PKTLINK(_head);
-			ASSERT_FP(_head);
-			pktpool_enq(pktpool_shared_rxdata, PKTDATA(OSH_NULL, _head));
-		}
+					pktpool_enq(pktpool_shared_rxdata,
+						PKTDATA(OSH_NULL, _head));
 #endif /* BCMRXDATAPOOL */
+				}
+			}
+		}
 
 		PKTSETFREELIST(tail, pktp->freelist);
 		pktp->freelist = PKTLINK(head);
@@ -1353,9 +1424,23 @@ BCMPOSTTRAPFASTPATH(pktpool_free)(pktpool_t *pktp, void *p)
 	/* pktpool_stop_trigger(pktp, p); */
 #endif
 
+#ifdef URB
+	if (URB_ENAB()) {
+		if (PKTISRXFRAG(OSH_NULL, p)) {
+			pktp->cb_haddr.cb(pktp, pktp->cb_haddr.arg, p, REMOVE_RXCPLID, NULL);
+			PKTRESETRXFRAG(OSH_NULL, p);
+		}
+		if (PKT_IS_RX_PKT(OSH_NULL, p)) {
+			pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg, PKTHEAD(OSH_NULL, p),
+					PKTEND(p) - PKTHEAD(OSH_NULL, p));
+			PKT_CLR_RX_PKT(OSH_NULL, p);
+		}
+	}
+#endif /* URB */
+
 #ifdef BCMRXDATAPOOL
 	/* Free rx data buffer to rx data buffer pool */
-	if (PKT_IS_RX_PKT(OSH_NULL, p)) {
+	if (BCMRXDATAPOOL_ENAB() && PKT_IS_RX_PKT(OSH_NULL, p)) {
 		pktpool_t *_pktp = pktpool_shared_rxdata;
 		if (PKTISRXFRAG(OSH_NULL, p)) {
 			_pktp->cbext.cb(_pktp, _pktp->cbext.arg, p, REMOVE_RXCPLID, NULL);
@@ -1640,7 +1725,7 @@ hnd_pktpool_init(osl_t *osh)
 		err = BCME_NOMEM;
 		goto error;
 	}
-#endif
+#endif /* BCMRXDATAPOOL */
 
 	/*
 	 * At this early stage, there's not enough memory to allocate all
@@ -1741,7 +1826,9 @@ hnd_pktpool_init(osl_t *osh)
 #endif /* APP */
 #endif /* RESVFRAGPOOL */
 #if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
-#if defined(BCMRXDATAPOOL) && !defined(BCMRXDATAPOOL_DISABLED)
+#if defined(URB) && !defined(URB_DISABLED)
+	pktsz = 0;
+#elif defined(BCMRXDATAPOOL) && !defined(BCMRXDATAPOOL_DISABLED)
 	n = 1;
 	if ((err = pktpool_init(osh, pktpool_shared_rxdata, &n, RXPKTFRAGDATASZ, TRUE, lbuf_rxdata,
 			FALSE, 0, 0)) != BCME_OK) {
@@ -1835,7 +1922,7 @@ hnd_pktpool_deinit(osl_t *osh)
 		hnd_free(pktpool_shared_rxdata);
 		pktpool_shared_rxdata = (pktpool_t *)NULL;
 	}
-#endif
+#endif /* BCMRXDATAPOOL */
 
 #if defined(BCMFRAGPOOL) && !defined(BCMFRAGPOOL_DISABLED)
 	if (pktpool_shared_lfrag != NULL) {
@@ -1957,7 +2044,7 @@ hnd_pktpool_refill(bool minimal)
 	if (POOL_ENAB(pktpool_shared_rxdata)) {
 		pktpool_fill(pktpool_osh, pktpool_shared_rxdata, minimal);
 	}
-#endif
+#endif /* BCMRXDATAPOOL */
 
 #if defined(BCMFRAGPOOL) && defined(BCMRESVFRAGPOOL)
 	if (resv_pool_info) {

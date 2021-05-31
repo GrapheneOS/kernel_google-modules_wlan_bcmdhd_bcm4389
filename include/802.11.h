@@ -1532,7 +1532,7 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define	DOT11_SC_INVALID_FTIE		55	/* Association denied due to invalid FTIE */
 
 /* Requested TCLAS processing is not supported by the AP or PCP. */
-#define	DOT11_SC_REQUESETD_TCLAS_NOT_SUPPORTED			56u
+#define	DOT11_SC_REQUESTED_TCLAS_NOT_SUPPORTED_BY_AP		56u
 
 /* The AP or PCP has insufficient TCLAS processing resources to satisfy the request. */
 #define DOT11_SC_INSUFFICIENT_TCLAS_PROCESSING_RESOURCES	57u
@@ -1552,9 +1552,9 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_SC_INVALID_FINITE_CYCLIC_GRP 77	/* Invalid contents of RSNIE */
 #define DOT11_SC_TRANSMIT_FAILURE	79      /* transmission failure */
 
-#define DOT11_SC_TCLAS_RESOURCES_EXHAUSTED 81u	/* TCLAS resources exhausted */
-
-#define DOT11_SC_TCLAS_PROCESSING_TERMINATED 97	/* End traffic classification */
+#define DOT11_SC_REQUESTED_TCLAS_NOT_SUPPORTED	80u	/* Requested TCLAS not supported */
+#define DOT11_SC_TCLAS_RESOURCES_EXHAUSTED	81u	/* TCLAS resources exhausted */
+#define DOT11_SC_TCLAS_PROCESSING_TERMINATED	97u	/* End traffic classification */
 
 #define DOT11_SC_ASSOC_VHT_REQUIRED	104	/* Association denied because the requesting
 						 * station does not support VHT features.
@@ -1900,6 +1900,7 @@ enum dot11_tag_ids {
 
 /* BSS Membership Selector parameters
  * 802.11-2016 (and 802.11ax-D1.1), Sec 9.4.2.3
+ * 802.11-2020, Sec 9.4.2.3
  * These selector values are advertised in Supported Rates and Extended Supported Rates IEs
  * in the supported rates list with the Basic rate bit set.
  * Constants below include the basic bit.
@@ -1909,7 +1910,7 @@ enum dot11_tag_ids {
 #define DOT11_BSS_MEMBERSHIP_HE		0xFD	/* Basic 0x80 + 125, HE Required to join */
 /* Draft P802.11be D0.1 - TBD */
 #define DOT11_BSS_MEMBERSHIP_EHT	0xFC	/* Basic 0x80 + 124, EHT Required to join */
-#define DOT11_BSS_SAE_HASH_TO_ELEMENT	123u	/* SAE Hash-to-element Required to join */
+#define DOT11_BSS_SAE_HASH_TO_ELEMENT	0xFB  /* Basic 0x80 + 123, SAE Hash-to-element */
 
 /* TS Delay element offset & size */
 #define DOT11_MGN_TS_DELAY_LEN		4	/* length of TS DELAY IE */
@@ -2824,15 +2825,18 @@ BWL_PRE_PACKED_STRUCT struct dot11_scs_status_duple {
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_scs_status_duple dot11_scs_status_duple_t;
 
-/** SCS Response frame, refer section 9.4.18.7 in the spec IEEE802.11REVmd */
+/** SCS Response frame, refer section 9.6.18.3 in 802.11-2020.
+ * Currently, an approval(doc: 11-21/668r8) is pending in the IEEE802.11REVme.
+ */
 BWL_PRE_PACKED_STRUCT struct dot11_scs_res {
-	uint8  category;			/* ACTION_RAV_STREAMING (19) */
-	uint8  robust_action;			/* action: SCS Res (1) */
-	uint8  dialog_token;			/* To identify the SCS request and response */
+	uint8  category;	/* ACTION_RAV_STREAMING (19) */
+	uint8  robust_action;	/* action: SCS Res (1) */
+	uint8  dialog_token;	/* To identify the SCS request and response */
+	uint8  count;		/* Specifies the number of items in the scs_status_list */
 	dot11_scs_status_duple_t scs_status_list[];
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_scs_res dot11_scs_res_t;
-#define DOT11_SCS_RES_HDR_LEN		3u	/* Fixed length */
+#define DOT11_SCS_RES_HDR_LEN		4u	/* Fixed length */
 
 /* SCS subelement */
 BWL_PRE_PACKED_STRUCT struct dot11_scs_subelement {
@@ -4451,10 +4455,10 @@ typedef	struct brcm_ie brcm_ie_t;
 #define BRCM_IE_LEGACY_AES_VER	1u	/* BRCM IE legacy AES version */
 
 /* brcm_ie flags */
-#define	BRF_ABCAP		0x1	/* afterburner is obsolete,  defined for backward compat */
-#define	BRF_ABRQRD		0x2	/* afterburner is obsolete,  defined for backward compat */
-#define	BRF_LZWDS		0x4	/* lazy wds enabled */
-#define	BRF_BLOCKACK		0x8	/* BlockACK capable */
+#define	BRF_ABCAP		0x01	/* afterburner is obsolete,  defined for backward compat */
+#define	BRF_ABRQRD		0x02	/* afterburner is obsolete,  defined for backward compat */
+#define	BRF_LZWDS		0x04	/* lazy wds enabled */
+#define	BRF_BLOCKACK		0x08	/* BlockACK capable */
 #define BRF_ABCOUNTER_MASK	0xf0	/* afterburner is obsolete,  defined for backward compat */
 #define BRF_PROP_11N_MCS	0x10	/* re-use afterburner bit */
 #define BRF_MEDIA_CLIENT	0x20	/* re-use afterburner bit to indicate media client device */
@@ -4468,21 +4472,21 @@ typedef	struct brcm_ie brcm_ie_t;
 	(!((brcm_ie)->flags & BRF_ABCAP) && ((brcm_ie)->flags & BRF_PROP_11N_MCS))
 
 /* brcm_ie flags1 */
-#define	BRF1_AMSDU		0x1	/* A-MSDU capable */
-#define	BRF1_WNM		0x2	/* WNM capable */
-#define BRF1_WMEPS		0x4	/* AP is capable of handling WME + PS w/o APSD */
-#define BRF1_PSOFIX		0x8	/* AP has fixed PS mode out-of-order packets */
+#define	BRF1_AMSDU		0x01	/* A-MSDU capable */
+#define	BRF1_WNM		0x02	/* WNM capable */
+#define BRF1_WMEPS		0x04	/* AP is capable of handling WME + PS w/o APSD */
+#define BRF1_PSOFIX		0x08	/* AP has fixed PS mode out-of-order packets */
 #define	BRF1_RX_LARGE_AGG	0x10	/* device can rx large aggregates */
 #define BRF1_RFAWARE_DCS	0x20    /* RFAWARE dynamic channel selection (DCS) */
 #define BRF1_SOFTAP		0x40    /* Configure as Broadcom SOFTAP */
 #define BRF1_DWDS		0x80    /* DWDS capable */
 
 /* brcm_ie flags2 */
-#define BRF2_DTPC_TX		0x1u	/* DTPC: DTPC TX Cap */
-#define BRF2_DTPC_RX		0x2u	/* DTPC: DTPC RX Cap */
-#define BRF2_DTPC_TX_RX		0x3u	/* DTPC: Enable Both DTPC TX and RX Cap */
-#define BRF2_DTPC_NONBF		0x4u	/* DTPC: Enable DTPC for NON-TXBF */
-#define BRF2_TWT_RESP_CAP	0x8u	/* TWT responder Cap for Brcm Softap
+#define BRF2_DTPC_TX		0x01u	/* DTPC: DTPC TX Cap */
+#define BRF2_DTPC_RX		0x02u	/* DTPC: DTPC RX Cap */
+#define BRF2_DTPC_TX_RX		0x03u	/* DTPC: Enable Both DTPC TX and RX Cap */
+#define BRF2_DTPC_NONBF		0x04u	/* DTPC: Enable DTPC for NON-TXBF */
+#define BRF2_TWT_RESP_CAP	0x08u	/* TWT responder Cap for Brcm Softap
 					 * only brcm sta parse this
 					 */
 #define BRF2_TWT_REQ_CAP	0x10u	/* TWT requester Cap for BRCM STA

@@ -1648,4 +1648,29 @@ count_trailing_zeros(uint32 val)
 	(sizeof((list)->last_var_len_field[0]) * (size_t)(num_elems)))
 
 int buf_shift_right(uint8 *buf, uint16 len, uint8 bits);
+
+#ifdef DONGLEBUILD
+extern int print_string(const char *str);
+
+#define _NUM_ARGS_FN(fn, _1, _2, _3, _4, _5, _6, _7, _8, _9, \
+	       _A, _B, _C, _D, _E, _F, N, ...) fn ## N
+#define NUM_ARGS_FN(fn, ...)	\
+	_NUM_ARGS_FN(fn, __VA_ARGS__, x, x, x, x, x, x, x, x, x, x, x, x, x, x, 0)
+
+#define FIRST_ARG(a1, ...)	a1
+#define NEXT_ARGS(a1, ...)	__VA_ARGS__
+
+#define printf_ps_0(str, ...)	print_string(str)
+#define printf_ps_x(str, ...)	printf(str, __VA_ARGS__)
+
+#define posttrap_printf(...)	\
+	do { \
+		static const char BCMPOST_TRAP_RODATA(p_str)[] = FIRST_ARG(__VA_ARGS__); \
+		NUM_ARGS_FN(printf_ps_, __VA_ARGS__)(p_str, NEXT_ARGS(__VA_ARGS__)); \
+		BCM_REFERENCE(p_str); \
+	} while (0)
+
+#else
+#define posttrap_printf(...)		printf(__VA_ARGS__)
+#endif /* DONGLEBUILD */
 #endif	/* _bcmutils_h_ */

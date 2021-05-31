@@ -67,6 +67,7 @@ extern int dhd_bus_txdata(struct dhd_bus *bus, void *txp);
 
 #ifdef BCMPCIE
 extern uint16 dhd_prot_get_rxbufpost_sz(dhd_pub_t *dhd);
+extern uint16 dhd_prot_get_rxbufpost_alloc_sz(dhd_pub_t *dhd);
 extern uint16 dhd_prot_get_h2d_rx_post_active(dhd_pub_t *dhd);
 extern uint16 dhd_prot_get_d2h_rx_cpln_active(dhd_pub_t *dhd);
 extern void dhdpcie_cto_recovery_handler(dhd_pub_t *dhd);

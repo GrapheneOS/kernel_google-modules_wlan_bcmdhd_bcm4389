@@ -32,6 +32,7 @@
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #endif /* DHD_PCIE_RUNTIMEPM */
+#include <fwpkg_utils.h>
 
 /* defines */
 #define PCIE_SHARED_VERSION		PCIE_SHARED_VERSION_7
@@ -554,6 +555,7 @@ typedef struct dhd_bus {
 	dhd_pcie_link_state_type_t link_state;
 	bool dar_err_set;
 	uint32 ptm_ctrl_reg;
+	fwpkg_info_t fwpkg;	/* combined fw package info structure */
 	bool lpm_mode;	/* lpm enabled */
 	bool lpm_keep_in_reset; /* during LPM keep in FLR, if FLR force is enabled */
 	bool lpm_mem_kill; /* kill WLAN memories in LPM */

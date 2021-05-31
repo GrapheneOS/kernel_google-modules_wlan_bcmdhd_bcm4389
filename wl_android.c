@@ -296,6 +296,38 @@ typedef struct android_wifi_af_params {
 
 #define ANDROID_WIFI_AF_PARAMS_SIZE sizeof(struct android_wifi_af_params)
 #endif /* WES_SUPPORT */
+
+#define CMD_SETSCANDWELLTIME		"SET_DWELL_TIME"	/* Set Scan Dwell Times */
+/* Convert to wl_custom_scan_time_type for CUSTOMER_SCAN_TIMEOUT_SETTING */
+enum {
+	WL_CUSTOM_SET_DWELL_ASSOC_TIME = 0,
+	WL_CUSTOM_SET_DWELL_UNASSOC_TIME,
+	WL_CUSTOM_SET_DWELL_PASSIVE_TIME,
+	WL_CUSTOM_SET_DWELL_HOME_TIME,
+	WL_CUSTOM_SET_DWELL_HOME_AWAY_TIME,
+	WL_CUSTOM_SET_DWELL_MAX
+};
+
+typedef struct android_custom_dwell_time {
+	char cmd[64];
+	int param;		/* Default scan dwell time */
+	int type;
+} android_custom_dwell_time_t;
+
+static android_custom_dwell_time_t custom_scan_dwell[] =
+{
+	{"scan_passive_time", DHD_SCAN_PASSIVE_TIME, WL_CUSTOM_SET_DWELL_PASSIVE_TIME},
+	{"scan_home_time", DHD_SCAN_HOME_TIME, WL_CUSTOM_SET_DWELL_HOME_TIME},
+	{"scan_assoc_time", DHD_SCAN_ASSOC_ACTIVE_TIME, WL_CUSTOM_SET_DWELL_ASSOC_TIME},
+	{"scan_home_away_time", DHD_SCAN_HOME_AWAY_TIME, WL_CUSTOM_SET_DWELL_HOME_AWAY_TIME},
+	/* {"scan_unassoc_time", DHD_SCAN_UNASSOC_ACTIVE_TIME, WL_CUSTOM_SET_DWELL_UNASSOC_TIME}, */
+};
+
+/* wpa_cli DRIVER SET_DWELL_TIME W X Y Z */
+#define SET_DWELL_TIME_CNT	(4u)
+#define CUSTOM_SCAN_DWELL_LIST_CNT	\
+	(sizeof(custom_scan_dwell) / sizeof(android_custom_dwell_time_t))
+
 #ifdef SUPPORT_AMPDU_MPDU_CMD
 #define CMD_AMPDU_MPDU		"AMPDU_MPDU"
 #endif /* SUPPORT_AMPDU_MPDU_CMD */
@@ -697,6 +729,7 @@ static const wl_natoe_sub_cmd_t natoe_cmd_list[] = {
 #define CMD_TWT_CAPABILITY	"GET_TWT_CAP"
 #define CMD_TWT_GET_STATS	"GET_TWT_STATISTICS"
 #define CMD_TWT_CLR_STATS	"CLEAR_TWT_STATISTICS"
+#define CMD_TWT_SOFTAP_ENABLE	"TWT_SOFTAP_ENABLE"
 #endif /* WL_TWT */
 
 #define CMD_GET_6G_SOFTAP_FREQ_LIST	"GET_6G_SOFTAP_FREQ_LIST"
@@ -1307,7 +1340,8 @@ static int wl_android_set_suspendmode(struct net_device *dev, char *command)
 {
 	int ret = 0;
 
-#if !defined(CONFIG_HAS_EARLYSUSPEND) || !defined(DHD_USE_EARLYSUSPEND)
+#if (!defined(CONFIG_HAS_EARLYSUSPEND) || !defined(DHD_USE_EARLYSUSPEND)) && \
+	!defined(DHD_USE_PM_SLEEP)
 	int suspend_flag;
 
 	suspend_flag = *(command + strlen(CMD_SETSUSPENDMODE) + 1) - '0';
@@ -1318,7 +1352,7 @@ static int wl_android_set_suspendmode(struct net_device *dev, char *command)
 		DHD_INFO(("wl_android_set_suspendmode: Suspend Mode %d\n", suspend_flag));
 	else
 		DHD_ERROR(("wl_android_set_suspendmode: failed %d\n", ret));
-#endif
+#endif /* (!CONFIG_HAS_EARLYSUSPEND || !DHD_USE_EARLYSUSPEND) && !DHD_USE_PM_SLEEP */
 
 	return ret;
 }
@@ -1474,7 +1508,7 @@ static int wl_android_set_csa(struct net_device *dev, char *command)
 {
 	int error = 0;
 	char smbuf[WLC_IOCTL_SMLEN];
-	wl_chan_switch_t csa_arg;
+	wl_chan_switch_t csa_arg = {0, };
 	u32 chnsp = 0;
 	int err = 0;
 
@@ -1548,6 +1582,7 @@ wl_android_set_bcn_li_dtim(struct net_device *dev, char *command)
 {
 	int ret = 0;
 	int dtim;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 	dtim = *(command + strlen(CMD_SETDTIM_IN_SUSPEND) + 1) - '0';
 
@@ -1557,11 +1592,9 @@ wl_android_set_bcn_li_dtim(struct net_device *dev, char *command)
 		return BCME_ERROR;
 	}
 
-	if (!(ret = net_os_set_suspend_bcn_li_dtim(dev, dtim))) {
-		DHD_TRACE(("%s: SET bcn_li_dtim in suspend %d\n",
-			__FUNCTION__, dtim));
-	} else {
-		DHD_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
+	cfg->suspend_bcn_li_dtim = dtim;
+	if (cfg->soft_suspend) {
+		wl_cfg80211_set_suspend_bcn_li_dtim(cfg, dev, TRUE);
 	}
 
 	return ret;
@@ -1572,14 +1605,16 @@ wl_android_set_max_dtim(struct net_device *dev, char *command)
 {
 	int ret = 0;
 	int dtim_flag;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 	dtim_flag = *(command + strlen(CMD_MAXDTIM_IN_SUSPEND) + 1) - '0';
-
-	if (!(ret = net_os_set_max_dtim_enable(dev, dtim_flag))) {
-		DHD_TRACE(("wl_android_set_max_dtim: use Max bcn_li_dtim in suspend %s\n",
+	WL_INFORM(("use MAX bcn_li_dtim in suspend %s\n",
 			(dtim_flag ? "Enable" : "Disable")));
-	} else {
-		DHD_ERROR(("wl_android_set_max_dtim: failed %d\n", ret));
+
+	cfg->max_dtim_enable = dtim_flag ? TRUE : FALSE;
+
+	if (cfg->soft_suspend) {
+		wl_cfg80211_set_suspend_bcn_li_dtim(cfg, dev, TRUE);
 	}
 
 	return ret;
@@ -1591,16 +1626,17 @@ wl_android_set_disable_dtim_in_suspend(struct net_device *dev, char *command)
 {
 	int ret = 0;
 	int dtim_flag;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 	dtim_flag = *(command + strlen(CMD_DISDTIM_IN_SUSPEND) + 1) - '0';
 
-	if (!(ret = net_os_set_disable_dtim_in_suspend(dev, dtim_flag))) {
-		DHD_TRACE(("wl_android_set_disable_dtim_in_suspend: "
+	cfg->disable_dtim_in_suspend = dtim_flag ? TRUE : FALSE;
+	if (cfg->soft_suspend) {
+		wl_cfg80211_set_suspend_bcn_li_dtim(cfg, dev, TRUE);
+	}
+	WL_INFORM_MEM(("wl_android_set_disable_dtim_in_suspend: "
 			"use Disable bcn_li_dtim in suspend %s\n",
 			(dtim_flag ? "Enable" : "Disable")));
-	} else {
-		DHD_ERROR(("wl_android_set_disable_dtim_in_suspend: failed %d\n", ret));
-	}
 
 	return ret;
 }
@@ -3334,21 +3370,6 @@ wl_android_ncho_private_command(struct net_device *net, char *command, int total
 		bytes_written = wl_android_get_full_roam_scan_period(net, command, total_len);
 	} else if (strnicmp(command, CMD_COUNTRYREV_SET, strlen(CMD_COUNTRYREV_SET)) == 0) {
 		bytes_written = wl_android_set_country_rev(net, command);
-#ifdef FCC_PWR_LIMIT_2G
-		if (wldev_iovar_setint(net, "fccpwrlimit2g", FALSE)) {
-			WL_ERR(("fccpwrlimit2g deactivation is failed\n"));
-		} else {
-			WL_ERR(("fccpwrlimit2g is deactivated\n"));
-		}
-#endif /* FCC_PWR_LIMIT_2G */
-#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
-		if (wl_android_set_he_6g_band(net, TRUE) != BCME_OK) {
-			WL_ERR(("%s: 6g band activation is failed\n", __FUNCTION__));
-		} else {
-			WL_ERR(("%s: 6g band is activated\n", __FUNCTION__));
-		}
-#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
-
 	} else if (strnicmp(command, CMD_COUNTRYREV_GET, strlen(CMD_COUNTRYREV_GET)) == 0) {
 		bytes_written = wl_android_get_country_rev(net, command, total_len);
 	} else
@@ -3485,6 +3506,91 @@ wl_android_default_set_scan_params(struct net_device *dev, char *command, int to
 	return error;
 }
 #endif /* SUPPORT_RESTORE_SCAN_PARAMS || WES_SUPPORT  */
+
+static int
+wl_android_set_scan_dwell_times(struct net_device *dev, char *command, int total_len)
+{
+	int error = BCME_OK;
+	int bytes_written = 0;
+	int i = 0, dwell_time = 0;
+	int dwell_times[SET_DWELL_TIME_CNT] = {0};
+
+	WL_DBG_MEM(("Enter. cmd:%s\n", command));
+	if (SET_DWELL_TIME_CNT != CUSTOM_SCAN_DWELL_LIST_CNT) {
+		WL_ERR(("Mismatch TIME_CNT %d, LIST_CNT %lu\n",
+			SET_DWELL_TIME_CNT, CUSTOM_SCAN_DWELL_LIST_CNT));
+		error = BCME_BADLEN;
+		goto exit;
+	}
+
+	if (strlen(command) == strlen(CMD_SETSCANDWELLTIME)) {
+		int buf_avail, len;
+
+		/* Get Scan dwell times */
+		for (i = 0; i < CUSTOM_SCAN_DWELL_LIST_CNT; i++) {
+			error = wldev_iovar_getint(dev, custom_scan_dwell[i].cmd, &dwell_time);
+			if (error) {
+				WL_ERR(("Failed to get %s, error = %d\n", custom_scan_dwell[i].cmd,
+					error));
+				goto exit;
+			}
+			dwell_times[i] = dwell_time;
+		}
+
+		/* Report Scan dwell times */
+		bytes_written = snprintf(command, total_len, "%s", command);
+		buf_avail = total_len - bytes_written;
+		for (i = 0; i < CUSTOM_SCAN_DWELL_LIST_CNT; i++) {
+			len = snprintf(command + bytes_written, buf_avail, " %d", dwell_times[i]);
+			if (len >= buf_avail) {
+				WL_ERR(("Insufficient memory, %d bytes\n", total_len));
+				bytes_written = -1;
+				break;
+			}
+			/* 'buf_avail' decremented by number of bytes written */
+			buf_avail -= len;
+			bytes_written += len;
+		}
+		WL_DBG_MEM(("%s\n", command));
+
+		return bytes_written;
+	} else {
+		char *token, *pos;
+
+		/* Parse Scan dwell times */
+		pos = command + sizeof(CMD_SETSCANDWELLTIME);
+		for (i = 0; i < CUSTOM_SCAN_DWELL_LIST_CNT; i++) {
+			token = strsep((char**)&pos, " ");
+			if (!token) {
+				WL_ERR(("Failed to parse %s\n", custom_scan_dwell[i].cmd));
+				error = -EINVAL;
+				goto exit;
+			}
+
+			/* Set Default scan dwell times if prame is 0 */
+			dwell_times[i] = (bcm_atoi(token) > 0) ? bcm_atoi(token) :
+				custom_scan_dwell[i].param;
+		}
+
+		/* Set scan dwell times */
+		for (i = 0; i < CUSTOM_SCAN_DWELL_LIST_CNT; i++) {
+			error = wldev_iovar_setint(dev, custom_scan_dwell[i].cmd, dwell_times[i]);
+			if (error) {
+				WL_ERR(("Failed to get %s, error = %d\n", custom_scan_dwell[i].cmd,
+					error));
+				goto exit;
+			}
+#ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
+			wl_cfg80211_custom_scan_time(dev,
+				(enum wl_custom_scan_time_type)custom_scan_dwell[i].type,
+				dwell_times[i]);
+#endif /* CUSTOMER_SCAN_TIMEOUT_SETTING */
+		}
+	}
+
+exit:
+	return error;
+}
 
 #ifdef WLTDLS
 int wl_android_tdls_reset(struct net_device *dev)
@@ -11945,6 +12051,53 @@ exit:
 
 	return ret;
 }
+
+static int
+wl_android_twt_softap_enable(struct net_device *ndev, int twt_softap_enable)
+{
+	s32 err = 0;
+	struct bcm_cfg80211 *cfg = NULL;
+	u8 mybuf[WLC_IOCTL_SMLEN] = {0};
+	u8 res_buf[WLC_IOCTL_SMLEN] = {0};
+	u8 *rem = mybuf;
+	u16 rem_len = sizeof(mybuf);
+	wl_twt_resp_cfg_t val;
+
+	if (!ndev) {
+		err = -EINVAL;
+		return err;
+	}
+
+	cfg = wl_get_cfg(ndev);
+	if (!cfg) {
+		err = -EINVAL;
+		return err;
+	}
+
+	/* Enable/disable SoftAP for TWT */
+	bzero(&val, sizeof(val));
+	val.version = WL_TWT_RESP_CFG_VER;
+	val.length = sizeof(val.version) + sizeof(val.length);
+
+	if (twt_softap_enable == 1) {
+		val.twt_resp_enab = 1;
+	}
+
+	err = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_RESP_CONFIG,
+		sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
+	if (err != BCME_OK) {
+		goto exit;
+	}
+
+	err = wldev_iovar_setbuf(ndev, "twt",
+		mybuf, sizeof(mybuf) - rem_len, res_buf, WLC_IOCTL_SMLEN, NULL);
+	if (err < 0) {
+		WL_ERR(("twt softAP enable/disable failed. ret:%d\n", err));
+	}
+
+exit:
+	return wl_android_twt_bcmerr_to_kernel_err(err);
+}
 #endif /* WL_TWT */
 
 static int
@@ -12173,23 +12326,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 #endif /* DHD_BLOB_EXISTENCE_CHECK */
 
 		bytes_written = wl_cfg80211_set_country_code(net, country_code,
-				true, true, revinfo);
-#ifdef CUSTOMER_HW4_PRIVATE_CMD
-#ifdef FCC_PWR_LIMIT_2G
-		if (wldev_iovar_setint(net, "fccpwrlimit2g", FALSE)) {
-			DHD_ERROR(("%s: fccpwrlimit2g deactivation is failed\n", __FUNCTION__));
-		} else {
-			DHD_ERROR(("%s: fccpwrlimit2g is deactivated\n", __FUNCTION__));
-		}
-#endif /* FCC_PWR_LIMIT_2G */
-#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
-		if (wl_android_set_he_6g_band(net, TRUE) != BCME_OK) {
-			DHD_ERROR(("%s: 6g band activation is failed\n", __FUNCTION__));
-		} else {
-			DHD_ERROR(("%s: 6g band is activated\n", __FUNCTION__));
-		}
-#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
-#endif /* CUSTOMER_HW4_PRIVATE_CMD */
+			true, true, revinfo);
 	}
 #endif /* CUSTOMER_SET_COUNTRY */
 #endif /* WL_CFG80211 */
@@ -12247,6 +12384,9 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 			priv_cmd.total_len);
 	}
 #endif /* SUPPORT_RESTORE_SCAN_PARAMS || WES_SUPPORT */
+	else if (strnicmp(command, CMD_SETSCANDWELLTIME, strlen(CMD_SETSCANDWELLTIME)) == 0) {
+		bytes_written = wl_android_set_scan_dwell_times(net, command, priv_cmd.total_len);
+	}
 #ifdef WLTDLS
 	else if (strnicmp(command, CMD_TDLS_RESET, strlen(CMD_TDLS_RESET)) == 0) {
 		bytes_written = wl_android_tdls_reset(net);
@@ -12973,6 +13113,10 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	else if ((strnicmp(command, CMD_TWT_GET_STATS, strlen(CMD_TWT_GET_STATS)) == 0) ||
 		(strnicmp(command, CMD_TWT_CLR_STATS, strlen(CMD_TWT_CLR_STATS)) == 0)) {
 		bytes_written = wl_android_twt_stats(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_TWT_SOFTAP_ENABLE, strlen(CMD_TWT_SOFTAP_ENABLE)) == 0) {
+		int twt_softap_enable = *(command + strlen(CMD_TWT_SOFTAP_ENABLE) + 1) - '0';
+		bytes_written = wl_android_twt_softap_enable(net, twt_softap_enable);
 	}
 #endif /* WL_TWT */
 	else if (strnicmp(command, CMD_GET_6G_SOFTAP_FREQ_LIST,

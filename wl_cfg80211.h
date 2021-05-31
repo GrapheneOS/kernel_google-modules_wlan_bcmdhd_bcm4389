@@ -1038,7 +1038,7 @@ typedef enum wl_roam_conf {
 	ROAM_CONF_LINKDOWN,
 	ROAM_CONF_PRIMARY_STA,
 	ROAM_CONF_ROAM_ENAB_REQ,
-	ROAM_CONF_ROAM_DISAB_REQ,
+	ROAM_CONF_ROAM_DISAB_REQ
 } wl_roam_conf_t;
 
 typedef enum wl_link_action {
@@ -1931,6 +1931,8 @@ struct bcm_cfg80211 {
 	struct mutex event_sync;	/* maily for up/down synchronization */
 	bool disable_roam_event;
 	struct delayed_work pm_enable_work;
+	struct delayed_work recovery_work;
+	u32 recovery_state;
 
 	struct workqueue_struct *event_workq;   /* workqueue for event */
 
@@ -2101,6 +2103,11 @@ struct bcm_cfg80211 {
 #if defined(DHD_DSCP_POLICY)
 	void *dscp_policy_info;
 #endif /* defined(DHD_DSCP_POLICY) */
+	bool disable_fw_roam;
+	bool soft_suspend;
+	bool disable_dtim_in_suspend;
+	bool suspend_bcn_li_dtim;
+	bool max_dtim_enable;
 #ifdef LINKSTAT_EXT_SUPPORT
 	uint32 prev_core_idx;
 	uint32 prev_scan_time;
@@ -2110,7 +2117,11 @@ struct bcm_cfg80211 {
 	uint32 prev_roam_scan_time;
 	uint32 cached_roam_scan_time;
 #endif /* LINKSTAT_EXT_SUPPORT */
-	bool disable_fw_roam;
+#ifdef CUSTOM_EVENT_PM_WAKE
+	uint32 dpm_prev_pmdur;          /* pm_dur value at previous dpm event */
+	uint32 dpm_cont_evt_cnt;        /* continuous repeated dpm count */
+	uint32 dpm_total_pkts;          /* total tx/rx packet count */
+#endif /* CUSTOM_EVENT_PM_WAKE */
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -3398,4 +3409,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 
 extern int wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid,
 	chanspec_t chanspec);
+extern void wl_cfg80211_set_suspend_bcn_li_dtim(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, bool suspend);
+extern void wl_cfg80211_soft_suspend(struct net_device *dev, bool supsend);
 #endif /* _wl_cfg80211_h_ */

@@ -209,7 +209,7 @@ dhd_wlan_init_mac_addr(void)
 }
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
-#ifdef SUPPORT_MULTIPLE_NVRAM
+#if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 
 #define CMDLINE_REVISION_KEY "androidboot.revision="
 #define CMDLINE_SKU_KEY "androidboot.hardware.sku="
@@ -264,7 +264,7 @@ dhd_wlan_init_hardware_info(void)
 
 	return 0;
 }
-#endif /* SUPPORT_MULTIPLE_NVRAM */
+#endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 
 int
 dhd_wifi_init_gpio(void)
@@ -485,7 +485,8 @@ set_affinity(unsigned int irq, const struct cpumask *cpumask)
 }
 
 static void
-irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max, uint64 curr_time_ns)
+irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
+	uint64 curr_time_ns)
 {
 	int err = 0;
 	bool has_recent_affinity_update = (curr_time_ns - last_affinity_update_time_ns)
@@ -495,8 +496,8 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max, ui
 		return;
 	}
 
-	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH)
-			&& !has_recent_affinity_update) {
+	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH) &&
+		!has_recent_affinity_update) {
 		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_BIG_CORE));
 		if (!err) {
 			is_irq_on_big_core = TRUE;
@@ -506,8 +507,8 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max, ui
 			DHD_ERROR(("%s switches to big core unsuccessfully!\n", __FUNCTION__));
 		}
 	}
-	if (is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW)
-			&& !has_recent_affinity_update) {
+	if (is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW) &&
+		!has_recent_affinity_update) {
 		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_SMALL_CORE));
 		if (!err) {
 			is_irq_on_big_core = FALSE;
@@ -644,9 +645,9 @@ dhd_wlan_init(void)
 	dhd_wlan_init_mac_addr();
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
-#ifdef SUPPORT_MULTIPLE_NVRAM
+#if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 	dhd_wlan_init_hardware_info();
-#endif /* SUPPORT_MULTIPLE_NVRAM */
+#endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 
 fail:
 	DHD_ERROR(("%s: FINISH.......\n", __FUNCTION__));
@@ -728,6 +729,18 @@ uint32 dhd_plat_get_rc_vendor_id(void)
 uint32 dhd_plat_get_rc_device_id(void)
 {
 	return EXYNOS_PCIE_DEVICE_ID;
+}
+
+#define RXBUF_ALLOC_PAGE_SIZE
+uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
+{
+#ifdef RXBUF_ALLOC_PAGE_SIZE
+	/* If rxbufpost_sz == PAGE_SIZE, num_pages should be 1 */
+	uint16 num_pages = ((rxbufpost_sz - 1) / PAGE_SIZE) + 1;
+	return (num_pages * PAGE_SIZE);
+#else
+	return rxbufpost_sz;
+#endif
 }
 
 #ifndef BCMDHD_MODULAR

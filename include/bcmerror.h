@@ -38,11 +38,6 @@
  * The current process is to allocate a range of 1024 negative 32 bit integers to
  * each module that extends the error codes to indicate a module specific status.
  *
- * The next range to use is below. If that range is used for a new feature, please
- * update the range to be used by the next feature.
- *
- * Next available (inclusive) range: [-8*1024 + 1, -7*1024]
- *
  * Common error codes use BCME_ prefix. Firmware (wl) components should use the
  * convention to prefix the error code name with WL_<Component>_E_ (e.g. WL_NAN_E_?).
  * Non-wl components, other than common error codes use BCM_<Componennt>_E_
@@ -234,7 +229,12 @@ typedef int bcmerror_t;
 
 /* FTM error codes [-1024, -2047] */
 enum {
-	WL_FTM_E_LAST			= -1068,
+	WL_FTM_E_LAST			= -1073,
+	WL_FTM_E_INVALID_BW		= -1073,
+	WL_FTM_E_INVALID_ST_CH		= -1072,
+	WL_FTM_E_RSTA_AND_ISTA		= -1071,
+	WL_FTM_E_NO_SLTF		= -1070,
+	WL_FTM_E_INVALID_NBURST		= -1069,
 	WL_FTM_E_FATAL			= -1068,
 	WL_FTM_E_PASN			= -1067,
 	WL_FTM_E_PERM			= -1066,
@@ -789,7 +789,9 @@ enum {
 	/* The session is in progress */
 	WL_PASN_E_SESSION_IN_PROGRESS		= -8227,
 	/* cached PMK used in the session is expired */
-	WL_PASN_E_AUTH_PMKSA_EXPIRED		= -8228
+	WL_PASN_E_AUTH_PMKSA_EXPIRED		= -8228,
+	/* PTKSA installed is deleted by keymgmt */
+	WL_PASN_E_AUTH_PTKSA_DELETED		= -8229
 };
 
 /* bcm fsm status codes. [-9216, -10239] */
@@ -812,6 +814,8 @@ enum {
 	BCM_FSM_E_ASYNC_REQUIRED	= -9231,
 	BCM_FSM_E_INVALID_FSM		= -9232,
 	BCM_FSM_E_CHILD_EXISTS		= -9233,
+	BCM_FSM_E_BAD_POST_OPTIONS	= -9234,
+	BCM_FSM_E_NO_OSH		= -9235,
 
 	/* add additional errors above this line */
 	BCM_FSM_E_MAX			= -10239

@@ -807,6 +807,32 @@ extern uint32 gFWID;
 	#define BCMPOOLRECLAIM_ENAB()		(0)
 #endif /* BCMPOOLRECLAIM */
 
+#ifdef BCMRXDATAPOOL /* BCMRXDATAPOOL support enab macros  */
+	extern bool _bcmrxdatapool;
+#if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)
+	#define BCMRXDATAPOOL_ENAB() (_bcmrxdatapool)
+#elif defined(BCMRXDATAPOOL_DISABLED)
+	#define BCMRXDATAPOOL_ENAB()	(0)
+#else
+	#define BCMRXDATAPOOL_ENAB()	(1)
+#endif
+#else
+	#define BCMRXDATAPOOL_ENAB()	(0)
+#endif /* BCMRXDATAPOOL */
+
+#ifdef URB /* URB support enab macros  */
+	extern bool _urb_enab;
+#if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)
+	#define URB_ENAB() (_urb_enab)
+#elif defined(URB_DISABLED)
+	#define URB_ENAB()	(0)
+#else
+	#define URB_ENAB()	(1)
+#endif
+#else
+	#define URB_ENAB()	(0)
+#endif /* URB */
+
 /* Chip related low power flags (lpflags) */
 
 #ifndef PAD
@@ -966,6 +992,9 @@ void* BCM_ASLR_CODE_FNPTR_RELOCATOR(void *func_ptr);
 #define SIZEOF_STRUCT_DYN(t)	(sizeof(struct t))
 #endif /* SIZEOF_MACRO_USE */
 
+/* Disable function inlining. */
+#define BCM_NOINLINE	__attribute__ ((noinline))
+
 /*
  * A compact form for a list of valid register address offsets.
  * Used for when dumping the contents of the register set for the user.
@@ -980,5 +1009,7 @@ typedef struct _regs_bmp_list {
 	uint16 addr;		/* start address offset */
 	uint8 bmp_cnt[4];	/* bit[31]=1, bit[30:0] is count else it is a bitmap */
 } regs_list_t;
+
+typedef union d11rxhdr d11rxhdr_t;
 
 #endif /* _bcmdefs_h_ */

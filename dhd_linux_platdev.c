@@ -1034,3 +1034,8 @@ uint32 __attribute__ ((weak)) dhd_plat_get_rc_device_id(void)
 {
 	return PCIE_RC_DEVICE_ID;
 }
+
+uint16 __attribute__ ((weak)) dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
+{
+	return rxbufpost_sz;
+}

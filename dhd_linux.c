@@ -355,7 +355,7 @@ extern uint sd_f2_blocksize;
 extern int dhdsdio_func_blocksize(dhd_pub_t *dhd, int function_num, int block_size);
 #endif /* USE_DYNAMIC_F2_BLKSIZE */
 
-#ifdef CONFIG_PARTIALSUSPEND_SLP
+#if defined(CONFIG_PARTIALSUSPEND_SLP) && !defined(DHD_USE_PM_SLEEP)
 /* XXX SLP use defferent earlysuspend header file and some functions
  * But most of meaning is same as Android
  */
@@ -370,7 +370,7 @@ extern int dhdsdio_func_blocksize(dhd_pub_t *dhd, int function_num, int block_si
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND)
 #include <linux/earlysuspend.h>
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND) */
-#endif /* CONFIG_PARTIALSUSPEND_SLP */
+#endif /* CONFIG_PARTIALSUSPEND_SLP && !DHD_USE_PM_SLEEP */
 
 #if defined(APF)
 static int _dhd_apf_add_filter(struct net_device *ndev, uint32 filter_id, u8* program,
@@ -911,6 +911,11 @@ int qt_dngl_timeout = 0; // dongle attach timeout in ms
 module_param(qt_dngl_timeout, int, 0);
 #endif /* BCMQT_HW */
 
+#ifdef DHD_SUPPORT_SPMI_MODE
+uint spmi_mode = 0;
+module_param(spmi_mode, uint, 0644);
+#endif /* DHD_SUPPORT_SPMI_MODE */
+
 /* TCM verification flag */
 uint dhd_tcm_test_enable = FALSE;
 module_param(dhd_tcm_test_enable, uint, 0644);
@@ -974,6 +979,8 @@ static void dhd_module_s2mpu_register(struct device *dev);
 #endif /* CONFIG_EXYNOS_S2MPU */
 #endif /* CONFIG_ARCH_EXYNOS */
 
+static int dhd_suspend_resume_helper(struct dhd_info *dhd, int val, int force);
+
 #if defined(CONFIG_PM_SLEEP)
 static int dhd_pm_callback(struct notifier_block *nfb, unsigned long action, void *ignored)
 {
@@ -996,8 +1003,14 @@ static int dhd_pm_callback(struct notifier_block *nfb, unsigned long action, voi
 		break;
 	}
 
+#if (defined(SUPPORT_P2P_GO_PS) && defined(PROP_TXSTATUS)) || defined(DHD_USE_PM_SLEEP)
+	dhdinfo = container_of(nfb, struct dhd_info, pm_notifier);
+#endif /* (SUPPORT_P2P_GO_PS && PROP_TXSTATUS) || DHD_USE_PM_SLEEP */
+#if defined(DHD_USE_PM_SLEEP)
+	dhd_suspend_resume_helper(dhdinfo, suspend, 0);
+#endif /* DHD_USE_PM_SLEEP */
+
 #if defined(SUPPORT_P2P_GO_PS) && defined(PROP_TXSTATUS)
-	dhdinfo = container_of(nfb, const dhd_info_t, pm_notifier);
 	if (suspend) {
 		DHD_OS_WAKE_LOCK_WAIVE(&dhdinfo->pub);
 		dhd_wlfc_suspend(&dhdinfo->pub);
@@ -1900,8 +1913,10 @@ dhd_enable_packet_filter(int value, dhd_pub_t *dhd)
 	int i;
 
 	DHD_ERROR(("%s: enter, value = %d\n", __FUNCTION__, value));
-	if ((dhd->op_mode & DHD_FLAG_HOSTAP_MODE) && value) {
-		DHD_ERROR(("%s: DHD_FLAG_HOSTAP_MODE\n", __FUNCTION__));
+	if ((dhd->op_mode &
+		(DHD_FLAG_HOSTAP_MODE | DHD_FLAG_P2P_GO_MODE)) &&
+		value) {
+		DHD_ERROR(("%s: DHD_FLAG_HOSTAP_MODE or DHD_FLAG_P2P_GO_MODE\n", __FUNCTION__));
 		return;
 	}
 	/* 1 - Enable packet filter, only allow unicast packet to send up */
@@ -2011,28 +2026,64 @@ dhd_packet_filter_add_remove(dhd_pub_t *dhdp, int add_remove, int num)
 }
 #endif /* PKT_FILTER_SUPPORT */
 
+#ifdef CUSTOM_EVENT_PM_WAKE
+void
+dhd_set_excess_pm_awake(dhd_pub_t *dhd, bool suspend)
+{
+	int ret = 0;
+	uint32 iovar_val = 0;	/* Disable the excess PM notify */
+	char *iovar_name;
+
+#ifdef CUSTOM_EVENT_PM_PERCENT
+	iovar_name = "excess_pm_period";
+#else
+	iovar_name = "const_awake_thresh";
+	iovar_val = CUSTOM_EVENT_PM_WAKE;
+#endif /* CUSTOM_EVENT_PM_PERCENT */
+
+	if (suspend) {
+		iovar_val = CUSTOM_EVENT_PM_WAKE * 4;
+	}
+
+	ret = dhd_iovar(dhd, 0, iovar_name, (char *)&iovar_val,
+		sizeof(iovar_val), NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s set %s failed %d\n", __FUNCTION__, iovar_name, ret));
+	}
+	return;
+}
+void
+dhd_init_excess_pm_awake(dhd_pub_t *dhd)
+{
+	int ret = 0;
+	uint32 pm_awake_thresh = CUSTOM_EVENT_PM_WAKE;
+#ifdef CUSTOM_EVENT_PM_PERCENT
+	uint32 pm_awake_percent = CUSTOM_EVENT_PM_PERCENT;
+
+	ret = dhd_iovar(dhd, 0, "excess_pm_percent", (char *)&pm_awake_percent,
+		sizeof(pm_awake_percent), NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s set excess_pm_percent failed %d\n", __FUNCTION__, ret));
+	}
+	pm_awake_thresh = 0;	/* Disable the excess PM notify */
+#endif /* CUSTOM_EVENT_PM_PERCENT */
+	ret = dhd_iovar(dhd, 0, "const_awake_thresh", (char *)&pm_awake_thresh,
+		sizeof(pm_awake_thresh), NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s set const_awake_thresh failed %d\n", __FUNCTION__, ret));
+	}
+
+	return;
+}
+#endif /* CUSTOM_EVENT_PM_WAKE */
+
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
-#ifndef SUPPORT_PM2_ONLY
-	int power_mode = PM_MAX;
-#endif /* SUPPORT_PM2_ONLY */
 	/* wl_pkt_filter_enable_t	enable_parm; */
 	int ret = 0;
-#ifdef DHD_USE_EARLYSUSPEND
-#ifdef CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND
-	int roam_time_thresh = 0;   /* (ms) */
-#endif /* CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND */
-#ifndef ENABLE_FW_ROAM_SUSPEND
-	uint roamvar = 1;
-#endif /* ENABLE_FW_ROAM_SUSPEND */
+#if defined(DHD_USE_EARLYSUSPEND) || defined(DHD_USE_PM_SLEEP)
 	uint nd_ra_filter = 0;
-#ifdef ENABLE_IPMCAST_FILTER
-	int ipmcast_l2filter;
-#endif /* ENABLE_IPMCAST_FILTER */
-#ifdef CUSTOM_EVENT_PM_WAKE
-	uint32 pm_awake_thresh = CUSTOM_EVENT_PM_WAKE;
-#endif /* CUSTOM_EVENT_PM_WAKE */
-#endif /* DHD_USE_EARLYSUSPEND */
+#endif /* DHD_USE_EARLYSUSPEND || DHD_USE_PM_SLEEP */
 #ifdef PASS_ALL_MCAST_PKTS
 	struct dhd_info *dhdinfo;
 	uint32 allmulti;
@@ -2044,11 +2095,14 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 	int intr_width = 0;
 #endif /* CUSTOM_INTR_WIDTH */
 #endif /* DYNAMIC_SWOOB_DURATION */
-
-#if defined(DHD_BCN_TIMEOUT_IN_SUSPEND) && defined(DHD_USE_EARLYSUSPEND)
+#ifdef WL_CFG80211
+	struct net_device *dev = dhd_linux_get_primary_netdev(dhd);
+#endif /* WL_CFG80211 */
+#if defined(DHD_BCN_TIMEOUT_IN_SUSPEND) && (defined(DHD_USE_EARLYSUSPEND) || \
+	defined(DHD_USE_PM_SLEEP))
 	/* CUSTOM_BCN_TIMEOUT_IN_SUSPEND in suspend, otherwise CUSTOM_BCN_TIMEOUT */
 	int bcn_timeout = CUSTOM_BCN_TIMEOUT;
-#endif /* DHD_BCN_TIMEOUT_IN_SUSPEND && DHD_USE_EARLYSUSPEND */
+#endif /* DHD_BCN_TIMEOUT_IN_SUSPEND && (DHD_USE_EARLYSUSPEND || DHD_USE_PM_SLEEP) */
 
 	BCM_REFERENCE(ret);
 	if (!dhd)
@@ -2073,11 +2127,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				dhd->early_suspended = 1;
 				/* Kernel suspended */
 				DHD_ERROR(("%s: force extra Suspend setting \n", __FUNCTION__));
-
-#ifndef SUPPORT_PM2_ONLY
-				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
-				                 sizeof(power_mode), TRUE, 0);
-#endif /* SUPPORT_PM2_ONLY */
 
 #ifdef PKT_FILTER_SUPPORT
 				/* Enable packet filter,
@@ -2109,49 +2158,7 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				}
 #endif /* PASS_ALL_MCAST_PKTS */
 
-				/* If DTIM skip is set up as default, force it to wake
-				 * each third DTIM for better power savings.  Note that
-				 * one side effect is a chance to miss BC/MC packet.
-				 */
-				dhd_set_suspend_bcn_li_dtim(dhd, TRUE);
-#ifdef DHD_USE_EARLYSUSPEND
-#ifdef DHD_BCN_TIMEOUT_IN_SUSPEND
-				bcn_timeout = CUSTOM_BCN_TIMEOUT_IN_SUSPEND;
-				ret = dhd_iovar(dhd, 0, "bcn_timeout", (char *)&bcn_timeout,
-						sizeof(bcn_timeout), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s bcn_timeout failed %d\n", __FUNCTION__,
-						ret));
-				}
-#endif /* DHD_BCN_TIMEOUT_IN_SUSPEND */
-#ifdef CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND
-				roam_time_thresh = CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND;
-				ret = dhd_iovar(dhd, 0, "roam_time_thresh",
-						(char *)&roam_time_thresh,
-						sizeof(roam_time_thresh), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s roam_time_thresh failed %d\n",
-						__FUNCTION__, ret));
-				}
-#endif /* CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND */
-#ifndef ENABLE_FW_ROAM_SUSPEND
-				/* Disable firmware roaming during suspend */
-				ret = dhd_iovar(dhd, 0, "roam_off", (char *)&roamvar,
-						sizeof(roamvar), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s roam_off failed %d\n",
-						__FUNCTION__, ret));
-				}
-				ROAMOFF_DBG_SAVE(dhd_linux_get_primary_netdev(dhd),
-					SET_ROAM_DHD_SUSPEND, roamvar);
-#endif /* ENABLE_FW_ROAM_SUSPEND */
-#if defined(WL_CFG80211) && defined(WL_BCNRECV)
-				ret = wl_android_bcnrecv_suspend(dhd_linux_get_primary_netdev(dhd));
-				if (ret != BCME_OK) {
-					DHD_ERROR(("failed to stop beacon recv event on"
-						" suspend state (%d)\n", ret));
-				}
-#endif /* WL_CFG80211 && WL_BCNRECV */
+#if defined(DHD_USE_EARLYSUSPEND) || defined(DHD_USE_PM_SLEEP)
 #ifdef NDO_CONFIG_SUPPORT
 				if (dhd->ndo_enable) {
 					if (!dhd->ndo_host_ip_overflow) {
@@ -2183,15 +2190,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 							ret));
 				}
 				dhd_os_suppress_logging(dhd, TRUE);
-#ifdef ENABLE_IPMCAST_FILTER
-				ipmcast_l2filter = 1;
-				ret = dhd_iovar(dhd, 0, "ipmcast_l2filter",
-						(char *)&ipmcast_l2filter, sizeof(ipmcast_l2filter),
-						NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("failed to set ipmcast_l2filter (%d)\n", ret));
-				}
-#endif /* ENABLE_IPMCAST_FILTER */
 #ifdef DYNAMIC_SWOOB_DURATION
 				intr_width = CUSTOM_INTR_WIDTH;
 				ret = dhd_iovar(dhd, 0, "bus:intr_width", (char *)&intr_width,
@@ -2200,16 +2198,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					DHD_ERROR(("failed to set intr_width (%d)\n", ret));
 				}
 #endif /* DYNAMIC_SWOOB_DURATION */
-#ifdef CUSTOM_EVENT_PM_WAKE
-				pm_awake_thresh = CUSTOM_EVENT_PM_WAKE * 4;
-				ret = dhd_iovar(dhd, 0, "const_awake_thresh",
-					(char *)&pm_awake_thresh,
-					sizeof(pm_awake_thresh), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s set const_awake_thresh failed %d\n",
-						__FUNCTION__, ret));
-				}
-#endif /* CUSTOM_EVENT_PM_WAKE */
 #ifdef CONFIG_SILENT_ROAM
 				if (!dhd->sroamed) {
 					ret = dhd_sroam_set_mon(dhd, TRUE);
@@ -2220,7 +2208,10 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				}
 				dhd->sroamed = FALSE;
 #endif /* CONFIG_SILENT_ROAM */
-#endif /* DHD_USE_EARLYSUSPEND */
+#endif /* DHD_USE_EARLYSUSPEND || DHD_USE_PM_SLEEP */
+#ifdef WL_CFG80211
+				wl_cfg80211_soft_suspend(dev, TRUE);
+#endif /* WL_CFG80211 */
 			} else {
 				dhd->early_suspended = 0;
 				/* Kernel resumed  */
@@ -2233,18 +2224,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					DHD_ERROR(("failed to set intr_width (%d)\n", ret));
 				}
 #endif /* DYNAMIC_SWOOB_DURATION */
-#ifndef SUPPORT_PM2_ONLY
-				power_mode = PM_FAST;
-				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
-				                 sizeof(power_mode), TRUE, 0);
-#endif /* SUPPORT_PM2_ONLY */
-#if defined(WL_CFG80211) && defined(WL_BCNRECV)
-				ret = wl_android_bcnrecv_resume(dhd_linux_get_primary_netdev(dhd));
-				if (ret != BCME_OK) {
-					DHD_ERROR(("failed to resume beacon recv state (%d)\n",
-							ret));
-				}
-#endif /* WL_CF80211 && WL_BCNRECV */
 #ifdef ARP_OFFLOAD_SUPPORT
 				if (dhd->arpoe_enable) {
 					dhd_arp_offload_enable(dhd, FALSE);
@@ -2271,39 +2250,7 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					}
 				}
 #endif /* PASS_ALL_MCAST_PKTS */
-				/* restore pre-suspend setting for dtim_skip */
-				dhd_set_suspend_bcn_li_dtim(dhd, FALSE);
-#ifdef DHD_USE_EARLYSUSPEND
-#ifdef DHD_BCN_TIMEOUT_IN_SUSPEND
-				bcn_timeout = CUSTOM_BCN_TIMEOUT;
-				ret = dhd_iovar(dhd, 0, "bcn_timeout", (char *)&bcn_timeout,
-						sizeof(bcn_timeout), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s:bcn_timeout failed:%d\n",
-						__FUNCTION__, ret));
-				}
-#endif /* DHD_BCN_TIMEOUT_IN_SUSPEND */
-#ifdef CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND
-				roam_time_thresh = 2000;
-				ret = dhd_iovar(dhd, 0, "roam_time_thresh",
-						(char *)&roam_time_thresh,
-						sizeof(roam_time_thresh), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s:roam_time_thresh failed:%d\n",
-							__FUNCTION__, ret));
-				}
-
-#endif /* CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND */
-#ifndef ENABLE_FW_ROAM_SUSPEND
-				roamvar = dhd_roam_disable;
-				ret = dhd_iovar(dhd, 0, "roam_off", (char *)&roamvar,
-						sizeof(roamvar), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s: roam_off fail:%d\n", __FUNCTION__, ret));
-				}
-				ROAMOFF_DBG_SAVE(dhd_linux_get_primary_netdev(dhd),
-					SET_ROAM_DHD_SUSPEND, roamvar);
-#endif /* ENABLE_FW_ROAM_SUSPEND */
+#if defined(DHD_USE_EARLYSUSPEND) || defined(DHD_USE_PM_SLEEP)
 #ifdef NDO_CONFIG_SUPPORT
 				if (dhd->ndo_enable) {
 					/* Disable ND offload on resume */
@@ -2331,31 +2278,16 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					}
 				}
 				dhd_os_suppress_logging(dhd, FALSE);
-#ifdef ENABLE_IPMCAST_FILTER
-				ipmcast_l2filter = 0;
-				ret = dhd_iovar(dhd, 0, "ipmcast_l2filter",
-						(char *)&ipmcast_l2filter, sizeof(ipmcast_l2filter),
-						NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("failed to clear ipmcast_l2filter ret:%d", ret));
-				}
-#endif /* ENABLE_IPMCAST_FILTER */
-#ifdef CUSTOM_EVENT_PM_WAKE
-				ret = dhd_iovar(dhd, 0, "const_awake_thresh",
-					(char *)&pm_awake_thresh,
-					sizeof(pm_awake_thresh), NULL, 0, TRUE);
-				if (ret < 0) {
-					DHD_ERROR(("%s set const_awake_thresh failed %d\n",
-						__FUNCTION__, ret));
-				}
-#endif /* CUSTOM_EVENT_PM_WAKE */
 #ifdef CONFIG_SILENT_ROAM
 				ret = dhd_sroam_set_mon(dhd, FALSE);
 				if (ret < 0) {
 					DHD_ERROR(("%s set sroam failed %d\n", __FUNCTION__, ret));
 				}
 #endif /* CONFIG_SILENT_ROAM */
-#endif /* DHD_USE_EARLYSUSPEND */
+#endif /* DHD_USE_EARLYSUSPEND || DHD_USE_PM_SLEEP */
+#ifdef WL_CFG80211
+				wl_cfg80211_soft_suspend(dev, FALSE);
+#endif /* WL_CFG80211 */
 			}
 	}
 	dhd_suspend_unlock(dhd);
@@ -2368,7 +2300,9 @@ static int dhd_suspend_resume_helper(struct dhd_info *dhd, int val, int force)
 	dhd_pub_t *dhdp = &dhd->pub;
 	int ret = 0;
 
+#if !defined(DHD_USE_PM_SLEEP)
 	DHD_OS_WAKE_LOCK(dhdp);
+#endif /* !defined(DHD_USE_PM_SLEEP) */
 
 	/* Set flag when early suspend was called */
 	dhdp->in_suspend = val;
@@ -2378,7 +2312,10 @@ static int dhd_suspend_resume_helper(struct dhd_info *dhd, int val, int force)
 		ret = dhd_set_suspend(val, dhdp);
 	}
 
+#if !defined(DHD_USE_PM_SLEEP)
 	DHD_OS_WAKE_UNLOCK(dhdp);
+#endif /* !defined(DHD_USE_PM_SLEEP) */
+
 	return ret;
 }
 
@@ -9667,6 +9604,9 @@ dhd_bus_start(dhd_pub_t *dhdp)
 #ifdef DHD_MAP_PKTID_LOGGING
 	dhd->pub.enable_pktid_log_dump = FALSE;
 #endif /* DHD_MAP_PKTID_LOGGING */
+#ifdef DHD_SUPPORT_SPMI_MODE
+	dhd->pub.dhd_spmi_mode = spmi_mode;
+#endif /* DHD_SUPPORT_SPMI_MODE */
 	dhd->pub.tput_test_done = FALSE;
 
 	/* try to download image and nvram to the dongle */
@@ -10507,13 +10447,6 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 #ifdef APF
 	dhd->apf_set = FALSE;
 #endif /* APF */
-	dhd->suspend_bcn_li_dtim = CUSTOM_SUSPEND_BCN_LI_DTIM;
-#ifdef ENABLE_MAX_DTIM_IN_SUSPEND
-	dhd->max_dtim_enable = TRUE;
-#else
-	dhd->max_dtim_enable = FALSE;
-#endif /* ENABLE_MAX_DTIM_IN_SUSPEND */
-	dhd->disable_dtim_in_suspend = FALSE;
 #ifdef CUSTOM_SET_OCLOFF
 	dhd->ocl_off = FALSE;
 #endif /* CUSTOM_SET_OCLOFF */
@@ -10813,6 +10746,9 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 	}
 #endif /* CONFIG_ROAM_MIN_DELTA */
 #endif /* ROAM_ENABLE */
+#ifdef CUSTOM_EVENT_PM_WAKE
+	dhd_init_excess_pm_awake(dhd);
+#endif	/* CUSTOM_EVENT_PM_WAKE */
 
 #ifdef WLTDLS
 	dhd->tdls_enable = FALSE;
@@ -11430,9 +11366,6 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef CUSTOM_PSPRETEND_THR
 	uint32 pspretend_thr = CUSTOM_PSPRETEND_THR;
 #endif
-#ifdef CUSTOM_EVENT_PM_WAKE
-	uint32 pm_awake_thresh = CUSTOM_EVENT_PM_WAKE;
-#endif	/* CUSTOM_EVENT_PM_WAKE */
 #ifdef DISABLE_PRUNED_SCAN
 	uint32 scan_features = 0;
 #endif /* DISABLE_PRUNED_SCAN */
@@ -11469,13 +11402,6 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef APF
 	dhd->apf_set = FALSE;
 #endif /* APF */
-	dhd->suspend_bcn_li_dtim = CUSTOM_SUSPEND_BCN_LI_DTIM;
-#ifdef ENABLE_MAX_DTIM_IN_SUSPEND
-	dhd->max_dtim_enable = TRUE;
-#else
-	dhd->max_dtim_enable = FALSE;
-#endif /* ENABLE_MAX_DTIM_IN_SUSPEND */
-	dhd->disable_dtim_in_suspend = FALSE;
 #ifdef CUSTOM_SET_OCLOFF
 	dhd->ocl_off = FALSE;
 #endif /* CUSTOM_SET_OCLOFF */
@@ -11924,12 +11850,7 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 #endif /* ROAM_ENABLE */
 
 #ifdef CUSTOM_EVENT_PM_WAKE
-	/* XXX need to check time value */
-	ret = dhd_iovar(dhd, 0, "const_awake_thresh", (char *)&pm_awake_thresh,
-			sizeof(pm_awake_thresh), NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s set const_awake_thresh failed %d\n", __FUNCTION__, ret));
-	}
+	dhd_init_excess_pm_awake(dhd);
 #endif	/* CUSTOM_EVENT_PM_WAKE */
 #ifdef OKC_SUPPORT
 	dhd_iovar(dhd, 0, "okc_enable", (char *)&okc, sizeof(okc), NULL, 0, TRUE);
@@ -15451,150 +15372,6 @@ int net_os_set_suspend(struct net_device *dev, int val, int force)
 #endif
 	}
 	return ret;
-}
-
-int net_os_set_suspend_bcn_li_dtim(struct net_device *dev, int val)
-{
-	dhd_info_t *dhd = DHD_DEV_INFO(dev);
-	dhd_pub_t *dhdp = &dhd->pub;
-
-	if (dhd) {
-		DHD_ERROR(("%s: Set bcn_li_dtim in suspend %d\n",
-			__FUNCTION__, val));
-		dhd->pub.suspend_bcn_li_dtim = val;
-	} else {
-		return BCME_ERROR;
-	}
-
-	if (dhdp->in_suspend) {
-		dhd_set_suspend_bcn_li_dtim(dhdp, TRUE);
-	}
-
-	return BCME_OK;
-}
-
-int net_os_set_max_dtim_enable(struct net_device *dev, int val)
-{
-	dhd_info_t *dhd = DHD_DEV_INFO(dev);
-	dhd_pub_t *dhdp = &dhd->pub;
-
-	if (dhd) {
-		DHD_ERROR(("%s: use MAX bcn_li_dtim in suspend %s\n",
-			__FUNCTION__, (val ? "Enable" : "Disable")));
-		if (val) {
-			dhd->pub.max_dtim_enable = TRUE;
-		} else {
-			dhd->pub.max_dtim_enable = FALSE;
-		}
-	} else {
-		return BCME_ERROR;
-	}
-
-	if (dhdp->in_suspend) {
-		dhd_set_suspend_bcn_li_dtim(dhdp, TRUE);
-	}
-
-	return BCME_OK;
-}
-
-#ifdef DISABLE_DTIM_IN_SUSPEND
-int net_os_set_disable_dtim_in_suspend(struct net_device *dev, int val)
-{
-	dhd_info_t *dhd = DHD_DEV_INFO(dev);
-	dhd_pub_t *dhdp = &dhd->pub;
-
-	if (dhd) {
-		DHD_ERROR(("%s: Disable bcn_li_dtim in suspend %s\n",
-			__FUNCTION__, (val ? "Enable" : "Disable")));
-		if (val) {
-			dhd->pub.disable_dtim_in_suspend = TRUE;
-		} else {
-			dhd->pub.disable_dtim_in_suspend = FALSE;
-		}
-	} else {
-		return BCME_ERROR;
-	}
-
-	if (dhdp->in_suspend) {
-		dhd_set_suspend_bcn_li_dtim(dhdp, TRUE);
-	}
-
-	return BCME_OK;
-}
-#endif /* DISABLE_DTIM_IN_SUSPEND */
-
-int
-dhd_set_suspend_bcn_li_dtim(dhd_pub_t *dhd, bool set_suspend)
-{
-	int ret = BCME_OK;
-	int bcn_li_dtim = 0; /* Default bcn_li_dtim in resume mode is 0 */
-#if defined(BCMPCIE)
-	int lpas = 0;
-	int dtim_period = 0;
-	int bcn_interval = 0;
-	int bcn_to_dly = 0;
-#endif /* OEM_ANDROID && BCMPCIE */
-#ifdef ENABLE_BCN_LI_BCN_WAKEUP
-	int bcn_li_bcn = 1;
-#endif /* ENABLE_BCN_LI_BCN_WAKEUP */
-
-	if (set_suspend) {
-#ifdef WLTDLS
-		/* Do not set bcn_li_ditm on WFD mode */
-		if (dhd->tdls_mode) {
-			return 0;
-		}
-#endif /* WLTDLS */
-#if defined(BCMPCIE)
-		bcn_li_dtim = dhd_get_suspend_bcn_li_dtim(dhd, &dtim_period, &bcn_interval);
-		if ((bcn_li_dtim * dtim_period * bcn_interval) >= MIN_DTIM_FOR_ROAM_THRES_EXTEND) {
-			/*
-			 * Increase max roaming threshold from 2 secs to 8 secs
-			 * the real roam threshold is MIN(max_roam_threshold,
-			 * bcn_timeout/2)
-			 */
-			lpas = 1;
-			bcn_to_dly = 1;
-			/*
-			 * if bcn_to_dly is 1, the real roam threshold is
-			 * MIN(max_roam_threshold, bcn_timeout -1);
-			 * notify link down event after roaming procedure complete
-			 * if we hit bcn_timeout while we are in roaming progress.
-			 */
-		}
-#else
-		bcn_li_dtim = dhd_get_suspend_bcn_li_dtim(dhd);
-#endif /* OEM_ANDROID && BCMPCIE */
-	}
-
-	ret = dhd_iovar(dhd, 0, "bcn_li_dtim", (char *)&bcn_li_dtim, sizeof(bcn_li_dtim),
-		NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s set bcn_li_ditm failed %d\n", __FUNCTION__, ret));
-	}
-#if defined(BCMPCIE)
-	ret = dhd_iovar(dhd, 0, "lpas", (char *)&lpas, sizeof(lpas), NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s set lpas failed %d\n", __FUNCTION__, ret));
-	}
-	ret = dhd_iovar(dhd, 0, "bcn_to_dly", (char *)&bcn_to_dly, sizeof(bcn_to_dly),
-		NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s set bcn_to_dly failed %d\n", __FUNCTION__, ret));
-	}
-#endif /* OEM_ANDROID && BCMPCIE */
-#ifdef ENABLE_BCN_LI_BCN_WAKEUP
-	if (bcn_li_dtim) {
-		bcn_li_bcn = 0;
-	}
-	ret = dhd_iovar(dhd, 0, "bcn_li_bcn", (char *)&bcn_li_bcn, sizeof(bcn_li_bcn),
-		NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s set bcn_li_bcn failed %d\n", __FUNCTION__, ret));
-	}
-#endif /* ENABLE_BCN_LI_BCN_WAKEUP */
-
-	return 0;
 }
 
 #ifdef PKT_FILTER_SUPPORT
@@ -23142,6 +22919,40 @@ static void dhd_set_bandlock(dhd_pub_t * dhd)
 		}
 	}
 #endif /* BANDLOCK */
+}
+
+void
+dhd_set_del_in_progress(dhd_pub_t *dhd, struct net_device *ndev)
+{
+	dhd_if_t *ifp = NULL;
+	unsigned long flags;
+
+	ifp = dhd_get_ifp_by_ndev(dhd, ndev);
+	if (ifp == NULL) {
+		DHD_ERROR(("DHD Iface Info corresponding to %s not found\n", ndev->name));
+		return;
+	}
+
+	DHD_GENERAL_LOCK(dhd, flags);
+	ifp->del_in_progress = TRUE;
+	DHD_GENERAL_UNLOCK(dhd, flags);
+}
+
+void
+dhd_clear_del_in_progress(dhd_pub_t *dhd, struct net_device *ndev)
+{
+	dhd_if_t *ifp = NULL;
+	unsigned long flags;
+
+	ifp = dhd_get_ifp_by_ndev(dhd, ndev);
+	if (ifp == NULL) {
+		DHD_ERROR(("DHD Iface Info corresponding to %s not found\n", ndev->name));
+		return;
+	}
+
+	DHD_GENERAL_LOCK(dhd, flags);
+	ifp->del_in_progress = FALSE;
+	DHD_GENERAL_UNLOCK(dhd, flags);
 }
 
 #ifdef PCIE_FULL_DONGLE

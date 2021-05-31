@@ -145,7 +145,6 @@ module_param(wl_reassoc_support, uint, 0660);
 
 static struct device *cfg80211_parent_dev = NULL;
 static struct bcm_cfg80211 *g_bcmcfg = NULL;
-
 /*
  * wl_dbg_level : a default level to print to dmesg buffer
  * wl_log_level : a default level to log to DLD or Ring
@@ -409,7 +408,8 @@ static s32 wl_cfg80211_bssload_report_event_handler(struct bcm_cfg80211 *cfg,
 	bcm_struct_cfgdev *cfgdev, const wl_event_msg_t *e, void *data);
 static s32 wl_cfg80211_start_bssload_report(struct net_device *ndev);
 #endif /* WL_CHAN_UTIL */
-
+static s32 wl_apply_per_sta_conn_suspend_settings(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, bool set);
 s32 wl_cfg80211_wsec_info_pmk(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	wl_wsec_info_pmk_info_t *pmk_info, uint16 pmk_info_len, uint8 action);
 
@@ -447,6 +447,7 @@ static const uchar disco_bcnloss_vsie[] = {
 };
 #endif /* WL_ANALYTICS */
 
+static void wl_cfg80211_recovery_handler(struct work_struct *work);
 static int wl_vndr_ies_get_vendor_oui(struct bcm_cfg80211 *cfg,
 		struct net_device *ndev, char *vndr_oui, u32 vndr_oui_len);
 static void wl_vndr_ies_clear_vendor_oui_list(struct bcm_cfg80211 *cfg);
@@ -903,6 +904,13 @@ static s32 wl_bssid_prune_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfg
 		const wl_event_msg_t *e, void *data);
 static void wl_cfg80211_handle_set_ssid_complete(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as,
 		const wl_event_msg_t *event, wl_assoc_state_t assoc_state);
+
+#ifdef CHRE
+#define WL_CFG_CHRE_DISABLE	0u
+#define WL_CFG_CHRE_ENABLE	1u
+
+static void wl_config_chre(struct net_device *dev, uint8 val);
+#endif /* CHRE */
 
 #if !defined(BCMDONGLEHOST)
 /* Wake lock are used in Android only, which is dongle based as of now */
@@ -5805,6 +5813,7 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 #ifdef WL_DUAL_APSTA
 	wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_ASSOC_REQ);
 #endif /* WL_DUAL_APSTA */
+
 	/* Connection attempted via linux-wireless */
 	wl_set_drv_status(cfg, CFG80211_CONNECT, dev);
 	return BCME_OK;
@@ -8251,7 +8260,7 @@ wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 
 	if (dhd->in_suspend) {
 		/* Enable/Disable bcn_li_dtim if suspend mode */
-		dhd_set_suspend_bcn_li_dtim(dhd, enabled);
+		wl_cfg80211_set_suspend_bcn_li_dtim(cfg, dev, TRUE);
 	}
 
 	return err;
@@ -8298,6 +8307,340 @@ static __used u32 wl_find_msb(u16 bit16)
 		ret += bit16;
 
 	return ret;
+}
+
+#if defined(WL_BCNRECV)
+void
+wl_apply_bcn_recv_setting(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, bool suspend)
+{
+	s32 ret;
+
+	if (cfg->inet_ndev != dev) {
+		return;
+	}
+
+	if (suspend) {
+		ret = wl_android_bcnrecv_suspend(dev);
+	} else {
+		ret = wl_android_bcnrecv_resume(dev);
+	}
+
+	if (ret != BCME_OK) {
+		WL_ERR(("failed to stop beacon recv event on"
+				" suspend state (%d)\n", ret));
+	}
+}
+#endif /* WL_BCNRECV */
+
+void
+wl_apply_per_sta_static_settings(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, bool suspend)
+{
+	/*
+	 * The below iovar values hold through the connection. It can
+	 * be applied irrespective of STA connection status.
+	 */
+
+#ifdef CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND
+	{
+		s32 err;
+		u32 roam_thresh = suspend ? CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND : 2000;
+		WL_DBG(("configure roam_threshold to %d iface:%s\n",
+				roam_thresh, dev->name));
+		err = wldev_iovar_setint(dev, "roam_time_thresh", roam_thresh);
+		if (err < 0) {
+			WL_ERR(("roam_time_thresh failed %d\n", err));
+		}
+	}
+#endif /* CUSTOM_ROAM_TIME_THRESH_IN_SUSPEND */
+
+#ifndef ENABLE_FW_ROAM_SUSPEND
+	{
+		s32 err;
+		/* Disable firmware roaming during suspend */
+		u32 roamvar = suspend ? TRUE : FALSE;
+		err = wldev_iovar_setint(dev, "roam_off", roamvar);
+		if (err < 0) {
+			WL_ERR(("roam_off failed %d\n", err));
+		}
+		ROAMOFF_DBG_SAVE(dhd_linux_get_primary_netdev(dhd),
+			SET_ROAM_DHD_SUSPEND, roamvar);
+	}
+#endif /* ENABLE_FW_ROAM_SUSPEND */
+}
+
+static int
+wl_get_suspend_bcn_li_dtim(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, int *dtim_period, int *bcn_interval)
+{
+	int bcn_li_dtim = 1; /* default no dtim skip setting */
+	int ret = -1;
+	int allowed_skip_dtim_cnt = 0;
+
+	if (cfg->disable_dtim_in_suspend) {
+		WL_ERR(("Disable bcn_li_dtim in suspend\n"));
+		bcn_li_dtim = 0;
+		return bcn_li_dtim;
+	}
+
+	if (!wl_get_drv_status(cfg, CONNECTED, dev)) {
+		WL_ERR(("not associated\n"));
+		return bcn_li_dtim;
+	}
+
+	if ((dtim_period == NULL) || (bcn_interval == NULL)) {
+		return bcn_li_dtim;
+	}
+
+	if ((ret = wldev_ioctl_get(dev, WLC_GET_BCNPRD, bcn_interval, sizeof(*bcn_interval)))) {
+		WL_ERR(("GET BCNPRD failed:%d\n", ret));
+		return bcn_li_dtim;
+	}
+
+	if ((ret = wldev_ioctl_get(dev, WLC_GET_DTIMPRD, dtim_period, sizeof(*dtim_period)))) {
+		WL_ERR(("GET DTIM PERIOD failed:%d\n", ret));
+		return bcn_li_dtim;
+	}
+
+	if (*dtim_period == 0) {
+		return bcn_li_dtim;
+	}
+
+	if (cfg->max_dtim_enable) {
+		bcn_li_dtim =
+			(int) (MAX_DTIM_ALLOWED_INTERVAL / ((*dtim_period) * (*bcn_interval)));
+		if (bcn_li_dtim == 0) {
+			bcn_li_dtim = 1;
+		}
+	} else {
+		/* attemp to use platform defined dtim skip interval */
+		bcn_li_dtim = cfg->suspend_bcn_li_dtim;
+
+		/* check if sta listen interval fits into AP dtim */
+		if (*dtim_period > CUSTOM_LISTEN_INTERVAL) {
+			/* AP DTIM to big for our Listen Interval : no dtim skiping */
+			bcn_li_dtim = NO_DTIM_SKIP;
+			WL_ERR(("DTIM=%d > Listen=%d : too big ...\n",
+				*dtim_period, CUSTOM_LISTEN_INTERVAL));
+			return bcn_li_dtim;
+		}
+
+		if (((*dtim_period) * (*bcn_interval) * bcn_li_dtim) > MAX_DTIM_ALLOWED_INTERVAL) {
+			allowed_skip_dtim_cnt =
+				MAX_DTIM_ALLOWED_INTERVAL / ((*dtim_period) * (*bcn_interval));
+			bcn_li_dtim =
+				(allowed_skip_dtim_cnt != 0) ? allowed_skip_dtim_cnt : NO_DTIM_SKIP;
+		}
+
+		if ((bcn_li_dtim * (*dtim_period)) > CUSTOM_LISTEN_INTERVAL) {
+			/* Round up dtim_skip to fit into STAs Listen Interval */
+			bcn_li_dtim = (int)(CUSTOM_LISTEN_INTERVAL / *dtim_period);
+			WL_DBG(("agjust dtim_skip as %d\n", bcn_li_dtim));
+		}
+	}
+
+	WL_INFORM(("beacon=%d bcn_li_dtim=%d DTIM=%d Listen=%d\n",
+		*bcn_interval, bcn_li_dtim, *dtim_period, CUSTOM_LISTEN_INTERVAL));
+	return bcn_li_dtim;
+}
+
+static void
+wl_get_dtim_settings(struct bcm_cfg80211 *cfg, struct net_device *dev, bool suspend,
+		u32 *bcn_li_dtim, u32 *lpas, u32 *bcn_to_dly)
+{
+	int dtim_period = 0;
+	int bcn_interval = 0;
+
+	/* If DTIM skip is set up as default, force it to wake up each
+	 * third DTIM for better power savings. Note that there is a
+	 * side effect of a chance to miss BC/MC packet
+	 */
+	/* bi_li_dtim */
+	*bcn_li_dtim = wl_get_suspend_bcn_li_dtim(cfg, dev, &dtim_period, &bcn_interval);
+	if ((*bcn_li_dtim * dtim_period * bcn_interval) >= MIN_DTIM_FOR_ROAM_THRES_EXTEND) {
+
+		/*
+		 * Increase max roaming threshold from 2 secs to 8 secs
+		 * the real roam threshold is MIN(max_roam_threshold,
+		 * bcn_timeout/2)
+		 */
+		*lpas = 1;
+		*bcn_to_dly = 1;
+		/*
+		 * if bcn_to_dly is 1, the real roam threshold is
+		 * MIN(max_roam_threshold, bcn_timeout -1);
+		 * notify link down event after roaming procedure complete
+		 * if we hit bcn_timeout while we are in roaming progress.
+		 */
+	}
+}
+
+void
+wl_cfg80211_set_suspend_bcn_li_dtim(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, bool suspend)
+{
+	int err;
+	int lpas = 0;
+	int bcn_to_dly = 0;
+	int bcn_li_dtim = 0;
+
+	if (suspend) {
+		wl_get_dtim_settings(cfg, dev, suspend, &bcn_li_dtim, &lpas, &bcn_to_dly);
+	}
+	err = wldev_iovar_setint(dev, "bcn_li_dtim", bcn_li_dtim);
+	if (err < 0) {
+		WL_ERR(("set bcn_li_ditm failed %d\n", err));
+	}
+
+	err = wldev_iovar_setint(dev, "lpas", lpas);
+	if (err < 0) {
+		WL_ERR(("set lpas failed %d\n", err));
+	}
+
+	err = wldev_iovar_setint(dev, "bcn_to_dly", bcn_to_dly);
+	if (err < 0) {
+		WL_ERR(("set bcn_to_dly failed %d\n", err));
+	}
+	WL_DBG(("bcn_li_dtim:%d lpas:%d bcn_to_dly:%d\n", bcn_li_dtim, lpas, bcn_to_dly));
+
+#ifdef ENABLE_BCN_LI_BCN_WAKEUP
+	{
+		int bcn_li_bcn = bcn_li_dtim ? 0 : 1;
+		err = wldev_iovar_setint(dev, "bcn_li_bcn", bcn_li_bcn);
+		if (err < 0) {
+			WL_ERR(("%s set bcn_li_bcn failed %d\n", __FUNCTION__, err));
+		}
+	}
+#endif /* ENABLE_BCN_LI_BCN_WAKEUP */
+}
+
+static s32
+wl_apply_per_sta_conn_suspend_settings(struct bcm_cfg80211 *cfg,
+		struct net_device *dev, bool suspend)
+{
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+	s32 err;
+
+	WL_INFORM_MEM(("apply sta settings for suspend:%d\n", suspend));
+#ifdef WLTDLS
+	if (suspend && dhd->tdls_mode) {
+			WL_DBG_MEM(("skip dtim settings in tdls mode\n"));
+			return 0;
+	}
+#endif /* WLTDLS */
+
+	wl_cfg80211_set_suspend_bcn_li_dtim(cfg, dev, suspend);
+
+#ifdef ENABLE_IPMCAST_FILTER
+	{
+		int l2_filter = suspend ? TRUE : FALSE;
+		err = wldev_iovar_setint(dev, "ipmcast_l2filter", l2_filter);
+		if (err < 0) {
+			WL_ERR(("failed to set ipmcast_l2filter (%d)\n", err));
+		}
+	}
+#endif /* ENABLE_IPMCAST_FILTER */
+
+#ifndef SUPPORT_PM2_ONLY
+	{
+		u32 power_mode = suspend ? PM_MAX : PM_FAST;
+		wldev_ioctl_set(dev, WLC_SET_PM, &power_mode, sizeof(u32));
+	}
+#endif /* SUPPORT_PM2_ONLY */
+
+#ifdef DHD_BCN_TIMEOUT_IN_SUSPEND
+	{
+		u32 bcn_timeout = suspend ?
+			CUSTOM_BCN_TIMEOUT_IN_SUSPEND : CUSTOM_BCN_TIMEOUT;
+		err = wldev_iovar_setint(dev, "bcn_timeout", bcn_timeout);
+		if (err < 0) {
+			WL_ERR(("bcn_timeout failed %d\n", err));
+		}
+	}
+#endif /* DHD_BCN_TIMEOUT_IN_SUSPEND */
+
+#ifdef CUSTOM_EVENT_PM_WAKE
+	{
+		char *iovar_name;
+		u32 iovar_val = 0;
+
+#ifdef CUSTOM_EVENT_PM_PERCENT
+		iovar_name = "excess_pm_period";
+#else
+		iovar_name = "const_awake_thresh";
+		iovar_val = CUSTOM_EVENT_PM_WAKE;
+#endif /* CUSTOM_EVENT_PM_PERCENT */
+
+		if (suspend) {
+			iovar_val = (CUSTOM_EVENT_PM_WAKE * 4);
+		}
+
+		WL_DBG(("configure %s with val:%d\n", iovar_name, iovar_val));
+		err = wldev_iovar_setint(dev, iovar_name, iovar_val);
+		if (err < 0) {
+			WL_ERR(("excess_pm_period/awake_thresh failed %d\n", err));
+		}
+	}
+#endif /* CUSTOM_EVENT_PM_WAKE */
+	return BCME_OK;
+}
+
+static void
+wl_apply_primary_sta_settings(struct bcm_cfg80211 *cfg,
+		struct net_device *ndev, bool suspend)
+{
+#if defined(WL_BCNRECV)
+	wl_apply_bcn_recv_setting(cfg, ndev, suspend);
+#endif /* WL_BCNRECV */
+}
+
+void
+wl_apply_role_specific_settings(struct bcm_cfg80211 *cfg, bool suspend)
+{
+	struct net_info *iter, *next;
+
+	for_each_ndev(cfg, iter, next) {
+		if (iter->ndev && (iter->wdev->iftype == NL80211_IFTYPE_STATION)) {
+
+			WL_DBG_MEM(("apply sta %s settings for %s\n",
+				(suspend ? "suspend" : "resume"), iter->ndev->name));
+
+			/* settings that needs to be applied per connection */
+			wl_apply_per_sta_conn_suspend_settings(cfg, iter->ndev, suspend);
+
+			/* settings that hold with/without conneciton */
+			wl_apply_per_sta_static_settings(cfg, iter->ndev, suspend);
+
+			if (cfg->inet_ndev) {
+				if (iter->ndev == cfg->inet_ndev) {
+					wl_apply_primary_sta_settings(cfg, iter->ndev, suspend);
+				}
+			} else if (iter->ndev == bcmcfg_to_prmry_ndev(cfg)) {
+				/* Apply only on primary interface */
+				wl_apply_primary_sta_settings(cfg, iter->ndev, suspend);
+			}
+		}
+	}
+}
+
+/*
+ * This API is invoked from the screen OFF/ON context
+ * screen OFF: soft_supend ON
+ * screen ON: soft_supend OFF
+ */
+void
+wl_cfg80211_soft_suspend(struct net_device *dev, bool suspend)
+{
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	WL_INFORM_MEM(("## Enter. suspend:%d\n", suspend));
+
+	/* cache the state for internal reference */
+	cfg->soft_suspend = suspend;
+
+	/* Apply cfg80211 settings for display on/off transition */
+	wl_apply_role_specific_settings(cfg, suspend);
 }
 
 static s32
@@ -11139,6 +11482,9 @@ wl_post_linkup_ops(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 	else
 		wldev_iovar_setint(ndev, "tcpack_fast_tx", 1);
 #endif /* CONFIG_TCPACK_FASTTX */
+
+	/* Apply per sta connection settings based on current suspend state */
+	wl_apply_per_sta_conn_suspend_settings(cfg, ndev, cfg->soft_suspend);
 	return ret;
 }
 
@@ -11790,12 +12136,6 @@ wl_post_linkdown_ops(struct bcm_cfg80211 *cfg,
 		WL_DBG(("p2p_resp_apchn_status Turn OFF \n"));
 	}
 #endif /* P2PLISTEN_AP_SAMECHN */
-
-#ifdef WL_NAN
-	if (wl_cfgnan_is_enabled(cfg)) {
-		wl_cfgnan_get_stats(cfg);
-	}
-#endif /* WL_NAN */
 
 #if defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE)
 	if (ndev == bcmcfg_to_prmry_ndev(cfg) && cfg->mkeep_alive_avail) {
@@ -12581,9 +12921,95 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 }
 
 #ifdef CUSTOM_EVENT_PM_WAKE
-uint32 last_dpm_upd_time = 0;	/* ms */
-#define DPM_UPD_LMT_TIME	((CUSTOM_EVENT_PM_WAKE + (5)) * (1000) * (4))	/* ms */
-#define DPM_UPD_LMT_RSSI	-85	/* dbm */
+char wl_check_pmstatus_time_str[DEBUG_DUMP_TIME_BUF_LEN];
+#define DPM_MAX_CONT_EVT_CNT	(5u)	/* 120sec * 5times = 10min */
+#define DPM_MIN_CONT_EVT_INTV	(1000u)	/* 1000ms */
+#define DPM_MAX_INACT_CNT	(CUSTOM_EVENT_PM_WAKE * 4 * 2)	/* 2 pkts/s during LCD off */
+
+static void
+wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	uint32 cur_pm_dur, uint32 cur_total_pkts)
+{
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+	if ((cur_total_pkts - cfg->dpm_total_pkts) > DPM_MAX_INACT_CNT) {
+		WL_DBG(("Updated DPM event due to tx/rx packets\n"));
+		goto exit;
+	}
+
+	if (cur_pm_dur - cfg->dpm_prev_pmdur < DPM_MIN_CONT_EVT_INTV) {
+		cfg->dpm_cont_evt_cnt++;
+		if (cfg->dpm_cont_evt_cnt >= DPM_MAX_CONT_EVT_CNT) {
+#if defined(DHD_FW_COREDUMP)
+			if (dhd->memdump_enabled) {
+				dhd->memdump_type = DUMP_TYPE_CONT_EXCESS_PM_AWAKE;
+				dhd_bus_mem_dump(dhd);
+			}
+#endif /* DHD_FW_COREDUMP */
+			WL_ERR(("Force Disassoc due to updated DPM event.\n"));
+			wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+
+			cfg->dpm_cont_evt_cnt = 0;
+		}
+	} else {
+		cfg->dpm_cont_evt_cnt = 0;
+	}
+
+exit:
+	cfg->dpm_prev_pmdur = cur_pm_dur;
+	cfg->dpm_total_pkts = cur_total_pkts;
+}
+
+static s32
+wl_check_pmstatus_dump(struct bcm_cfg80211 *cfg, struct net_device *ndev, dhd_pub_t *dhd)
+{
+	s32 err = BCME_OK;
+	uint32 pm_dur = 0, total_pkts = 0;
+	wl_if_stats_t *if_stats = NULL;
+
+	/* Dump PM duration */
+	err = wldev_iovar_getint(ndev, "pm_dur", &pm_dur);
+	if (unlikely(err)) {
+		WL_ERR(("error Get pm_dur (%d)\n", err));
+	} else {
+		clear_debug_dump_time(wl_check_pmstatus_time_str);
+		get_debug_dump_time(wl_check_pmstatus_time_str);
+		WL_ERR(("PM duration : %d, TS(%s)\n", pm_dur, wl_check_pmstatus_time_str));
+	}
+
+	/* Dump IF counters */
+	if_stats = (wl_if_stats_t *)MALLOCZ(cfg->osh, sizeof(wl_if_stats_t));
+	if (!if_stats) {
+		WL_ERR(("if_stats MALLOCZ failed\n"));
+		return -ENOMEM;
+	}
+
+	if (FW_SUPPORTED(dhd, ifst)) {
+		err = wl_cfg80211_ifstats_counters(ndev, if_stats);
+	} else {
+		err = wldev_iovar_getbuf(ndev, "if_counters", NULL, 0, (char *)if_stats,
+			sizeof(*if_stats), NULL);
+	}
+
+	if (err) {
+		WL_ERR(("error Get if_stats (%d)\n", err));
+	} else {
+		WL_ERR(("PM if_cnt(Tx/Rx/RxMul : %d/%d/%d \n",
+			(uint32)if_stats->txfrmsnt,
+			(uint32)if_stats->rxframe, (uint32)if_stats->rxmulti));
+		total_pkts = (uint32)if_stats->txfrmsnt +
+			(uint32)if_stats->rxframe + (uint32)if_stats->rxmulti;
+	}
+
+	if (if_stats) {
+		MFREE(cfg->osh, if_stats, sizeof(wl_if_stats_t));
+	}
+
+	if (dhd->early_suspended) {
+		wl_check_pmstatus_memdump(cfg, ndev, pm_dur, total_pkts);
+	}
+
+	return err;
+}
 
 static s32
 wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
@@ -12592,88 +13018,27 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	s32 err = BCME_OK;
 	struct net_device *ndev = NULL;
 	u8 *pbuf = NULL;
-	uint32 cur_dpm_upd_time = 0;
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	s32 rssi;
-#ifdef SUPPORT_RSSI_SUM_REPORT
-	wl_rssi_ant_mimo_t rssi_ant_mimo;
-#endif /* SUPPORT_RSSI_SUM_REPORT */
 	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
 
+	/* Dump PM status */
 	pbuf = (u8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
 	if (pbuf == NULL) {
 		WL_ERR(("failed to allocate local pbuf\n"));
 		return -ENOMEM;
 	}
-
-	err = wldev_iovar_getbuf_bsscfg(ndev, "dump",
-		"pm", strlen("pm"), pbuf, WLC_IOCTL_MEDLEN,
+	err = wldev_iovar_getbuf_bsscfg(ndev, "dump", "pm", strlen("pm"), pbuf, WLC_IOCTL_MEDLEN,
 		0, &cfg->ioctl_buf_sync);
-
 	if (err) {
 		WL_ERR(("dump ioctl err = %d", err));
 	} else {
 		WL_ERR(("PM status : %s\n", pbuf));
 	}
-
 	if (pbuf) {
 		MFREE(cfg->osh, pbuf, WLC_IOCTL_MEDLEN);
 	}
 
-	if (dhd->early_suspended) {
-		/* LCD off */
-#ifdef SUPPORT_RSSI_SUM_REPORT
-		/* Query RSSI sum across antennas */
-		memset(&rssi_ant_mimo, 0, sizeof(rssi_ant_mimo));
-		err = wl_get_rssi_per_ant(ndev, ndev->name, NULL, &rssi_ant_mimo);
-		if (err) {
-			WL_ERR(("Could not get rssi sum (%d)\n", err));
-		}
-		rssi = rssi_ant_mimo.rssi_sum;
-		if (rssi == 0)
-#endif /* SUPPORT_RSSI_SUM_REPORT */
-		{
-			scb_val_t scb_val;
-			memset(&scb_val, 0, sizeof(scb_val_t));
-			scb_val.val = 0;
-			err = wldev_ioctl_get(ndev, WLC_GET_RSSI, &scb_val, sizeof(scb_val_t));
-			if (err) {
-				WL_ERR(("Could not get rssi (%d)\n", err));
-			}
-			rssi = wl_rssi_offset(dtoh32(scb_val.val));
-		}
-		WL_ERR(("RSSI %d dBm\n", rssi));
-		if (rssi > DPM_UPD_LMT_RSSI) {
-			return err;
-		}
-	} else {
-		/* LCD on */
-		return err;
-	}
-
-	if (last_dpm_upd_time == 0) {
-		last_dpm_upd_time = OSL_SYSUPTIME();
-	} else {
-		cur_dpm_upd_time = OSL_SYSUPTIME();
-		if (cur_dpm_upd_time - last_dpm_upd_time < DPM_UPD_LMT_TIME) {
-			scb_val_t scbval;
-			DHD_STATLOG_CTRL(dhd, ST(DISASSOC_INT_START),
-				dhd_net2idx(dhd->info, ndev), 0);
-			bzero(&scbval, sizeof(scb_val_t));
-
-			err = wldev_ioctl_set(ndev, WLC_DISASSOC,
-				&scbval, sizeof(scb_val_t));
-			if (err < 0) {
-				WL_ERR(("Disassoc error %d\n", err));
-				return err;
-			}
-			WL_ERR(("Force Disassoc due to updated DPM event.\n"));
-
-			last_dpm_upd_time = 0;
-		} else {
-			last_dpm_upd_time = cur_dpm_upd_time;
-		}
-	}
+	wl_check_pmstatus_dump(cfg, ndev, dhd);
 
 	return err;
 }
@@ -12859,6 +13224,14 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 				conn_info->resp_ie_len, MAX_REQ_LINE));
 			return err;
 		}
+
+#if defined(DHD_DSCP_POLICY)
+		/* Look for vendor-specific QoS Mgmt IE in the assoc response */
+		if (dhd_dscp_handle_assoc_resp_ies(cfg) != BCME_OK) {
+			WL_ERR(("dhd_dscp_handle_assoc_resp_ies has failed \n"));
+			/* continue processing */
+		}
+#endif /* defined(DHD_DSCP_POLICY) */
 
 #ifdef QOS_MAP_SET
 		/* find qos map set ie */
@@ -13744,7 +14117,7 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	wifi_p2psd_gas_pub_act_frame_t *sd_act_frm = NULL;
 	wl_event_rx_frame_data_t *rxframe;
 	u32 event;
-	u8 *mgmt_frame;
+	u8 *mgmt_frame, *rx_event_data;
 	u8 bsscfgidx;
 	u32 mgmt_frame_len;
 	chanspec_t chspec;
@@ -13755,14 +14128,28 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		WL_ERR(("wrong datalen:%d\n", ntoh32(e->datalen)));
 		return -EINVAL;
 	}
-	mgmt_frame_len = ntoh32(e->datalen) - (uint32)sizeof(wl_event_rx_frame_data_t);
-	event = ntoh32(e->event_type);
-	bsscfgidx = e->bsscfgidx;
+
 	rxframe = (wl_event_rx_frame_data_t *)data;
 	if (!rxframe) {
 		WL_ERR(("rxframe: NULL\n"));
 		return -EINVAL;
 	}
+
+	/* Handle different versions of Rx frame data */
+	if (ntoh16(rxframe->version) == BCM_RX_FRAME_DATA_VERSION_1) {
+		mgmt_frame_len = ntoh32(e->datalen) - (uint32)sizeof(wl_event_rx_frame_data_v1_t);
+		rx_event_data = (u8 *) ((wl_event_rx_frame_data_v1_t *)rxframe + 1);
+	} else if (ntoh16(rxframe->version) == BCM_RX_FRAME_DATA_VERSION_2) {
+		mgmt_frame_len = ntoh32(e->datalen) - (uint32)sizeof(wl_event_rx_frame_data_v2_t);
+		rx_event_data = (u8 *) ((wl_event_rx_frame_data_v2_t *)rxframe + 1);
+	} else {
+		WL_ERR(("version mismatch for rx_frame_data, received = %d \n",
+		        ntoh16(rxframe->version)));
+		return -EINVAL;
+	}
+
+	event = ntoh32(e->event_type);
+	bsscfgidx = e->bsscfgidx;
 	chspec = ntoh16(rxframe->channel);
 	bzero(&bssid, ETHER_ADDR_LEN);
 	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
@@ -13815,8 +14202,7 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		}
 
 		err = wl_frame_get_mgmt(cfg, FC_ACTION, &da, &e->addr, &bssid,
-			&mgmt_frame, &mgmt_frame_len,
-			(u8 *)((wl_event_rx_frame_data_t *)rxframe + 1));
+		                        &mgmt_frame, &mgmt_frame_len, rx_event_data);
 		if (err < 0) {
 			WL_ERR(("Error in receiving action frame len %d channel %d freq %d\n",
 				mgmt_frame_len, CHSPEC_CHANNEL(chspec), freq));
@@ -13889,19 +14275,37 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			}
 #endif /* TDLS_MSG_ONLY_WFD */
 #endif /* WLTDLS */
+
 #ifdef QOS_MAP_SET
 		} else if (mgmt_frame[DOT11_MGMT_HDR_LEN] == DOT11_ACTION_CAT_QOS) {
 			/* update QoS map set table */
 			bcm_tlv_t * qos_map_ie = NULL;
 			uint8 offset = DOT11_MGMT_HDR_LEN + DOT11_ACTION_FRMHDR_LEN;
-			if ((qos_map_ie = bcm_parse_tlvs(&mgmt_frame[offset],
-					mgmt_frame_len - offset, DOT11_MNG_QOS_MAP_ID)) != NULL) {
-				WL_DBG((" QoS map set IE found in QoS action frame\n"));
+
+			if (wl_dbg_level & WL_DBG_DBG) {
+				prhex("*** QoS Map Configure frame in DHD",
+				      &mgmt_frame[offset], mgmt_frame_len - offset);
+			}
+
+			if ((qos_map_ie = bcm_parse_tlvs(
+			             &mgmt_frame[offset], mgmt_frame_len - offset,
+			             DOT11_MNG_QOS_MAP_ID)) != NULL) {
+				WL_INFORM((" QoS map set IE found in QoS action frame\n"));
 				if (!cfg->up_table) {
-					cfg->up_table = (uint8 *)MALLOC(cfg->osh, UP_TABLE_MAX);
+					cfg->up_table = (uint8 *)MALLOCZ(cfg->osh, UP_TABLE_MAX);
+					if (cfg->up_table == NULL) {
+						WL_ERR(("** malloc failure for up_table\n"));
+						goto exit;
+					}
 				}
+
 				wl_set_up_table(cfg->up_table, qos_map_ie);
+
+				if (wl_dbg_level & WL_DBG_DBG) {
+					prhex("*** UP Table", cfg->up_table, UP_TABLE_MAX);
+				}
 			} else {
+				WL_INFORM((" QoS map set IE not found in QoS action frame\n"));
 				MFREE(cfg->osh, cfg->up_table, UP_TABLE_MAX);
 			}
 #endif /* QOS_MAP_SET */
@@ -13927,13 +14331,15 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				if (sec != NULL) {
 					int ret_val;
 
-					/* Actively testing, keep it for a while */
-					prhex("QoS Mgmt VS frame in DHD", &mgmt_frame[offset],
-					      mgmt_frame_len - offset);
+					if (wl_dbg_level & WL_DBG_DBG) {
+						prhex("QoS Mgmt VS frame in DHD",
+						      &mgmt_frame[offset],
+						      mgmt_frame_len - offset);
+					}
 
 					/* process the DSCP Policy frame */
 					ret_val = dhd_dscp_policy_process_vsaf(
-						cfg, ndev, sec->fw_mfp, &mgmt_frame[offset],
+						cfg, ndev, &mgmt_frame[offset],
 						mgmt_frame_len - offset);
 					if (ret_val != BCME_OK) {
 						WL_ERR(("DSCP Policy frame processing "
@@ -15450,6 +15856,7 @@ s32 wl_cfg80211_attach(struct net_device *ndev, void *context)
 	INIT_DELAYED_WORK(&cfg->sched_scan_stop_work, wl_cfgscan_sched_scan_stop_work);
 #endif /* WL_SCHED_SCAN */
 	INIT_DELAYED_WORK(&cfg->pm_enable_work, wl_cfg80211_work_handler);
+	INIT_DELAYED_WORK(&cfg->recovery_work, wl_cfg80211_recovery_handler);
 	INIT_DELAYED_WORK(&cfg->loc.work, wl_cfgscan_listen_complete_work);
 	INIT_DELAYED_WORK(&cfg->ap_work, wl_cfg80211_ap_timeout_work);
 	mutex_init(&cfg->pm_sync);
@@ -16654,6 +17061,11 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 	wl_add_remove_eventmsg(ndev, WLC_E_TRACE, TRUE);
 #endif /* SHOW_LOGTRACE */
 
+#ifdef CHRE
+	/* Enable CHRE functionality */
+	wl_config_chre(ndev, WL_CFG_CHRE_ENABLE);
+#endif /* CHRE */
+
 	(void)memcpy_s(wdev->wiphy->perm_addr, ETHER_ADDR_LEN,
 		bcmcfg_to_prmry_ndev(cfg)->perm_addr, ETHER_ADDR_LEN);
 	/* Always bring up interface in STA mode.
@@ -16869,6 +17281,16 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 	cfg->btmreq_len = 0;
 	cfg->btmreq_token = 0;
 #endif /* WL_MBO_HOST */
+
+	/* Initialze dtim configs */
+	cfg->suspend_bcn_li_dtim = CUSTOM_SUSPEND_BCN_LI_DTIM;
+	cfg->disable_dtim_in_suspend = FALSE;
+#ifdef ENABLE_MAX_DTIM_IN_SUSPEND
+	cfg->max_dtim_enable = TRUE;
+#else
+	cfg->max_dtim_enable = FALSE;
+#endif /* ENABLE_MAX_DTIM_IN_SUSPEND */
+
 	return err;
 }
 
@@ -16923,6 +17345,8 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 		cancel_delayed_work_sync(&cfg->ap_work);
 	}
 
+	cancel_delayed_work_sync(&cfg->recovery_work);
+
 	if (cfg->p2p_supported) {
 		wl_clr_p2p_status(cfg, GO_NEG_PHASE);
 #ifdef PROP_TXSTATUS_VSDB
@@ -16942,6 +17366,10 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 #endif /* defined(BCMSDIO) */
 #endif /* PROP_TXSTATUS_VSDB */
 	}
+#ifdef CHRE
+	/* Disable CHRE functionality */
+	wl_config_chre(ndev, WL_CFG_CHRE_DISABLE);
+#endif /* CHRE */
 
 #if defined(DHCP_SCAN_SUPPRESS)
 	/* Force clear of scan_suppress */
@@ -21733,6 +22161,32 @@ wl_cfg80211_wips_event(uint16 misdeauth, char* bssid)
 }
 #endif /* WL_WIPSEVT */
 
+static void
+wl_attempt_recovery(struct bcm_cfg80211 *cfg, u32 reason)
+{
+	if ((reason == WL_STATE_SCANNING) &&
+			(wl_get_drv_status_all(cfg, SCANNING))) {
+		wl_cfgscan_cancel_scan(cfg);
+		WL_ERR(("force clear scanning state\n"));
+		wl_clr_drv_status_all(cfg, SCANNING);
+	}
+}
+
+static void
+wl_cfg80211_recovery_handler(struct work_struct *work)
+{
+	struct bcm_cfg80211 *cfg = NULL;
+	BCM_SET_CONTAINER_OF(cfg, work, struct bcm_cfg80211, recovery_work.work);
+
+	if (cfg->recovery_state) {
+		wl_attempt_recovery(cfg, cfg->recovery_state);
+	}
+
+	WL_ERR(("**trigger hang event for recovery state:%d\n", cfg->recovery_state));
+	wl_cfg80211_handle_hang_event(bcmcfg_to_prmry_ndev(cfg),
+			HANG_REASON_UNKNOWN, DUMP_TYPE_CFG_VENDOR_TRIGGERED);
+}
+
 #define WL_DS(x)
 /*
  * This API checks whether its okay to enter DS.
@@ -21787,7 +22241,14 @@ bool wl_cfg80211_check_in_progress(struct net_device *dev)
 			WL_ERR(("DS skip threshold hit. reason:%d start_time:"
 					SEC_USEC_FMT" cur_time:"SEC_USEC_FMT"\n",
 					reason, GET_SEC_USEC(start_time), GET_SEC_USEC(curtime)));
-			ASSERT((0));
+			/* Force clear states and send a hang event */
+			cfg->recovery_state = reason;
+			if (!schedule_delayed_work(&cfg->recovery_work,
+				msecs_to_jiffies((const unsigned int)10))) {
+				/* Unexpected. If it happens, don't block suspend */
+				WL_ERR(("recovery work schedule failed!!\n"));
+				return false;
+			}
 		}
 		/* return true to skip suspend */
 		return true;
@@ -22326,20 +22787,6 @@ wl_cfg80211_handle_set_ssid_complete(struct bcm_cfg80211 *cfg, wl_assoc_status_t
 		/* Report connect failure */
 		as->link_action = wl_set_link_action(assoc_state, false);
 	}
-#ifdef WL_NAN
-	else if ((as->status == WLC_E_STATUS_SUCCESS) &&
-			wl_cfgnan_is_enabled(cfg) &&
-			wl_get_drv_status(cfg, CONNECTED, as->ndev)) {
-		u8 *curbssid = wl_read_prof(cfg, as->ndev, WL_PROF_BSSID);
-		u8 *conn_req_bssid =
-			wl_read_prof(cfg, as->ndev, WL_PROF_LATEST_BSSID);
-
-		if (memcmp(curbssid, conn_req_bssid, ETHER_ADDR_LEN) == 0) {
-			wl_cfgnan_get_stats(cfg);
-		}
-	}
-#endif /* WL_NAN */
-
 	return;
 }
 
@@ -23776,3 +24223,56 @@ exit:
 	return err;
 }
 #endif /* WL_USABLE_CHAN */
+
+#ifdef CHRE
+static void
+wl_config_chre(struct net_device *dev, uint8 val)
+{
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	bcm_iov_buf_t *iov_req = NULL;
+	bcm_xtlv_t *pxtlv = NULL;
+	int ret = BCME_OK;
+	uint16 iovlen = 0;
+	uint16 xtlv_buflen;
+	uint16 xtlv_buflen_start;
+
+	WL_DBG(("CHRE %s, val=%d\n", val ? "enable" : "disable", val));
+
+	iov_req = (bcm_iov_buf_t *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (unlikely(!iov_req)) {
+		ret = BCME_NOMEM;
+		WL_ERR(("CHRE iovar request buffer memory allocation failed\n"));
+		goto exit;
+	}
+
+	/* fill header */
+	iov_req->version = WL_CHRE_IOV_VERSION;
+	iov_req->id = WL_CHRE_CMD_ENABLE;
+
+	pxtlv = (bcm_xtlv_t *)&iov_req->data[0];
+	xtlv_buflen = xtlv_buflen_start = (WLC_IOCTL_MEDLEN - sizeof(*iov_req));
+
+	ret = bcm_pack_xtlv_entry((uint8**)&pxtlv, &xtlv_buflen, WL_CHRE_XTLV_ENABLE,
+		sizeof(val), &val, BCM_XTLV_OPTION_ALIGN32);
+	if (unlikely(ret)) {
+		WL_ERR(("failed to pack CHRE iovar, ret=%d\n", ret));
+		goto exit;
+	}
+	iov_req->len = (xtlv_buflen_start - xtlv_buflen);
+	iovlen = sizeof(*iov_req) + iov_req->len;
+
+	ret = wldev_iovar_setbuf(dev, "chre", iov_req, iovlen, cfg->ioctl_buf,
+		WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);
+	if (unlikely(ret)) {
+		WL_ERR(("failed to %s CHRE, ret=%d\n", val ? "enable" : "disable", ret));
+		goto exit;
+	}
+
+	WL_INFORM_MEM(("successfully %s CHRE\n", val ? "enabled" : "disabled"));
+
+exit:
+	if (iov_req) {
+		MFREE(cfg->osh, iov_req, WLC_IOCTL_MEDLEN);
+	}
+}
+#endif /* CHRE */

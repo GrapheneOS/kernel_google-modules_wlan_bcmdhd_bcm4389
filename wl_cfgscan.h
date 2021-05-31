@@ -185,6 +185,10 @@ typedef enum {
 	WIFI_BAND_24GHZ_5GHZ_WITH_DFS_6GHZ = 15
 } wifi_band;
 
+extern bool wl_cfgscan_is_dfs_set(wifi_band band);
+extern s32 wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg,
+		struct wireless_dev *wdev, int band, uint32 *list, uint32 *num_channels);
+#endif /* DHD_GET_VALID_CHANNELS */
 #define MAX_AP_IFACES 2
 typedef struct ap_iface_data {
 	chanspec_t chspec;
@@ -196,17 +200,14 @@ typedef struct ap_oper_data {
 	wl_ap_iface_data_t iface[MAX_AP_IFACES];
 } wl_ap_oper_data_t;
 
-extern bool wl_cfgscan_is_dfs_set(wifi_band band);
-extern s32 wl_cfgscan_get_band_freq_list(struct bcm_cfg80211 *cfg,
-		struct wireless_dev *wdev, int band, uint32 *list, uint32 *num_channels);
-#endif /* DHD_GET_VALID_CHANNELS */
+extern void wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data);
+
 extern int wl_android_get_sta_channel(struct bcm_cfg80211 *cfg);
 #ifdef WL_SCHED_SCAN
 extern void wl_cfgscan_sched_scan_stop_work(struct work_struct *work);
 #endif /* WL_SCHED_SCAN */
 #ifdef WL_SOFTAP_ACS
 extern bool is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec);
-extern void wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data);
 extern int wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg,
 		drv_acs_params_t *parameter, int qty, uint32 *pList);
 #endif /* WL_SOFTAP_ACS */

@@ -465,15 +465,6 @@ wl_cfgvendor_set_country(struct wiphy *wiphy,
 		WL_ERR(("fccpwrlimit2g is deactivated\n"));
 	}
 #endif /* FCC_PWR_LIMIT_2G */
-#if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
-	err = wl_android_set_he_6g_band(primary_ndev, TRUE);
-	if (err < 0) {
-		WL_ERR(("%s: 6g band activation is failed\n", __FUNCTION__));
-		goto exit;
-	} else {
-		WL_ERR(("%s: 6g band is activated\n", __FUNCTION__));
-	}
-#endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
 exit:
 	return err;
 }
@@ -3626,6 +3617,10 @@ nan_attr_to_str(u16 cmd)
 		break;
 	C2S(NAN_ATTRIBUTE_NUM_CHANNELS);
 		break;
+	C2S(NAN_ATTRIBUTE_INSTANT_MODE_ENABLE);
+		break;
+	C2S(NAN_ATTRIBUTE_INSTANT_COMM_CHAN);
+		break;
 	default:
 		id2str = "NAN_ATTRIBUTE_UNKNOWN";
 	}
@@ -5342,6 +5337,21 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 			}
 			cmd_data->use_ndpe_attr = nla_get_u32(iter);
 			break;
+		case NAN_ATTRIBUTE_INSTANT_MODE_ENABLE:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->instant_mode_en = nla_get_u32(iter);
+			*nan_attr_mask |= NAN_ATTR_INSTANT_MODE_CONFIG;
+			break;
+		case NAN_ATTRIBUTE_INSTANT_COMM_CHAN:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->instant_chan = nla_get_u32(iter);
+			break;
 		case NAN_ATTRIBUTE_ENABLE_MERGE:
 			if (nla_len(iter) != sizeof(uint8)) {
 				ret = -EINVAL;
@@ -5531,14 +5541,14 @@ wl_cfgvendor_nan_tx_followup_ind_event_data_filler(struct sk_buff *msg,
 	}
 	if (event_data->status == NAN_STATUS_SUCCESS) {
 		ret = nla_put(msg, NAN_ATTRIBUTE_REASON,
-				strlen("NAN_STATUS_SUCCESS"), "NAN_STATUS_SUCCESS");
+				strlen("NAN_STATUS_SUCCESS"), event_data->nan_reason);
 		if (unlikely(ret)) {
 			WL_ERR(("Failed to put nan reason, ret=%d\n", ret));
 			goto fail;
 		}
 	} else {
 		ret = nla_put(msg, NAN_ATTRIBUTE_REASON,
-				strlen("NAN_STATUS_NO_OTA_ACK"), "NAN_STATUS_NO_OTA_ACK");
+				strlen("NAN_STATUS_NO_OTA_ACK"), event_data->nan_reason);
 		if (unlikely(ret)) {
 			WL_ERR(("Failed to put nan reason, ret=%d\n", ret));
 			goto fail;
@@ -5580,15 +5590,14 @@ wl_cfgvendor_nan_svc_terminate_event_filler(struct sk_buff *msg,
 	}
 	if (event_data->status == NAN_STATUS_SUCCESS) {
 		ret = nla_put(msg, NAN_ATTRIBUTE_REASON,
-				strlen("NAN_STATUS_SUCCESS"), "NAN_STATUS_SUCCESS");
+				strlen("NAN_STATUS_SUCCESS"), event_data->nan_reason);
 		if (unlikely(ret)) {
 			WL_ERR(("Failed to put nan reason, ret=%d\n", ret));
 			goto fail;
 		}
 	} else {
 		ret = nla_put(msg, NAN_ATTRIBUTE_REASON,
-				strlen("NAN_STATUS_INTERNAL_FAILURE"),
-			       	"NAN_STATUS_INTERNAL_FAILURE");
+				strlen("NAN_STATUS_INTERNAL_FAILURE"), event_data->nan_reason);
 		if (unlikely(ret)) {
 			WL_ERR(("Failed to put nan reason, ret=%d\n", ret));
 			goto fail;
@@ -6083,7 +6092,7 @@ wl_cfgvendor_send_nan_event(struct wiphy *wiphy, struct net_device *dev,
 			goto fail;
 		}
 		ret = nla_put(msg, NAN_ATTRIBUTE_REASON,
-			strlen("NAN_STATUS_SUCCESS"), "NAN_STATUS_SUCCESS");
+			strlen("NAN_STATUS_SUCCESS"), event_data->nan_reason);
 		if (unlikely(ret)) {
 			WL_ERR(("Failed to put reason code, ret=%d\n", ret));
 			goto fail;
@@ -7189,7 +7198,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	} else {
 		/* Retry the VERSION_1 */
 		err = wldev_iovar_getbuf(inet_ndev, "radiostat", NULL, 0,
-			iovar_buf, sizeof(iovar_buf), NULL);
+				iovar_buf, sizeof(iovar_buf), NULL);
 
 		if (err != BCME_OK && err != BCME_UNSUPPORTED) {
 			WL_ERR(("error (%d) - size = %zu\n",
@@ -7789,6 +7798,25 @@ wl_cfgvendor_dbg_file_dump(struct wiphy *wiphy,
 					buf->data_buf[0], NULL, (uint32)buf->len, &pos);
 				break;
 #endif /* EWP_ECNTRS_LOGGING */
+
+#ifdef EWP_DACS
+			case DUMP_BUF_ATTR_EWP_HW_INIT_LOG:
+				ret = dhd_print_init_dump_data(bcmcfg_to_prmry_ndev(cfg), NULL,
+					buf->data_buf[0], NULL, (uint32)buf->len, &pos,
+					LOG_DUMP_SECTION_EWP_HW_INIT_LOG);
+				break;
+			case DUMP_BUF_ATTR_EWP_HW_MOD_DUMP:
+				ret = dhd_print_init_dump_data(bcmcfg_to_prmry_ndev(cfg), NULL,
+					buf->data_buf[0], NULL, (uint32)buf->len, &pos,
+					LOG_DUMP_SECTION_EWP_HW_MOD_DUMP);
+				break;
+			case DUMP_BUF_ATTR_EWP_HW_REG_DUMP:
+				ret = dhd_print_init_dump_data(bcmcfg_to_prmry_ndev(cfg), NULL,
+					buf->data_buf[0], NULL, (uint32)buf->len, &pos,
+					LOG_DUMP_SECTION_EWP_HW_REG_DUMP);
+				break;
+#endif /* EWP_DACS */
+
 #ifdef DHD_STATUS_LOGGING
 			case DUMP_BUF_ATTR_STATUS_LOG :
 				ret = dhd_print_status_log_data(bcmcfg_to_prmry_ndev(cfg), NULL,
@@ -8464,6 +8492,9 @@ static int wl_cfgvendor_nla_put_debug_dump_data(struct sk_buff *skb,
 	int ret = BCME_OK;
 	uint32 len = 0;
 	char dump_path[128];
+#ifdef EWP_DACS
+	int i = 0, j = 0;
+#endif
 
 	ret = dhd_get_debug_dump_file_name(ndev, NULL, dump_path, sizeof(dump_path));
 	if (ret < 0) {
@@ -8505,6 +8536,22 @@ static int wl_cfgvendor_nla_put_debug_dump_data(struct sk_buff *skb,
 		}
 	}
 #endif /* EWP_ECNTRS_LOGGING */
+
+#ifdef EWP_DACS
+	j = DUMP_LEN_ATTR_EWP_HW_INIT_LOG;
+	for (i = LOG_DUMP_SECTION_EWP_HW_INIT_LOG; i <= LOG_DUMP_SECTION_EWP_HW_REG_DUMP; ++i) {
+		len = dhd_get_init_dump_len(ndev, NULL, i);
+		if (len) {
+			ret = nla_put_u32(skb, j, len);
+			if (unlikely(ret)) {
+				WL_ERR(("Failed to nla put init dump length, ret=%d\n", ret));
+				goto exit;
+			}
+		}
+		++j;
+	}
+#endif /* EWP_DACS */
+
 	len = dhd_get_dld_len(DLD_BUF_TYPE_SPECIAL);
 	if (len) {
 		ret = nla_put_u32(skb, DUMP_LEN_ATTR_SPECIAL_LOG, len);
@@ -10902,7 +10949,6 @@ wl_cfgvendor_set_dtim_config(struct wiphy *wiphy,
 	uint32 dtim_multiplier;
 	int set = 0;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	dhd_pub_t *dhdp = cfg->pub;
 	struct net_device *net = wdev->netdev;
 
 	nla_for_each_attr(iter, data, len, rem) {
@@ -10912,8 +10958,11 @@ wl_cfgvendor_set_dtim_config(struct wiphy *wiphy,
 				dtim_multiplier = nla_get_u32(iter);
 				WL_INFORM_MEM(("dtim multiplier %d\n", dtim_multiplier));
 				set = (dtim_multiplier > 0) ? FALSE : TRUE;
-				dhdp->suspend_bcn_li_dtim = dtim_multiplier;
-				err = net_os_set_max_dtim_enable(net, set);
+				cfg->suspend_bcn_li_dtim = dtim_multiplier;
+				cfg->max_dtim_enable = set ? TRUE : FALSE;
+				if (cfg->soft_suspend) {
+					wl_cfg80211_set_suspend_bcn_li_dtim(cfg, net, TRUE);
+				}
 				break;
 			default:
 				WL_ERR(("Unknown type: %d\n", type));
@@ -11094,6 +11143,9 @@ const struct nla_policy dump_buf_policy[DUMP_BUF_ATTR_MAX] = {
 	[DUMP_BUF_ATTR_SDTC_ETB_DUMP] = { .type = NLA_BINARY },
 	[DUMP_BUF_ATTR_PKTID_MAP_LOG] = { .type = NLA_BINARY },
 	[DUMP_BUF_ATTR_PKTID_UNMAP_LOG] = { .type = NLA_BINARY },
+	[DUMP_BUF_ATTR_EWP_HW_INIT_LOG] = { .type = NLA_BINARY },
+	[DUMP_BUF_ATTR_EWP_HW_MOD_DUMP] = { .type = NLA_BINARY },
+	[DUMP_BUF_ATTR_EWP_HW_REG_DUMP] = { .type = NLA_BINARY },
 };
 
 const struct nla_policy andr_dbg_policy[DEBUG_ATTRIBUTE_MAX] = {
@@ -11283,6 +11335,8 @@ const struct nla_policy nan_attr_policy[NAN_ATTRIBUTE_MAX] = {
 	[NAN_ATTRIBUTE_CHANNEL_INFO] = { .type = NLA_BINARY, .len =
 	sizeof(nan_channel_info_t) * NAN_MAX_CHANNEL_INFO_SUPPORTED },
 	[NAN_ATTRIBUTE_NUM_CHANNELS] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_INSTANT_MODE_ENABLE] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_INSTANT_COMM_CHAN] = { .type = NLA_U32, .len = sizeof(uint32) },
 };
 #endif /* WL_NAN */
 
