@@ -4255,6 +4255,8 @@ wl_cfgnan_reset_remove_ranging_instance(struct bcm_cfg80211 *cfg,
 			bzero(ranging_inst, sizeof(*ranging_inst));
 		} else {
 			ranging_inst->range_status = NAN_RANGING_REQUIRED;
+			/* Reset back to Init role for pending geof target */
+			ranging_inst->range_role = NAN_RANGING_ROLE_INITIATOR;
 			/* resolve range role concurrency */
 			WL_INFORM_MEM(("Resolving Role Concurrency constraint, peer : "
 				MACDBG "\n", MAC2STRDBG(&ranging_inst->peer_addr)));
