@@ -2291,7 +2291,11 @@ dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 	count = 0;
 	tx_report = dhdp->dbg->pkt_mon.tx_report;
 	tx_pkt = tx_report->tx_pkts;
+#if DBG_PKT_MON
+	pkt_count = MIN(req_count, tx_report->pkt_pos);
+#else
 	pkt_count = MIN(req_count, tx_report->status_pos);
+#endif /* DBG_PKT_MON */
 
 #ifdef CONFIG_COMPAT
 	if (is_compat_task()) {
