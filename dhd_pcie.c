@@ -5243,8 +5243,6 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 			/* intentional fall through */
 		case DUMP_TYPE_P2P_DISC_BUSY:
 			/* intentional fall through */
-		case DUMP_TYPE_CONT_EXCESS_PM_AWAKE:
-			/* intentional fall through */
 			if (dhdp->db7_trap.fw_db7w_trap) {
 				/* Set fw_db7w_trap_inprogress here and clear from DPC */
 				dhdp->db7_trap.fw_db7w_trap_inprogress = TRUE;
