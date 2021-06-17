@@ -192,6 +192,7 @@ enum dhd_bus_devreset_type {
 #define DHD_BUS_BUSY_IN_HALDUMP			0x8000
 #define DHD_BUS_BUSY_IN_NAPI			0x10000
 #define DHD_BUS_BUSY_IN_DS_DEASSERT		0x20000
+#define DHD_BUS_BUSY_IN_DUMP_DONGLE_MEM		0x40000
 
 #define DHD_BUS_BUSY_SET_IN_TX(dhdp) \
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_TX
@@ -229,6 +230,8 @@ enum dhd_bus_devreset_type {
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_NAPI
 #define DHD_BUS_BUSY_SET_IN_DS_DEASSERT(dhdp) \
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_DS_DEASSERT
+#define DHD_BUS_BUSY_SET_IN_DUMP_DONGLE_MEM(dhdp) \
+	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_DUMP_DONGLE_MEM
 
 #define DHD_BUS_BUSY_CLEAR_IN_TX(dhdp) \
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_TX
@@ -266,6 +269,8 @@ enum dhd_bus_devreset_type {
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_NAPI
 #define DHD_BUS_BUSY_CLEAR_IN_DS_DEASSERT(dhdp) \
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_DS_DEASSERT
+#define DHD_BUS_BUSY_CLEAR_IN_DUMP_DONGLE_MEM(dhdp) \
+	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_DUMP_DONGLE_MEM
 
 #define DHD_BUS_BUSY_CHECK_IN_TX(dhdp) \
 	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_TX)
@@ -302,7 +307,9 @@ enum dhd_bus_devreset_type {
 #define DHD_BUS_BUSY_CHECK_IN_HALDUMP(dhdp) \
 	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_HALDUMP)
 #define DHD_BUS_BUSY_CHECK_IN_DS_DEASSERT(dhdp) \
-		((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_DS_DEASSERT)
+	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_DS_DEASSERT)
+#define DHD_BUS_BUSY_CHECK_IN_DUMP_DONGLE_MEM(dhdp) \
+	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_DUMP_DONGLE_MEM)
 #define DHD_BUS_BUSY_CHECK_IDLE(dhdp) \
 	((dhdp)->dhd_bus_busy_state == 0)
 
