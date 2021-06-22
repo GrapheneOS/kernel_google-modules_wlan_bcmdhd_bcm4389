@@ -18857,6 +18857,9 @@ exit:
 	DHD_BUS_BUSY_CLEAR_IN_MEMDUMP(&dhd->pub);
 	dhd_os_busbusy_wake(dhdp);
 	DHD_GENERAL_UNLOCK(dhdp, flags);
+#ifdef DHD_SSSR_DUMP
+	dhdp->collect_sssr = FALSE;
+#endif /* DHD_SSSR_DUMP */
 	dhd->scheduled_memdump = FALSE;
 
 	if (dhdp->hang_was_pending) {
