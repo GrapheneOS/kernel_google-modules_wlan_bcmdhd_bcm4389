@@ -735,9 +735,16 @@ uint32 dhd_plat_get_rc_device_id(void)
 uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
 {
 #ifdef RXBUF_ALLOC_PAGE_SIZE
-	/* If rxbufpost_sz == PAGE_SIZE, num_pages should be 1 */
-	uint16 num_pages = ((rxbufpost_sz - 1) / PAGE_SIZE) + 1;
-	return (num_pages * PAGE_SIZE);
+	/* The minimum number of pages is 1 */
+	uint16 num_pages = rxbufpost_sz / PAGE_SIZE + 1;
+	/*
+	 * Align sk buffer + skb overhead + NET_SKB_PAD with the page size boundary
+	 * Refer to __netdev_alloc_skb() in skbuff.c for details.
+	 */
+	if (rxbufpost_sz > (SKB_WITH_OVERHEAD(num_pages * PAGE_SIZE) - NET_SKB_PAD)) {
+		num_pages++;
+	}
+	return SKB_WITH_OVERHEAD(num_pages * PAGE_SIZE) - NET_SKB_PAD;
 #else
 	return rxbufpost_sz;
 #endif
