@@ -1356,7 +1356,7 @@ typedef struct dll {
 	struct dll * prev_p;
 } dll_t;
 
-static INLINE void
+static INLINE_ALWAYS void
 dll_init(dll_t *node_p)
 {
 	node_p->next_p = node_p;
@@ -1364,44 +1364,44 @@ dll_init(dll_t *node_p)
 }
 /* dll macros returing a pointer to dll_t */
 
-static INLINE dll_t *
+static INLINE_ALWAYS dll_t *
 BCMPOSTTRAPFN(dll_head_p)(dll_t *list_p)
 {
 	return list_p->next_p;
 }
 
-static INLINE dll_t *
+static INLINE_ALWAYS dll_t *
 BCMPOSTTRAPFN(dll_tail_p)(dll_t *list_p)
 {
 	return (list_p)->prev_p;
 }
 
-static INLINE dll_t *
+static INLINE_ALWAYS dll_t *
 BCMPOSTTRAPFN(dll_next_p)(dll_t *node_p)
 {
 	return (node_p)->next_p;
 }
 
-static INLINE dll_t *
+static INLINE_ALWAYS dll_t *
 BCMPOSTTRAPFN(dll_prev_p)(dll_t *node_p)
 {
 	return (node_p)->prev_p;
 }
 
-static INLINE bool
+static INLINE_ALWAYS bool
 BCMPOSTTRAPFN(dll_empty)(dll_t *list_p)
 {
 	return ((list_p)->next_p == (list_p));
 }
 
-static INLINE bool
+static INLINE_ALWAYS bool
 BCMPOSTTRAPFN(dll_end)(dll_t *list_p, dll_t * node_p)
 {
 	return (list_p == node_p);
 }
 
 /* inserts the node new_p "after" the node at_p */
-static INLINE void
+static INLINE_ALWAYS void
 BCMPOSTTRAPFN(dll_insert)(dll_t *new_p, dll_t * at_p)
 {
 	new_p->next_p = at_p->next_p;
@@ -1410,20 +1410,20 @@ BCMPOSTTRAPFN(dll_insert)(dll_t *new_p, dll_t * at_p)
 	(new_p->next_p)->prev_p = new_p;
 }
 
-static INLINE void
+static INLINE_ALWAYS void
 BCMPOSTTRAPFN(dll_append)(dll_t *list_p, dll_t *node_p)
 {
 	dll_insert(node_p, dll_tail_p(list_p));
 }
 
-static INLINE void
+static INLINE_ALWAYS void
 BCMPOSTTRAPFN(dll_prepend)(dll_t *list_p, dll_t *node_p)
 {
 	dll_insert(node_p, list_p);
 }
 
 /* deletes a node from any list that it "may" be in, if at all. */
-static INLINE void
+static INLINE_ALWAYS void
 BCMPOSTTRAPFN(dll_delete)(dll_t *node_p)
 {
 	node_p->prev_p->next_p = node_p->next_p;

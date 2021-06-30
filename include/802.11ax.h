@@ -312,6 +312,8 @@ typedef uint8 he_phy_cap_t[HE_PHY_CAP_INFO_SIZE];
 #define HE_PHY_RX_FULL_BW_MU_COMP_SIGB_FSZ	1
 #define HE_PHY_RX_FULL_BW_MU_NON_COMP_SIGB_IDX	77	/* Rx Full BW MU PPDU Non-Comp SIGB */
 #define HE_PHY_RX_FULL_BW_MU_NON_COMP_SIGB_FSZ	1
+#define HE_PHY_NOMINAL_PACKET_PADDING_IDX	78	/* Nominal Packet Padding */
+#define HE_PHY_NOMINAL_PACKET_PADDING_FSZ	2
 
 /* HE Mac Capabilities values */
 /* b3-b4: Fragmentation Support field (table 9-262z) */
@@ -406,6 +408,12 @@ typedef uint8 he_phy_cap_t[HE_PHY_CAP_INFO_SIZE];
 #define HE_PHY_DCM_MAX_BW_40		1
 #define HE_PHY_DCM_MAX_BW_80		2
 #define HE_PHY_DCM_MAX_BW_160		3
+
+/* b78-b79 */
+#define HE_PHY_NOMINAL_PKT_PADDING_0_US		0
+#define HE_PHY_NOMINAL_PKT_PADDING_8_US		1
+#define HE_PHY_NOMINAL_PKT_PADDING_16_US	2
+#define HE_PHY_NOMINAL_PKT_PADDING_RESERVED	3
 
 /* HE Duration based RTS Threshold Figure 9-589cr */
 #define HE_RTS_THRES_DISABLED		1023

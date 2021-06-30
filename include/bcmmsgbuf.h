@@ -373,6 +373,8 @@ typedef struct bcmpcie_msi_offset_config {
 #define BCMPCIE_CMNHDR_FLAGS_WAKE_PACKET	0x8
 #define BCMPCIE_CMNHDR_FLAGS_PHASE_BIT		0x80
 #define BCMPCIE_CMNHDR_PHASE_BIT_INIT		0x80
+#define BCMPCIE_FLOWRING_PHASE_NIBBLE_INIT	0xA0
+#define BCMPCIE_FLOWRING_PHASE_NIBBLE_WRAP	0x50
 
 /* IOCTL request message */
 typedef struct ioctl_req_msg {

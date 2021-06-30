@@ -6410,7 +6410,9 @@ wl_cfgnan_get_capability(struct net_device *ndev,
 	capabilities->is_ndp_security_supported = fw_cap->is_ndp_security_supported;
 	capabilities->ndp_supported_bands = fw_cap->ndp_supported_bands;
 	capabilities->cipher_suites_supported = fw_cap->cipher_suites_supported_mask;
-	capabilities->is_instant_mode_supported = fw_cap->is_instant_mode_supported;
+	if (fw_cap->flags1 & WL_NAN_FW_CAP_FLAG1_INSTANT_MODE) {
+		capabilities->is_instant_mode_supported = true;
+	}
 	if (fw_cap->flags1 & WL_NAN_FW_CAP_FLAG1_NDPE) {
 		capabilities->ndpe_attr_supported = true;
 	}

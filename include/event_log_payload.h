@@ -62,6 +62,16 @@ typedef struct enhanced_ts_message_v1 {
 	uint32 cpu_freq;
 } ets_msg_v1_t;
 
+/**
+ * Enhanced timestamp message, version 2
+ */
+#define ENHANCED_TS_MSG_VERSION_2 (2u)
+typedef struct enhanced_ts_message_v2 {
+	uint64 sysuptime_ns;		/* sysuptime in ns */
+	uint64 ets_write_ptm_time;	/* PTM time at ETS message */
+	uint64 host_time_offset;	/* Host time offset in ns from PTM time */
+} ets_msg_v2_t;
+
 #define EVENT_LOG_XTLV_ID_STR                   0  /**< XTLV ID for a string */
 #define EVENT_LOG_XTLV_ID_TXQ_SUM               1  /**< XTLV ID for txq_summary_t */
 #define EVENT_LOG_XTLV_ID_SCBDATA_SUM           2  /**< XTLV ID for cb_subq_summary_t */
@@ -1997,6 +2007,135 @@ typedef struct phy_periodic_log_cmn_v7 {
 	uint8	pad3;			/* Padding byte to align with word */
 } phy_periodic_log_cmn_v7_t;
 
+typedef struct phy_periodic_log_cmn_v8 {
+
+	uint32	nrate;			/* Current Tx nrate */
+	uint32	duration;		/* millisecs spent sampling this channel */
+	uint32	congest_ibss;		/* millisecs in our bss (presumably this traffic will */
+					/*  move if cur bss moves channels) */
+	uint32	congest_obss;		/* traffic not in our bss */
+	uint32	interference;		/* millisecs detecting a non 802.11 interferer. */
+	uint32	last_cal_time;		/* Last cal execution time */
+
+	uint32	noise_cal_req_ts;	/* Time-stamp when noise cal was requested */
+	uint32	noise_cal_intr_ts;	/* Time-stamp when noise cal was completed */
+	uint32	phywdg_ts;		/* Time-stamp when wd was fired */
+	uint32	phywd_dur;		/* Duration of the watchdog */
+	uint32	chanspec_set_ts;	/* Time-stamp when chanspec was set */
+	uint32	vcopll_failure_cnt;	/* Number of VCO cal failures including */
+					/* failures detected in ucode */
+	uint32	log_ts;			/* Time-stamp when this log was collected */
+
+	/* glitch based desense input from cca */
+	uint32	cca_stats_total_glitch;
+	uint32	cca_stats_bphy_glitch;
+	uint32	cca_stats_total_badplcp;
+	uint32	cca_stats_bphy_badplcp;
+	uint32	cca_stats_mbsstime;
+
+	uint32	counter_noise_request;	/* count of noisecal request */
+	uint32	counter_noise_crsbit;	/* count of crs high during noisecal request */
+	uint32	counter_noise_apply;	/* count of applying noisecal result to crsmin */
+	uint32	fullphycalcntr;		/* count of performing single phase cal */
+	uint32	multiphasecalcntr;	/* count of performing multi-phase cal */
+
+	uint32	macsusp_dur;		/* mac suspend duration */
+
+	uint16	chanspec;		/* Current phy chanspec */
+	uint16	vbatmeas;		/* Measured VBAT sense value */
+
+	uint16	featureflag;		/* Currently active feature flags */
+
+	/* HP2P related params */
+	uint16	shm_mpif_cnt_val;
+	uint16	shm_thld_cnt_val;
+	uint16	shm_nav_cnt_val;
+	uint16	shm_cts_cnt_val;
+	uint16	shm_m_prewds_cnt;	/* Count of pre-wds fired in the ucode */
+
+	uint16	deaf_count;		/* Depth of stay_in_carrier_search function */
+
+	uint16	ed20_crs0;		/* ED-CRS status on core 0 */
+	uint16	ed20_crs1;		/* ED-CRS status on core 1 */
+
+	uint16	dcc_attempt_counter;	/* Number of DC cal attempts */
+	uint16	dcc_fail_counter;	/* Number of DC cal failures */
+
+	uint16	btcxovrd_dur;		/* Cumulative btcx overide between WDGs */
+	uint16	btcxovrd_err_cnt;	/* BTCX override flagged errors */
+
+	uint16	femtemp_read_fail_counter;	/* Fem temparature read fail counter */
+	uint16	phy_log_counter;
+	uint16	noise_mmt_overdue;	/* Count up if ucode noise mmt is overdue for 5 sec */
+	uint16	chan_switch_tm;		/* Channel switch time */
+
+	uint16	dcc_hcfail;		/* dcc health check failure count */
+	uint16	dcc_calfail;		/* dcc failure count */
+	uint16	crsmin_pwr_apply_cnt;	/* Count of desense power threshold update to phy */
+
+	uint16	txpustatus;		/* txpu off definations */
+	uint16	tempinvalid_count;	/* Count no. of invalid temp. measurements */
+	uint16	log_event_id;		/* logging event id */
+
+	/* Misc general purpose debug counters (will be used for future debugging) */
+	uint16	debug_01;
+	uint16	debug_02;
+	uint16	debug_03;
+	uint16	debug_04;
+	uint16	debug_05;
+
+	uint16	macsusp_cnt;		/* mac suspend counter */
+	uint8	amtbitmap;		/* AMT status bitamp */
+
+	int8	chiptemp;		/* Chip temparature */
+	int8	femtemp;		/* Fem temparature */
+
+	uint8	cal_phase_id;		/* Current Multi phase cal ID */
+	uint8	rxchain;		/* Rx Chain */
+	uint8	txchain;		/* Tx Chain */
+	uint8	ofdm_desense;		/* OFDM desense */
+
+	uint8	slice;
+	uint8	dbgfw_ver;		/* version of fw/ucode for debug purposes */
+	uint8	bphy_desense;		/* BPHY desense */
+	uint8	pll_lockstatus;		/* PLL Lock status */
+
+	/* dccal dcoe & idacc */
+	uint8	dcc_err;		/* dccal health check error status */
+	uint8	dcoe_num_tries;		/* number of retries on dcoe cal */
+	uint8	idacc_num_tries;	/* number of retries on idac cal */
+
+	uint8	dccal_phyrxchain;	/* phy rxchain during dc calibration */
+	uint8	dccal_type;		/* DC cal type: single/multi phase, chan change, etc. */
+
+	uint8	gbd_bphy_sleep_counter;	/* gbd sleep counter */
+	uint8	gbd_ofdm_sleep_counter;	/* gbd sleep counter */
+	uint8	curr_home_channel;	/* gbd input channel from cca */
+
+	/* desense data */
+	int8	btcx_mode;		/* btcoex desense mode */
+	int8	ltecx_mode;		/* lte coex desense mode */
+	uint8	gbd_ofdm_desense;	/* gbd ofdm desense level */
+	uint8	gbd_bphy_desense;	/* gbd bphy desense level */
+	uint8	current_elna_bypass;	/* init gain desense: elna bypass */
+	uint8	current_tia_idx;	/* init gain desense: tia index */
+	uint8	current_lpf_idx;	/* init gain desense: lpf index */
+	uint8	crs_auto_thresh;	/* crs auto threshold after desense */
+
+	int8	weakest_rssi;		/* weakest link RSSI */
+	uint8	noise_cal_mode;		/* noisecal mode */
+
+	bool	phycal_disable;		/* Set if calibration is disabled */
+	bool	hwpwrctrlen;		/* tx hwpwrctrl enable */
+	int8	ed_threshold;		/* Threshold applied for ED */
+	uint16	ed_crs_status;		/* Status of ED and CRS during noise cal */
+	uint16	preempt_status1;	/* status of preemption */
+	uint16	preempt_status2;	/* status of preemption */
+	uint16	preempt_status3;	/* status of preemption */
+	uint16	preempt_status4;	/* status of preemption */
+	uint32	ed_duration;		/* ccastats: ed_duration */
+} phy_periodic_log_cmn_v8_t;
+
 typedef struct phy_periodic_log_core {
 	uint8	baseindxval; /* TPC Base index */
 	int8	tgt_pwr; /* Programmed Target power */
@@ -2071,6 +2210,40 @@ typedef struct phy_periodic_log_core_v5 {
 	int8	phylog_noise_pwr_array[8];	/* noise buffer array */
 	int8	noise_dbm_ant;			/* from uCode shm read, afer converting to dBm */
 } phy_periodic_log_core_v5_t;
+
+#define PHY_NOISE_PWR_ARRAY_SIZE	(8u)
+typedef struct phy_periodic_log_core_v6 {
+	/* dccal dcoe & idacc */
+	uint16	dcoe_done_0;	/* dccal control register 44 */
+	uint16	dcoe_done_1;	/* dccal control register 45 */
+	uint16	dcoe_done_2;	/* dccal control register 46 */
+	uint16	idacc_done_0;	/* dccal control register 21 */
+	uint16	idacc_done_1;	/* dccal control register 60 */
+	uint16	idacc_done_2;	/* dccal control register 61 */
+	int16	psb;		/* psb read during dccal health check */
+	int16	txcap;		/* Txcap value */
+
+	uint16	debug_01;	/* multipurpose debug register */
+	uint16	debug_02;	/* multipurpose debug register */
+	uint16	debug_03;	/* multipurpose debug register */
+	uint16	debug_04;	/* multipurpose debug register */
+
+	uint8	pktproc;	/* pktproc read during dccal health check */
+	uint8	baseindxval;	/* TPC Base index */
+	int8	tgt_pwr;	/* Programmed Target power */
+	int8	estpwradj;	/* Current Est Power Adjust value */
+	int8	crsmin_pwr;		/* CRS Min/Noise power */
+	int8	rssi_per_ant;	/* RSSI Per antenna */
+	int8	snr_per_ant;	/* SNR Per antenna */
+
+	int8	noise_level;	/* noise pwr after filtering & averageing */
+	int8	noise_level_inst;	/* instantaneous noise cal pwr */
+	int8	estpwr;		/* tx powerDet value */
+	int8	crsmin_th_idx;	/* idx used to lookup crs min thresholds */
+	int8	debug_05;	/* multipurpose debug register */
+
+	int8	phy_noise_pwr_array[PHY_NOISE_PWR_ARRAY_SIZE];	/* noise buffer array */
+} phy_periodic_log_core_v6_t;
 
 typedef struct phy_periodic_log_core_v2 {
 	int32 rxs; /* FDIQ Slope coeffecient */
@@ -2368,6 +2541,7 @@ typedef enum {
 	ROAM_LOG_BTM_REP = 8,		/* EVT log for BTM REP */
 	ROAM_LOG_WIPS_EVENT = 9,	/* EVT log for WIPS Event */
 	ROAM_LOG_6G_NOVLP_REP = 10,	/* EVT log for 6G NoVLP Report */
+	ROAM_LOG_WTC_BTM_REP = 11,	/* EVT log for WTC BTM Req/Resp Report */
 	PRSV_PERIODIC_ID_MAX
 } prsv_periodic_id_enum_t;
 
@@ -2601,6 +2775,37 @@ typedef struct roam_log_6g_novlp_v3 {
 	uint16	chanspec;		/* Chanspec */
 } roam_log_6g_novlp_v3_t;
 
+#define WTC_BTMREQ	0		/* WTC BTM request type */
+#define WTC_BTMRESP	1		/* WTC BTM response type */
+
+typedef struct roam_log_wtc_btmrep_v3 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8	wtc_type;		/* 0:WTC_BTMREQ, 1:WTC_BTMRESP */
+	uint8	ie_length;
+	uint8	wtc_ver;
+	uint8	pad;
+	union {
+		struct {
+			/* WTC configuration from iovar */
+			uint8	mode;
+			uint8	scantype;
+			int8	rssithresh[WTC_MAX_BAND];
+			int8	ap_rssithresh[WTC_MAX_BAND];
+			/* WTC Request IE */
+			uint8	rsn_code;
+			uint8	subcode;
+			uint8	duration;	/* by default 0 */
+			uint8	status;		/* WTC request is invalid */
+		} wtcreq;
+		struct {
+			/* WTC Response IE */
+			uint8	rsn_code;	/* WTC VSIE reason code */
+			uint8	status;		/* BTM response status */
+			uint16	pad;
+		} wtcresp;
+	};
+} roam_log_wtc_btmrep_v3_t;
+
 #define EVENT_LOG_BUFFER_ID_PMK			0
 #define EVENT_LOG_BUFFER_ID_ANONCE		1
 #define EVENT_LOG_BUFFER_ID_SNONCE		2
@@ -2814,6 +3019,25 @@ typedef struct phy_periodic_log_v10 {
 	/* log data for smartCCA */
 	phy_periodic_scca_stats_v1_t scca_counters_peri_log;
 } phy_periodic_log_v10_t;
+
+#define PHY_PERIODIC_LOG_VER11	(11u)
+typedef struct phy_periodic_log_v11 {
+	uint8  version;		/* Logging structure version */
+	uint8  numcores;	/* Number of cores for which core specific data present */
+	uint16 length;		/* Length of the structure */
+
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v8_t phy_perilog_cmn;
+
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v8_t counters_peri_log;
+
+	/* log data for BTcoex */
+	phy_periodic_btc_stats_v1_t phy_perilog_btc_stats;
+
+	/* Logs data pertaining to each core */
+	phy_periodic_log_core_v6_t phy_perilog_core[];
+} phy_periodic_log_v11_t;
 
 #define AMT_MATCH_INFRA_BSSID	(1 << 0)
 #define AMT_MATCH_INFRA_MYMAC	(1 << 1)

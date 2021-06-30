@@ -183,9 +183,9 @@ int mq_select_disable = FALSE;
 static void dhd_m4_state_handler(struct work_struct * work);
 #endif /* DHD_4WAYM4_FAIL_DISCONNECT */
 
-#if defined(WL_CFG80211) && defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
 static int dhd_wait_for_file_dump(dhd_pub_t *dhdp);
-#endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 #ifdef FIX_CPU_MIN_CLOCK
 #include <linux/pm_qos.h>
@@ -455,6 +455,7 @@ uint dhd_download_fw_on_driverload = TRUE;
 char firmware_path[MOD_PARAM_PATHLEN];
 char nvram_path[MOD_PARAM_PATHLEN];
 char clm_path[MOD_PARAM_PATHLEN];
+char signature_path[MOD_PARAM_PATHLEN];
 #ifdef DHD_UCODE_DOWNLOAD
 char ucode_path[MOD_PARAM_PATHLEN];
 #endif /* DHD_UCODE_DOWNLOAD */
@@ -531,6 +532,7 @@ module_param(disable_proptx, int, 0644);
 /* load firmware and/or nvram values from the filesystem */
 module_param_string(firmware_path, firmware_path, MOD_PARAM_PATHLEN, 0660);
 module_param_string(nvram_path, nvram_path, MOD_PARAM_PATHLEN, 0660);
+module_param_string(signature_path, signature_path, MOD_PARAM_PATHLEN, 0660);
 #ifdef DHD_UCODE_DOWNLOAD
 module_param_string(ucode_path, ucode_path, MOD_PARAM_PATHLEN, 0660);
 #endif /* DHD_UCODE_DOWNLOAD */
@@ -563,7 +565,7 @@ uint dhd_runtimepm_ms = CUSTOM_DHD_RUNTIME_MS;
 #endif /* DHD_PCIE_RUNTIMEPMT */
 #if defined(DHD_DEBUG)
 /* Console poll interval */
-uint dhd_console_ms = 0;  /* XXX andrey by default no fw msg prints */
+uint dhd_console_ms = CUSTOM_DHD_CONSOLE_MS;
 module_param(dhd_console_ms, uint, 0644);
 #else
 uint dhd_console_ms = 0;
@@ -980,6 +982,9 @@ static void dhd_module_s2mpu_register(struct device *dev);
 #endif /* CONFIG_ARCH_EXYNOS */
 
 static int dhd_suspend_resume_helper(struct dhd_info *dhd, int val, int force);
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+static void dhd_dump_proc(struct work_struct *work_data);
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 #if defined(CONFIG_PM_SLEEP)
 static int dhd_pm_callback(struct notifier_block *nfb, unsigned long action, void *ignored)
@@ -2198,16 +2203,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					DHD_ERROR(("failed to set intr_width (%d)\n", ret));
 				}
 #endif /* DYNAMIC_SWOOB_DURATION */
-#ifdef CONFIG_SILENT_ROAM
-				if (!dhd->sroamed) {
-					ret = dhd_sroam_set_mon(dhd, TRUE);
-					if (ret < 0) {
-						DHD_ERROR(("%s set sroam failed %d\n",
-							__FUNCTION__, ret));
-					}
-				}
-				dhd->sroamed = FALSE;
-#endif /* CONFIG_SILENT_ROAM */
 #endif /* DHD_USE_EARLYSUSPEND || DHD_USE_PM_SLEEP */
 #ifdef WL_CFG80211
 				wl_cfg80211_soft_suspend(dev, TRUE);
@@ -2278,12 +2273,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					}
 				}
 				dhd_os_suppress_logging(dhd, FALSE);
-#ifdef CONFIG_SILENT_ROAM
-				ret = dhd_sroam_set_mon(dhd, FALSE);
-				if (ret < 0) {
-					DHD_ERROR(("%s set sroam failed %d\n", __FUNCTION__, ret));
-				}
-#endif /* CONFIG_SILENT_ROAM */
 #endif /* DHD_USE_EARLYSUSPEND || DHD_USE_PM_SLEEP */
 #ifdef WL_CFG80211
 				wl_cfg80211_soft_suspend(dev, FALSE);
@@ -6649,6 +6638,10 @@ dhd_open(struct net_device *net)
 #ifdef DHD_GRO_ENABLE_HOST_CTRL
 	dhd->pub.permitted_gro = TRUE;
 #endif /* DHD_GRO_ENABLE_HOST_CTRL */
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	dhd_set_dump_status(&dhd->pub, DUMP_NOT_READY);
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
+
 #if !defined(WL_CFG80211)
 	/*
 	 * Force start if ifconfig_up gets called before START command
@@ -6887,6 +6880,11 @@ dhd_open(struct net_device *net)
 #if defined(NUM_SCB_MAX_PROBE)
 		dhd_set_scb_probe(&dhd->pub);
 #endif /* NUM_SCB_MAX_PROBE */
+#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
+	if (dhd_get_fw_mode(dhd) == DHD_FLAG_MFG_MODE) {
+		dhd_read_otp_hw_rgn(&dhd->pub);
+	}
+#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
 #endif /* WL_CFG80211 */
 	}
 
@@ -7076,8 +7074,11 @@ dhd_static_if_stop(struct net_device *net)
 
 	/* Ensure queue is disabled */
 	netif_tx_disable(net);
-
+	/* Set the interface del_in_progress flag */
+	dhd_set_del_in_progress(&dhd->pub, net);
 	ret = wl_cfg80211_static_if_close(net);
+	/* Clear the interface del_in_progress flag */
+	dhd_clear_del_in_progress(&dhd->pub, net);
 
 	if (dhd->pub.up == 0) {
 		/* If fw is down, return */
@@ -9262,6 +9263,11 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	dhd_module_s2mpu_register(dhd_bus_to_dev(bus));
 #endif /* CONFIG_EXYNOS_S2MPU */
 #endif /* CONFIG_ARCH_EXYNOS */
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	OSL_ATOMIC_SET(dhd->pub.osh, &dhd->dump_status, DUMP_NOT_READY);
+	INIT_WORK(&dhd->dhd_dump_proc_work, dhd_dump_proc);
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
+
 	return &dhd->pub;
 
 fail:
@@ -9302,6 +9308,7 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 {
 	int fw_len;
 	int nv_len;
+	int sig_len;
 	const char *fw = NULL;
 	const char *nv = NULL;
 #ifdef DHD_UCODE_DOWNLOAD
@@ -9311,6 +9318,7 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 	wifi_adapter_info_t *adapter = dhdinfo->adapter;
 	int fw_path_len = sizeof(dhdinfo->fw_path);
 	int nv_path_len = sizeof(dhdinfo->nv_path);
+	int sig_path_len = sizeof(dhdinfo->sig_path);
 
 	/* Update firmware and nvram path. The path may be from adapter info or module parameter
 	 * The path from adapter info is used for initialization only (as it won't change).
@@ -9370,6 +9378,13 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 		}
 		nv = nvram_path;
 	}
+
+	if (signature_path[0] != '\0') {
+		if (signature_path[strlen(signature_path) - 1] == '\n') {
+			signature_path[strlen(signature_path) - 1] = '\0';
+		}
+	}
+
 #ifdef DHD_UCODE_DOWNLOAD
 	if (ucode_path[0] != '\0')
 		uc = ucode_path;
@@ -9435,6 +9450,15 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 		}
 #endif /* DHD_USE_SINGLE_NVRAM_FILE */
 	}
+	if (signature_path[0] != '\0') {
+		sig_len = strlen(fw);
+		if (sig_len >= sig_path_len) {
+			DHD_ERROR(("signature path len exceeds max len of dhdinfo->sig_path\n"));
+			return FALSE;
+		}
+		strlcpy(dhdinfo->sig_path, signature_path, sig_path_len);
+	}
+
 #ifdef DHD_UCODE_DOWNLOAD
 	if (uc && uc[0] != '\0') {
 		uc_len = strlen(uc);
@@ -9450,6 +9474,7 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 	if (dhd_download_fw_on_driverload) {
 		firmware_path[0] = '\0';
 		nvram_path[0] = '\0';
+		signature_path[0] = '\0';
 	}
 #ifdef DHD_UCODE_DOWNLOAD
 	ucode_path[0] = '\0';
@@ -9617,6 +9642,7 @@ dhd_bus_start(dhd_pub_t *dhdp)
 #if defined(DHD_DEBUG) && defined(BCMSDIO)
 		fw_download_start = OSL_SYSUPTIME();
 #endif /* DHD_DEBUG && BCMSDIO */
+		dhd_bus_set_signature_path(dhd->pub.bus, dhd->sig_path);
 		ret = dhd_bus_download_firmware(dhd->pub.bus, dhd->pub.osh,
 		                                dhd->fw_path, dhd->nv_path);
 #if defined(DHD_DEBUG) && defined(BCMSDIO)
@@ -10666,6 +10692,7 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 			dhd->mac.octet, ETHER_ADDR_LEN);
 	}
 
+
 	if ((ret = dhd_apply_default_clm(dhd, clm_path)) < 0) {
 		DHD_ERROR(("%s: CLM set failed. Abort initialization.\n", __FUNCTION__));
 		goto done;
@@ -11146,11 +11173,6 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 		DHD_ERROR(("%s: Failed to get preserve log # !\n", __FUNCTION__));
 	}
 
-#ifdef CONFIG_SILENT_ROAM
-	dhd->sroam_turn_on = TRUE;
-	dhd->sroamed = FALSE;
-#endif /* CONFIG_SILENT_ROAM */
-
 #ifdef CUSTOM_OCL_RSSI_VAL
 	if (ocl_rssi_threshold != FW_OCL_RSSI_THRESH_INITVAL) {
 		ret = dhd_iovar(dhd, 0, "ocl_rssi_threshold", (char *)&ocl_rssi_threshold,
@@ -11166,6 +11188,15 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 		DHD_ERROR(("%s: d3_hostwake_delay IOVAR not present, proceed\n", __FUNCTION__));
 	} else {
 		DHD_ERROR(("%s: d3_hostwake_delay enabled\n", __FUNCTION__));
+	}
+
+	dhd->fr_phase_nibble = TRUE;
+	if (dhd_iovar(dhd, 0, "bus:fr_phase_nibble", (char *)&dhd->fr_phase_nibble,
+		sizeof(dhd->fr_phase_nibble), NULL, 0, TRUE) < 0) {
+		dhd->fr_phase_nibble = FALSE;
+		DHD_ERROR(("%s: fr_phase_nibble IOVAR not present, proceed\n", __FUNCTION__));
+	} else {
+		DHD_ERROR(("%s: fr_phase_nibble enabled\n", __FUNCTION__));
 	}
 
 	dhd_set_bandlock(dhd);
@@ -12852,10 +12883,6 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 		dhd_ecounter_configure(dhd, TRUE);
 	}
 
-#ifdef CONFIG_SILENT_ROAM
-	dhd->sroam_turn_on = TRUE;
-	dhd->sroamed = FALSE;
-#endif /* CONFIG_SILENT_ROAM */
 	dhd_set_bandlock(dhd);
 
 #ifdef WL_UWB_COEX
@@ -12987,7 +13014,7 @@ int dhd_change_mtu(dhd_pub_t *dhdp, int new_mtu, int ifidx)
 	return 0;
 }
 
-#if defined(WL_CFG80211) && defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
 static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 {
 	int ret = BCME_OK;
@@ -13033,6 +13060,7 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 		if ((dhdp->dhd_bus_busy_state & DHD_BUS_BUSY_IN_HALDUMP) != 0) {
 			DHD_ERROR(("%s: Timed out(%d) dhd_bus_busy_state=0x%x\n",
 					__FUNCTION__, timeleft, dhdp->dhd_bus_busy_state));
+			dhd_set_dump_status(dhdp, DUMP_FAILURE);
 			ret = BCME_ERROR;
 		}
 	} else {
@@ -13051,7 +13079,7 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 
 	return ret;
 }
-#endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT && DHD_FW_CORE_DUMP */
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_CORE_DUMP */
 
 #ifdef ARP_OFFLOAD_SUPPORT
 /* add or remove AOE host ip(s) (up to 8 IPs on the interface)  */
@@ -14076,6 +14104,9 @@ void dhd_detach(dhd_pub_t *dhdp)
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 	cancel_work_sync(&dhd->dhd_alert_process_work);
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	cancel_work_sync(&dhd->dhd_dump_proc_work);
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 } /* dhd_detach */
 
 void
@@ -14295,8 +14326,9 @@ dhd_module_init(void)
 
 	err = _dhd_module_init();
 #ifdef DHD_SUPPORT_HDM
-	if (err && !dhd_download_fw_on_driverload) {
+	if (hdm_wifi_support && err && !dhd_download_fw_on_driverload) {
 		dhd_hdm_wlan_sysfs_init();
+		err = 0;
 	}
 #endif /* DHD_SUPPORT_HDM */
 #if defined(BCMDHD_MODULAR) && defined(DHD_MODULE_INIT_FORCE_SUCCESS)
@@ -14453,6 +14485,15 @@ late_initcall(dhd_module_init);
 #endif /* USE_LATE_INITCALL_SYNC */
 
 module_exit(dhd_module_exit);
+
+/* For the Exynos platform, the WLAN_REG_ON pin is connected to an expander GPIO such as PMIC.
+ * The WLAN_REG_ON pin initialization failed
+ * if the Wi-Fi module is loaded before the PMIC module is loaded.
+ * Add the MODULE_SOFTDEP macro to load the Wi-Fi module after the PMIC module is loaded.
+ */
+#if defined(CONFIG_SOC_S5E9925)
+MODULE_SOFTDEP("pre: acpm-mfd-bus");
+#endif /* CONFIG_SOC_S5E9925 */
 
 /*
  * OS specific functions required to implement DHD driver in OS independent way
@@ -18725,17 +18766,25 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 
 #ifdef DHD_SSSR_COREDUMP
 	ret = dhd_collect_coredump(dhdp, dump);
-	if (ret) {
+	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s: dhd_collect_coredump() failed.\n", __FUNCTION__));
 		goto exit;
+	} else if (ret == BCME_UNSUPPORTED) {
+		DHD_LOG_MEM(("%s: Unable to collect SSSR dumps. Skip it.\n",
+			__FUNCTION__));
 	}
 #endif /* DHD_SSSR_COREDUMP */
-
-	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize, dhdp->memdump_str)) {
-		DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
+	if (dhdp->memdump_type == DUMP_TYPE_BY_SYSDUMP) {
+		DHD_LOG_MEM(("%s: coredump is not supported for BY_SYSDUMP\n",
+			__FUNCTION__));
+	} else {
+		if (wifi_platform_set_coredump(dhd->adapter, dump->buf,
+			dump->bufsize, dhdp->memdump_str)) {
+			DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
 #ifdef DHD_DEBUG_UART
-		dhd->pub.memdump_success = FALSE;
+			dhd->pub.memdump_success = FALSE;
 #endif  /* DHD_DEBUG_UART */
+		}
 	}
 #endif /* DHD_COREDUMP */
 
@@ -22925,37 +22974,39 @@ static void dhd_set_bandlock(dhd_pub_t * dhd)
 }
 
 void
-dhd_set_del_in_progress(dhd_pub_t *dhd, struct net_device *ndev)
+dhd_set_del_in_progress(dhd_pub_t *dhdp, struct net_device *ndev)
 {
 	dhd_if_t *ifp = NULL;
 	unsigned long flags;
 
-	ifp = dhd_get_ifp_by_ndev(dhd, ndev);
+	DHD_ERROR(("%s\n", __FUNCTION__));
+	ifp = dhd_get_ifp_by_ndev(dhdp, ndev);
 	if (ifp == NULL) {
 		DHD_ERROR(("DHD Iface Info corresponding to %s not found\n", ndev->name));
 		return;
 	}
 
-	DHD_GENERAL_LOCK(dhd, flags);
+	DHD_GENERAL_LOCK(dhdp, flags);
 	ifp->del_in_progress = TRUE;
-	DHD_GENERAL_UNLOCK(dhd, flags);
+	DHD_GENERAL_UNLOCK(dhdp, flags);
 }
 
 void
-dhd_clear_del_in_progress(dhd_pub_t *dhd, struct net_device *ndev)
+dhd_clear_del_in_progress(dhd_pub_t *dhdp, struct net_device *ndev)
 {
 	dhd_if_t *ifp = NULL;
 	unsigned long flags;
 
-	ifp = dhd_get_ifp_by_ndev(dhd, ndev);
+	DHD_ERROR(("%s\n", __FUNCTION__));
+	ifp = dhd_get_ifp_by_ndev(dhdp, ndev);
 	if (ifp == NULL) {
 		DHD_ERROR(("DHD Iface Info corresponding to %s not found\n", ndev->name));
 		return;
 	}
 
-	DHD_GENERAL_LOCK(dhd, flags);
+	DHD_GENERAL_LOCK(dhdp, flags);
 	ifp->del_in_progress = FALSE;
-	DHD_GENERAL_UNLOCK(dhd, flags);
+	DHD_GENERAL_UNLOCK(dhdp, flags);
 }
 
 #ifdef PCIE_FULL_DONGLE
@@ -23161,3 +23212,37 @@ struct device *dhd_bus_to_dev(struct dhd_bus *bus)
 	return (struct device *)dbus_get_dev();
 }
 #endif /* BCMDBUS */
+
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+dhd_dongledump_status_t dhd_get_dump_status(dhd_pub_t *pub)
+{
+	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
+
+	return OSL_ATOMIC_READ(pub->osh, &dhd->dump_status);
+}
+
+void dhd_set_dump_status(dhd_pub_t *pub, dhd_dongledump_status_t dump_status)
+{
+	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
+
+	OSL_ATOMIC_SET(pub->osh, &dhd->dump_status, dump_status);
+}
+
+static void dhd_dump_proc(struct work_struct *work_data)
+{
+	dhd_info_t *dhd_info = NULL;
+	dhd_pub_t *dhdp = NULL;
+
+	/* Ignore compiler warnings due to -Werror=cast-qual */
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	dhd_info = container_of(work_data, dhd_info_t, dhd_dump_proc_work);
+	GCC_DIAGNOSTIC_POP();
+
+	if (!dhd_info || ((dhdp = &dhd_info->pub) == NULL)) {
+		DHD_ERROR(("dhd is NULL\n"));
+		return;
+	}
+
+	dhd_log_dump_trigger(dhdp, CMD_DEFAULT);
+}
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */

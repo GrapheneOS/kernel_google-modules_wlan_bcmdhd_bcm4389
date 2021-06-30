@@ -202,10 +202,3 @@ config BCMDHD_GET_OOB_STATE
         default y
         ---help---
           Support WLAN_HOST_WAKE pin level information
-
-config BCMDHD_HTPUT
-	bool "Enable High wlan tput tunables"
-	depends on BCMDHD
-	default n
-	---help---
-	  Use wlan high tput tunables

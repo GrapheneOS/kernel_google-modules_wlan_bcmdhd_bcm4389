@@ -410,6 +410,12 @@ extern bool bcm_postattach_part_reclaimed;
 #define PMUREV(rev)	(rev)
 #endif
 
+#ifdef BCMSDTCREV
+#define SDTCREV(rev)	(BCMSDTCREV)
+#else
+#define SDTCREV(rev)	(rev)
+#endif
+
 #ifdef BCMCCREV
 #define CCREV(rev)	(BCMCCREV)
 #elif defined(BCMCHIPCOMMONREV)
@@ -832,6 +838,19 @@ extern uint32 gFWID;
 #else
 	#define URB_ENAB()	(0)
 #endif /* URB */
+
+#ifdef TX_HISTOGRAM
+extern bool _tx_histogram_enabled;
+#if defined(ROM_ENAB_RUNTIME_CHECK)
+	#define TX_HISTOGRAM_ENAB() (_tx_histogram_enabled)
+#elif defined(TX_HISTOGRAM_DISABLED)
+	#define TX_HISTOGRAM_ENAB() (0)
+#else
+	#define TX_HISTOGRAM_ENAB() (1)
+#endif
+#else
+	#define TX_HISTOGRAM_ENAB() (0)
+#endif /* TX_HISTOGRAM */
 
 /* Chip related low power flags (lpflags) */
 

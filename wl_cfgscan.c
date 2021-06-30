@@ -1141,6 +1141,12 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		} else if ((likely(cfg->scan_request)) || (cfg->sched_scan_running)) {
 			WL_INFORM_MEM(("ESCAN ABORTED\n"));
 
+			if (cfg->escan_info.ndev != ndev) {
+				/* Ignore events coming for older scan reqs */
+				WL_INFORM_MEM(("abort event doesn't match on going scan req\n"));
+				err = BCME_ERROR;
+				goto exit;
+			}
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
 			if (p2p_scan(cfg) && cfg->scan_request &&
 				(cfg->scan_request->flags & NL80211_SCAN_FLAG_FLUSH)) {
@@ -3579,7 +3585,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	ushort pno_time = 0;
 	int pno_repeat = 0;
 	int pno_freq_expo_max = 0;
-	wlc_ssid_ext_t ssids_local[MAX_PFN_LIST_COUNT];
+	wlc_ssid_ext_t *ssids_local = NULL;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	struct cfg80211_ssid *ssid = NULL;
@@ -3642,8 +3648,8 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		pno_time = request->scan_plans->interval;
 	}
 
-	WL_INFORM_MEM(("Enter. ssids:%d match_sets:%d pno_time:%d pno_repeat:%d "
-		"channels:%d adaptive:%d\n", request->n_ssids, request->n_match_sets,
+	WL_INFORM_MEM(("[%s] Enter. ssids:%d match_sets:%d pno_time:%d pno_repeat:%d "
+		"channels:%d adaptive:%d\n", dev->name, request->n_ssids, request->n_match_sets,
 		pno_time, pno_repeat, request->n_channels, adaptive_pno));
 
 	if (!request->n_ssids || !request->n_match_sets) {
@@ -3651,7 +3657,13 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	bzero(&ssids_local, sizeof(ssids_local));
+	ssids_local = (wlc_ssid_ext_t *)MALLOCZ(cfg->osh,
+		sizeof(wlc_ssid_ext_t) * MAX_PFN_LIST_COUNT);
+	if (!ssids_local) {
+		WL_ERR(("No memory"));
+		ret = -ENOMEM;
+		goto exit;
+	}
 
 	if (request->n_ssids > 0) {
 		hidden_ssid_list = request->ssids;
@@ -3670,7 +3682,8 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		if (!event_data) {
 			WL_ERR(("%s: failed to allocate log_conn_event_t with "
 						"length(%d)\n", __func__, alloc_len));
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto exit;
 		}
 	}
 	for (i = 0; i < request->n_match_sets && ssid_cnt < MAX_PFN_LIST_COUNT; i++) {
@@ -3759,6 +3772,10 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && (defined(SUPPORT_RANDOM_MAC_SCAN)) */
 
 exit:
+	if (ssids_local) {
+		MFREE(cfg->osh, ssids_local,
+			sizeof(wlc_ssid_ext_t) * MAX_PFN_LIST_COUNT);
+	}
 	if (event_data) {
 		MFREE(cfg->osh, event_data, alloc_len);
 	}
@@ -3792,14 +3809,14 @@ wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 
-	WL_INFORM((">>> SCHED SCAN STOP\n"));
+	WL_INFORM_MEM(("[%s] Enter\n", dev->name));
 	wl_cfg80211_stop_pno(cfg, dev);
 
 	cancel_delayed_work(&cfg->sched_scan_stop_work);
 
 	mutex_lock(&cfg->scan_sync);
 	if (cfg->sched_scan_req) {
-		if (cfg->sched_scan_running && wl_get_drv_status(cfg, SCANNING, dev)) {
+		if (cfg->sched_scan_running && wl_get_drv_status_all(cfg, SCANNING)) {
 			/* If targetted escan for PNO is running, abort it */
 			WL_INFORM_MEM(("abort targetted escan\n"));
 			wl_cfgscan_scan_abort(cfg);
@@ -4190,7 +4207,7 @@ wl_cfgscan_update_v3_schedscan_results(struct bcm_cfg80211 *cfg, struct net_devi
 	int err = 0;
 	wl_pfn_net_info_v3_t *netinfo, *pnetinfo;
 	struct cfg80211_scan_request *request = NULL;
-	struct cfg80211_ssid ssid[MAX_PFN_LIST_COUNT];
+	struct cfg80211_ssid *ssid = NULL;
 	struct ieee80211_channel *channel = NULL;
 	struct wiphy *wiphy	= bcmcfg_to_wiphy(cfg);
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
@@ -4215,13 +4232,13 @@ wl_cfgscan_update_v3_schedscan_results(struct bcm_cfg80211 *cfg, struct net_devi
 			pfn_result->count = MAX_PFN_LIST_COUNT;
 		}
 
-		bzero(&ssid, sizeof(ssid));
-
+		ssid = (struct cfg80211_ssid *)MALLOCZ(cfg->osh,
+			sizeof(struct cfg80211_ssid) * MAX_PFN_LIST_COUNT);
 		request = (struct cfg80211_scan_request *)MALLOCZ(cfg->osh,
 			sizeof(*request) + sizeof(*request->channels) * pfn_result->count);
 		channel = (struct ieee80211_channel *)MALLOCZ(cfg->osh,
 			(sizeof(struct ieee80211_channel) * pfn_result->count));
-		if (!request || !channel) {
+		if (!request || !channel || !ssid) {
 			WL_ERR(("No memory"));
 			err = -ENOMEM;
 			goto out_err;
@@ -4336,6 +4353,10 @@ wl_cfgscan_update_v3_schedscan_results(struct bcm_cfg80211 *cfg, struct net_devi
 	}
 
 out_err:
+	if (ssid) {
+		MFREE(cfg->osh, ssid,
+			sizeof(struct cfg80211_ssid) * MAX_PFN_LIST_COUNT);
+	}
 	if (request) {
 		MFREE(cfg->osh, request,
 			sizeof(*request) + sizeof(*request->channels) * pfn_result->count);
@@ -4364,7 +4385,7 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	int err = 0;
 	struct cfg80211_scan_request *request = NULL;
-	struct cfg80211_ssid ssid[MAX_PFN_LIST_COUNT];
+	struct cfg80211_ssid *ssid = NULL;
 	struct ieee80211_channel *channel = NULL;
 	int channel_req = 0;
 	int band = 0;
@@ -4400,13 +4421,13 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			if (n_pfn_results > MAX_PFN_LIST_COUNT)
 				n_pfn_results = MAX_PFN_LIST_COUNT;
 
-			bzero(&ssid, sizeof(ssid));
-
+			ssid = (struct cfg80211_ssid *)MALLOCZ(cfg->osh,
+				sizeof(struct cfg80211_ssid) * MAX_PFN_LIST_COUNT);
 			request = (struct cfg80211_scan_request *)MALLOCZ(cfg->osh,
 				sizeof(*request) + sizeof(*request->channels) * n_pfn_results);
 			channel = (struct ieee80211_channel *)MALLOCZ(cfg->osh,
 				(sizeof(struct ieee80211_channel) * n_pfn_results));
-			if (!request || !channel) {
+			if (!request || !channel || !ssid) {
 				WL_ERR(("No memory"));
 				err = -ENOMEM;
 				goto out_err;
@@ -4546,13 +4567,13 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			if (n_pfn_results > MAX_PFN_LIST_COUNT)
 				n_pfn_results = MAX_PFN_LIST_COUNT;
 
-			bzero(&ssid, sizeof(ssid));
-
+			ssid = (struct cfg80211_ssid *)MALLOCZ(cfg->osh,
+				sizeof(struct cfg80211_ssid) * MAX_PFN_LIST_COUNT);
 			request = (struct cfg80211_scan_request *)MALLOCZ(cfg->osh,
 				sizeof(*request) + sizeof(*request->channels) * n_pfn_results);
 			channel = (struct ieee80211_channel *)MALLOCZ(cfg->osh,
 				(sizeof(struct ieee80211_channel) * n_pfn_results));
-			if (!request || !channel) {
+			if (!request || !channel || !ssid) {
 				WL_ERR(("No memory"));
 				err = -ENOMEM;
 				goto out_err;
@@ -4696,6 +4717,10 @@ out_err:
 	}
 	mutex_unlock(&cfg->scan_sync);
 
+	if (ssid) {
+		MFREE(cfg->osh, ssid,
+			sizeof(struct cfg80211_ssid) * MAX_PFN_LIST_COUNT);
+	}
 	if (request) {
 		MFREE(cfg->osh, request,
 			sizeof(*request) + sizeof(*request->channels) * n_pfn_results);

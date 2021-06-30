@@ -485,25 +485,15 @@ wl_cfg80211_get_iface_policy(struct net_device *ndev)
 wl_iftype_t
 wl_cfg80211_get_sec_iface(struct bcm_cfg80211 *cfg)
 {
-#ifndef WL_STATIC_IF
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-#endif /* !WL_STATIC_IF */
 	struct net_device *p2p_ndev = NULL;
 
 	p2p_ndev = wl_to_p2p_bss_ndev(cfg,
 		P2PAPI_BSSCFG_CONNECTION1);
 
-#ifdef WL_STATIC_IF
-	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg)) {
-		if (IS_AP_IFACE(cfg->static_ndev->ieee80211_ptr)) {
-			return WL_IF_TYPE_AP;
-		}
-	}
-#else
 	if (dhd->op_mode & DHD_FLAG_HOSTAP_MODE) {
 		return WL_IF_TYPE_AP;
 	}
-#endif /* WL_STATIC_IF */
 
 	if (p2p_ndev && p2p_ndev->ieee80211_ptr) {
 		if (p2p_ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_P2P_GO) {
@@ -559,6 +549,16 @@ wl_cfg80211_data_if_mgmt(struct bcm_cfg80211 *cfg,
 		*/
 		return BCME_OK;
 	}
+
+#ifdef WL_DUAL_APSTA
+	if (sec_wl_if_type == WL_IF_TYPE_AP &&
+		(new_wl_iftype == WL_IF_TYPE_AP || new_wl_iftype == WL_IF_TYPE_STA)) {
+		/* For Dual APSTA configuration allow starting new AP/STA even though
+		 * secondary interface is AP
+		 */
+		return BCME_OK;
+	}
+#endif /* WL_DUAL_APSTA */
 
 	/* Handle secondary data link case */
 	switch (cfg->iface_data.policy) {
@@ -6711,6 +6711,32 @@ wl_roam_off_config(struct net_device *dev, bool val)
 
 #ifdef WL_DUAL_APSTA
 static void
+wl_roam_enable_on_connected(struct bcm_cfg80211 *cfg,
+		bool enable)
+{
+	struct net_info *iter, *next;
+	bool roam_val = false;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	for_each_ndev(cfg, iter, next) {
+		GCC_DIAGNOSTIC_POP();
+		if ((iter->ndev) &&
+				(iter->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION)) {
+
+			if (wl_get_drv_status(cfg, CONNECTED, iter->ndev)) {
+				roam_val = enable ? FALSE : TRUE;
+				wl_roam_off_config(iter->ndev, roam_val);
+			}
+		}
+	}
+}
+
+/*
+ * Roam config API for dual STA
+ * Disable: Disable for all interfaces
+ * Enable: Enable roam only for primary STA
+ */
+static void
 wl_dualsta_enable_roam(struct bcm_cfg80211 *cfg,
 		struct net_device *dev, bool enable)
 {
@@ -6724,6 +6750,14 @@ wl_dualsta_enable_roam(struct bcm_cfg80211 *cfg,
 				(iter->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION)) {
 
 			roam_val = enable ? FALSE : TRUE;
+			if (enable && iter->ndev != cfg->inet_ndev) {
+				/* For enable case, the roam is supposed to enabled only
+				 * on primary. For other interfaces, disable it
+				 */
+				wl_roam_off_config(iter->ndev, TRUE);
+				WL_DBG_MEM(("non-primary ndev. skip roam enable\n"));
+				continue;
+			}
 			wl_roam_off_config(iter->ndev, roam_val);
 		}
 	}
@@ -6734,11 +6768,8 @@ void
 wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_roam_conf_t state)
 {
-	u32 connected_ifaces = wl_get_drv_status_all(cfg, CONNECTED);
-	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	u32 ap_active = 0;
 
-	WL_DBG_MEM(("Enter. state:%d\n", state));
+	WL_DBG_MEM(("Enter. state:%d stas:%d\n", state, cfg->stas_associated));
 
 	if (!cfg || !dev) {
 		WL_ERR(("invalid args\n"));
@@ -6750,7 +6781,6 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		return;
 	}
 
-	ap_active = (dhd->op_mode & DHD_FLAG_HOSTAP_MODE);
 	/*
 	 * We support roam only on one STA interface at a time (meant for internet
 	 * traffic. For ROAM enable cases, if more than one STA interface is in
@@ -6770,7 +6800,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	} else if (state == ROAM_CONF_ROAM_ENAB_REQ) {
 		struct net_device *roam_ndev = dev;
 		cfg->disable_fw_roam = FALSE;
-		if ((connected_ifaces > 1) && !ap_active) {
+		if ((cfg->stas_associated > 1)) {
 			WL_DBG_MEM(("Roam enable with more than one interface connected.\n"));
 			/* If roam enable comes with > 1 iface connected, enable it on primary */
 			if (!cfg->inet_ndev) {
@@ -6791,6 +6821,22 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		return;
 	}
 
+#ifdef WL_DUAL_APSTA
+	if (state == ROAM_CONF_LINKUP) {
+		if (cfg->stas_associated == 2) {
+			/* Apply  ROAM_CONF_PRIMARY_STA configuration */
+			state = ROAM_CONF_PRIMARY_STA;
+		} else if (cfg->stas_associated == 1) {
+			/* Single sta case. Enable ROAM */
+			wl_roam_off_config(dev, FALSE);
+		} else {
+			WL_ERR(("roam_config unexpected state. stas:%d\n",
+				cfg->stas_associated));
+			return;
+		}
+
+	}
+
 	if (state == ROAM_CONF_PRIMARY_STA) {
 		/* Enable roam on primary STA */
 		if (!cfg->inet_ndev) {
@@ -6798,13 +6844,13 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 			return;
 		}
 
-		wl_roam_off_config(cfg->inet_ndev, FALSE);
+		/* Enable roam on primary, disable on others */
+		wl_dualsta_enable_roam(cfg, cfg->inet_ndev, TRUE);
 		return;
 	}
 
-#ifdef WL_DUAL_APSTA
 	if ((state == ROAM_CONF_ASSOC_REQ) &&
-			(connected_ifaces >= 1) && !ap_active)  {
+			(cfg->stas_associated >= 1))  {
 		/* If we already have another STA connected, disable ROAM
 		 * on both STA interfaces. Enable it back from linkdown or
 		 * setPrimarySta context.
@@ -6815,8 +6861,8 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		/* If link down came for STA interface and there are no two active STA
 		 * connections, enable back the roam
 		 */
-		if (connected_ifaces <= 1) {
-			wl_dualsta_enable_roam(cfg, dev, TRUE);
+		if (cfg->stas_associated == 1) {
+			wl_roam_enable_on_connected(cfg, TRUE);
 		}
 	}
 #endif /* WL_DUAL_APSTA */

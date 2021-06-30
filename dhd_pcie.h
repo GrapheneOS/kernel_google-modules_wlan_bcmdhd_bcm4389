@@ -241,6 +241,9 @@ typedef enum dhd_pcie_link_state {
 	DHD_PCIE_WLAN_BP_DOWN = 3
 } dhd_pcie_link_state_type_t;
 
+/* Max length of filename in IOVAR or in module parameter */
+#define DHD_MAX_PATH	2048u
+
 /** Instantiated once for each hardware (dongle) instance that this DHD manages */
 typedef struct dhd_bus {
 	dhd_pub_t	*dhd;	/**< pointer to per hardware (dongle) unique instance */
@@ -525,7 +528,7 @@ typedef struct dhd_bus {
 	uint32 fw_memmap_download_addr;	/* Dongle address of FWS memory-info download */
 	uint32 fw_memmap_download_len;	/* Length in bytes of FWS memory-info download */
 
-	char fwsig_filename[DHD_FILENAME_MAX];		/* Name of FW signature file */
+	char fwsig_filename[DHD_MAX_PATH];		/* Name of FW signature file */
 	char bootloader_filename[DHD_FILENAME_MAX];	/* Name of bootloader image file */
 	uint32 bootloader_addr;		/* Dongle address of bootloader download */
 	bool force_bt_quiesce; /* send bt_quiesce command to BT driver. */

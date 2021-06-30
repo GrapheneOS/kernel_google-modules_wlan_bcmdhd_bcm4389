@@ -1035,6 +1035,7 @@ typedef enum wl_assoc_state {
 typedef enum wl_roam_conf {
 	ROAM_CONF_INVALID,
 	ROAM_CONF_ASSOC_REQ,
+	ROAM_CONF_LINKUP,
 	ROAM_CONF_LINKDOWN,
 	ROAM_CONF_PRIMARY_STA,
 	ROAM_CONF_ROAM_ENAB_REQ,
@@ -2122,6 +2123,12 @@ struct bcm_cfg80211 {
 	uint32 dpm_cont_evt_cnt;        /* continuous repeated dpm count */
 	uint32 dpm_total_pkts;          /* total tx/rx packet count */
 #endif /* CUSTOM_EVENT_PM_WAKE */
+	u8 stas_associated;
+	u8 ap_cnt;
+#ifdef CONFIG_SILENT_ROAM
+	bool sroam_turn_on;
+	bool sroamed;
+#endif /* CONFIG_SILTENT_ROAM */
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -2511,6 +2518,55 @@ wl_set_status_all(struct bcm_cfg80211 *cfg, s32 status, u32 op)
 	}
 	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
 }
+
+static inline void
+wl_track_if_states(struct bcm_cfg80211 *cfg, struct net_info *_net_info,
+		s32 status, bool set)
+{
+	struct net_device *ndev = _net_info->ndev;
+	enum nl80211_iftype iftype = ndev->ieee80211_ptr->iftype;
+
+	switch (iftype) {
+		case NL80211_IFTYPE_STATION:
+			if (status == WL_STATUS_CONNECTED) {
+				if (set) {
+					if (test_bit(status, &_net_info->sme_state)) {
+						/* bit already set. ROAM case. don't incr */
+						return;
+					}
+					cfg->stas_associated++;
+				} else {
+					/* clearing of states may happen from multiple places
+					 * count only once
+					 */
+					if (!test_bit(status, &_net_info->sme_state)) {
+						/* bit not set. nothing to clear */
+						return;
+					}
+
+					if (cfg->stas_associated) {
+						cfg->stas_associated--;
+					}
+				}
+				WL_DBG_MEM(("stas_associated:%d\n", cfg->stas_associated));
+			}
+			break;
+		case NL80211_IFTYPE_AP:
+			if (status == WL_STATUS_AP_CREATED) {
+				if (set) {
+					cfg->ap_cnt++;
+				} else {
+					cfg->ap_cnt--;
+				}
+				WL_DBG(("ap_cnt:%d\n", cfg->ap_cnt));
+			}
+			break;
+		default:
+			/* Do nothing for other roles. Add cases as and when reqd */
+			break;
+	}
+}
+
 static inline void
 wl_set_status_by_netdev(struct bcm_cfg80211 *cfg, s32 status,
 	struct net_device *ndev, u32 op)
@@ -2541,6 +2597,7 @@ wl_set_status_by_netdev(struct bcm_cfg80211 *cfg, s32 status,
 					 * will be nested calls
 					 */
 					WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
+					wl_track_if_states(cfg, _net_info, status, TRUE);
 					set_bit(status, &_net_info->sme_state);
 					if (cfg->state_notifier &&
 						test_bit(status, &(cfg->interrested_state)))
@@ -2552,6 +2609,7 @@ wl_set_status_by_netdev(struct bcm_cfg80211 *cfg, s32 status,
 					 * will be nested calls
 					 */
 					WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
+					wl_track_if_states(cfg, _net_info, status, FALSE);
 					clear_bit(status, &_net_info->sme_state);
 					if (cfg->state_notifier &&
 						test_bit(status, &(cfg->interrested_state)))
@@ -2987,6 +3045,7 @@ extern s32 wl_cfg80211_set_p2p_resp_ap_chn(struct net_device *net, s32 enable);
 /* btcoex functions */
 void* wl_cfg80211_btcoex_init(struct net_device *ndev);
 void wl_cfg80211_btcoex_deinit(void);
+void wl_cfg80211_btcoex_kill_handler(void);
 
 extern chanspec_t wl_chspec_from_legacy(chanspec_t legacy_chspec);
 extern chanspec_t wl_chspec_driver_to_host(chanspec_t chanspec);
@@ -3412,4 +3471,9 @@ extern int wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid,
 extern void wl_cfg80211_set_suspend_bcn_li_dtim(struct bcm_cfg80211 *cfg,
 		struct net_device *dev, bool suspend);
 extern void wl_cfg80211_soft_suspend(struct net_device *dev, bool supsend);
+extern void wl_cfg80211_handle_primary_ifchange(struct bcm_cfg80211 *cfg,
+		struct net_device *dev);
+#ifdef CONFIG_SILENT_ROAM
+int wl_cfg80211_sroam_config(struct bcm_cfg80211 *cfg, struct net_device *dev, bool set);
+#endif /* CONFIG_SILENT_ROAM */
 #endif /* _wl_cfg80211_h_ */

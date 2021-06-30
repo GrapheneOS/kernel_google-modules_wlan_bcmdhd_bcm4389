@@ -444,12 +444,12 @@ typedef enum {
 	(((val) & 1u) << WLFC_MODE_REUSESEQ_SHIFT))
 
 /** returns TRUE if 'd11 sequence reuse' has been agreed upon between host and dongle */
-#if defined(BCMPCIEDEV_ENABLED) && !defined(ROM_ENAB_RUNTIME_CHECK)
+#if defined(BCMPCIEDEV_ENABLED)
 /* GET_REUSESEQ is always TRUE in pciedev */
 #define WLFC_GET_REUSESEQ(x)	(TRUE)
 #else
 #define WLFC_GET_REUSESEQ(x)	(((x) >> WLFC_MODE_REUSESEQ_SHIFT) & 1)
-#endif /* defined(BCMPCIEDEV_ENABLED) && !defined(ROM_ENAB_RUNTIME_CHECK) */
+#endif /* defined(BCMPCIEDEV_ENABLED) */
 
 #define WLFC_MODE_REORDERSUPP_SHIFT	4u	/* host reorder suppress pkt bit */
 #define WLFC_SET_REORDERSUPP(x, val)	((x) = \

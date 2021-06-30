@@ -69,6 +69,16 @@
 
 #define NUMBER_OF_BITS_BYTE	8u
 
+/* TX_HISTOGRAM enable/disable state flag
+ * Updated in histogram.c
+ */
+#if defined(TX_HISTOGRAM) && !defined(TX_HISTOGRAM_DISABLED)
+/* initialized to TRUE in tx_histogram_init() */
+bool _tx_histogram_enabled = FALSE;
+#else
+bool _tx_histogram_enabled = FALSE;
+#endif /* TX_HISTOGRAM && !TX_HISTOGRAM_DISABLED */
+
 #ifdef PRIVACY_MASK
 struct ether_addr privacy_addrmask;
 

@@ -1105,6 +1105,7 @@ typedef BWL_PRE_PACKED_STRUCT struct nan2_pub_act_frame_s {
 #define NAN_REASON_QOS_UNACCEPT			0x9
 #define NAN_REASON_NDP_REJECT			0xa
 #define NAN_REASON_NDL_UNACCEPTABLE		0xb
+#define NAN_REASON_RNG_SCHED_UNACCEPTALE	0xc
 
 /* nan 2.0 qos (not attribute) */
 typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_ndp_qos_s {

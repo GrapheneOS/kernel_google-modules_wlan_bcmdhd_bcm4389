@@ -586,6 +586,15 @@ enum dhd_dongledump_mode {
 	DUMP_MEMFILE_MAX	= 4
 };
 
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+typedef enum dhd_dongledump_status {
+	DUMP_READY		= 0,
+	DUMP_IN_PROGRESS	= 1,
+	DUMP_FAILURE		= 2,
+	DUMP_NOT_READY		= 3
+} dhd_dongledump_status_t;
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
+
 enum dhd_dongledump_type {
 	DUMP_TYPE_RESUMED_ON_TIMEOUT		= 1,
 	DUMP_TYPE_D3_ACK_TIMEOUT		= 2,
@@ -652,7 +661,8 @@ enum dhd_hang_reason {
 	HANG_REASON_UNKNOWN				= 0x8807,
 	HANG_REASON_PCIE_LINK_DOWN_EP_DETECT		= 0x8808,
 	HANG_REASON_PCIE_CTO_DETECT			= 0x8809,
-	HANG_REASON_MAX					= 0x880A
+	HANG_REASON_SLEEP_FAILURE			= 0x880A,
+	HANG_REASON_MAX					= 0x880B
 };
 
 #define WLC_E_DEAUTH_MAX_REASON 0x0FFF
@@ -1722,10 +1732,6 @@ typedef struct dhd_pub {
 	uint32 target_uid;
 	uint8 target_tid;
 #endif /* SUPPORT_SET_TID */
-#ifdef CONFIG_SILENT_ROAM
-	bool sroam_turn_on;	/* Silent roam monitor enable flags */
-	bool sroamed;		/* Silent roam monitor check flags */
-#endif /* CONFIG_SILENT_ROAM */
 #ifdef DHD_PKTDUMP_ROAM
 	void *pktcnts;
 #endif /* DHD_PKTDUMP_ROAM */
@@ -1797,6 +1803,8 @@ typedef struct dhd_pub {
 #ifdef DHD_SUPPORT_SPMI_MODE
 	uint dhd_spmi_mode;
 #endif /* DHD_SUPPORT_SPMI_MODE */
+	/* Flag to indicate H2D flowring phase nibble value support */
+	uint8 fr_phase_nibble;
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -2880,6 +2888,11 @@ static INLINE int dhd_set_ap_isolate(dhd_pub_t *dhdp, uint32 idx, int val) { ret
 static INLINE int dhd_bssidx2idx(dhd_pub_t *dhdp, uint32 bssidx) { return 0; }
 #endif /* LINUX */
 
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+dhd_dongledump_status_t dhd_get_dump_status(dhd_pub_t *pub);
+void dhd_set_dump_status(dhd_pub_t *pub, dhd_dongledump_status_t status);
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
+
 extern bool dhd_is_concurrent_mode(dhd_pub_t *dhd);
 int dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *param_buf, uint param_len,
 		char *res_buf, uint res_len, bool set);
@@ -3058,6 +3071,14 @@ extern uint dhd_force_tx_queueing;
 #ifndef CUSTOM_DHD_WATCHDOG_MS
 #define CUSTOM_DHD_WATCHDOG_MS			DEFAULT_DHD_WATCHDOG_INTERVAL_MS
 #endif /* DEFAULT_DHD_WATCHDOG_INTERVAL_MS */
+
+#if defined(DHD_DEBUG)
+#define DEFAULT_DHD_CONSOLE_INTERVAL_MS		0 /* android by default disable console msgs */
+
+#ifndef CUSTOM_DHD_CONSOLE_MS
+#define CUSTOM_DHD_CONSOLE_MS			DEFAULT_DHD_CONSOLE_INTERVAL_MS
+#endif /* DEFAULT_DHD_WATCHDOG_INTERVAL_MS */
+#endif /* DHD_DEBUG */
 
 #define	DHD_INB_DW_DEASSERT_MS			250
 
@@ -3261,6 +3282,10 @@ static INLINE int dhd_check_module_mac(dhd_pub_t *dhdp) { return 0; }
 	defined(GET_MAC_FROM_OTP)
 #define DHD_USE_CISINFO
 #endif /* READ_MACADDR || WRITE_MACADDR || USE_CID_CHECK || GET_MAC_FROM_OTP */
+#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
+extern int otpinfo_val;
+int dhd_read_otp_hw_rgn(dhd_pub_t *dhdp);
+#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
 
 #ifdef DHD_USE_CISINFO
 int dhd_read_cis(dhd_pub_t *dhdp);
@@ -4342,6 +4367,7 @@ extern bool hdm_trigger_init;
 extern int dhd_module_init_hdm(void);
 extern void dhd_hdm_wlan_sysfs_init(void);
 extern void dhd_hdm_wlan_sysfs_deinit(struct work_struct *);
+extern int hdm_wifi_support;
 #define SYSFS_DEINIT_MS 10
 #endif /* DHD_SUPPORT_HDM */
 

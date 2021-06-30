@@ -663,13 +663,16 @@ typedef struct dhd_dbg_rx_info
 typedef struct dhd_dbg_tx_report
 {
 	dhd_dbg_tx_info_t *tx_pkts;
+	/* Indicates how many packets queued to send over the air */
 	uint16 pkt_pos;
+	/* Indicates how many packets sent over the air and received txstatus */
 	uint16 status_pos;
 } dhd_dbg_tx_report_t;
 
 typedef struct dhd_dbg_rx_report
 {
 	dhd_dbg_rx_info_t *rx_pkts;
+	/* Indicates how many packets sent over the air and received txstatus */
 	uint16 pkt_pos;
 } dhd_dbg_rx_report_t;
 

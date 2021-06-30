@@ -212,9 +212,10 @@ typedef struct event_log_set {
 	uint16 flags;
 	uint16 num_preserve_blocks;
 	event_log_set_sub_destination_t sub_destination;
-	uint16	water_mark;		/* not used yet: threshold to flush host in percent */
-	uint32	period;			/* period to flush host in ms */
-	uint32	last_rpt_ts;	/* last time to flush  in ms */
+	uint16 water_mark;		/* not used yet: threshold to flush host in percent */
+	uint32 period;			/* period to flush host in ms */
+	uint32 last_rpt_ts;		/* last time to flush  in ms */
+	uint64 ets_write_ptm_time;	/* Raw PTM count in ns on PTM enabled devices */
 } event_log_set_t;
 
 /* Definition of flags in set */
@@ -241,6 +242,8 @@ typedef struct event_log_top {
 	bool cpu_freq_changed;		/* Set to TRUE when CPU freq changed */
 	bool hostmem_access_enabled;	/* Is host memory access enabled for log delivery */
 	bool event_trace_enabled;	/* WLC_E_TRACE enabled/disabled */
+	uint64 t0_time;			/* Time at system startup. Stored for debug */
+	uint64 cur_log_write_ptm_time;	/* current raw PTM time in ns at log write time */
 } event_log_top_t;
 
 /* structure of the trailing 3 words in logstrs.bin */
@@ -623,7 +626,13 @@ extern void event_logn(int num_args, int tag, int fmtNum, ...);
 extern void event_logv(uint num_args, int tag, int fmtNum, va_list ap);
 #endif /* ROM_COMPAT_MSCH_PROFILER */
 
+/* Use PTM based timestamping of event log records if PTM is available. */
+#if defined(GTIMER_PTM) && !defined(GTIMER_PTM_DISABLED)
+#define event_log_time_sync(ms)
+#else
 extern void event_log_time_sync(uint32 ms);
+#endif
+
 extern bool event_log_time_sync_required(void);
 extern void event_log_cpu_freq_changed(void);
 extern void event_log_buffer(int tag, const uint8 *buf, int size);

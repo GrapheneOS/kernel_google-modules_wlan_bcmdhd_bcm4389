@@ -3819,18 +3819,29 @@ dhdsdio_get_mem_dump(dhd_bus_t *bus)
 	uint32 start = bus->dongle_ram_base;	/* Start address */
 	uint read_size = 0;			/* Read size of each iteration */
 	uint8 *p_buf = NULL, *databuf = NULL;
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	dhd_dongledump_status_t dump_status;
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 	/* Get full mem size */
 	p_buf = dhd_get_fwdump_buf(bus->dhd, size);
 	if (!p_buf) {
 		DHD_ERROR(("%s: Out of memory (%d bytes)\n",
 			__FUNCTION__, size));
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto exit;
 	}
 
 	dhd_os_sdlock(bus->dhd);
 	BUS_WAKE(bus);
 	dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
+
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	dump_status = dhd_get_dump_status(bus->dhd);
+	if (dump_status != DUMP_IN_PROGRESS) {
+		dhd_set_dump_status(bus->dhd, DUMP_IN_PROGRESS);
+	}
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 	/* Read mem content */
 	DHD_ERROR(("Dump dongle memory\n"));
@@ -3854,6 +3865,13 @@ dhdsdio_get_mem_dump(dhd_bus_t *bus)
 		bus->activity = FALSE;
 		dhdsdio_clkctl(bus, CLK_NONE, TRUE);
 	}
+
+exit:
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	if (ret != BCME_OK) {
+		dhd_set_dump_status(bus->dhd, DUMP_FAILURE);
+	}
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 	dhd_os_sdunlock(bus->dhd);
 
@@ -10429,3 +10447,10 @@ dhd_bus_get_bus_wake(dhd_pub_t *dhd)
 	return bcmsdh_set_get_wake(dhd->bus->sdh, 0);
 }
 #endif /* DHD_WAKE_STATUS */
+
+void
+dhd_bus_set_signature_path(struct dhd_bus *bus, char *sig_path)
+{
+	UNUSED_PARAMETER(bus);
+	UNUSED_PARAMETER(sig_path);
+}

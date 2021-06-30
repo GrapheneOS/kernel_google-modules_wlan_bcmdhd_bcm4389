@@ -10236,7 +10236,16 @@ BCMFASTPATH(dhd_prot_alloc_ring_space)(dhd_pub_t *dhd, msgbuf_ring_t *ring,
 
 	if (ret_buf == HOST_RING_BASE(ring)) {
 		DHD_INFO(("%s: setting the phase now\n", ring->name));
-		ring->current_phase = ring->current_phase ? 0 : BCMPCIE_CMNHDR_PHASE_BIT_INIT;
+		if (DHD_IS_FLOWRING(ring->idx, dhd->bus->max_tx_flowrings) &&
+			dhd->fr_phase_nibble) {
+			ring->current_phase =
+				((ring->current_phase == BCMPCIE_FLOWRING_PHASE_NIBBLE_INIT)
+				? BCMPCIE_FLOWRING_PHASE_NIBBLE_WRAP :
+				BCMPCIE_FLOWRING_PHASE_NIBBLE_INIT);
+		} else {
+			ring->current_phase = ring->current_phase ?
+				0 : BCMPCIE_CMNHDR_PHASE_BIT_INIT;
+		}
 	}
 
 	/* Return alloced space */

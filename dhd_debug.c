@@ -2040,6 +2040,12 @@ dhd_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, frame_type typ
 			tx_pkts[pkt_pos].info.payload_type = type;
 
 			tx_report->pkt_pos++;
+			/* TX mgmt packet is updated with the final fate reason,
+			 * so status_pos should be also increased.
+			 */
+			if (type == FRAME_TYPE_80211_MGMT) {
+				tx_report->status_pos++;
+			}
 		} else {
 			if (type == FRAME_TYPE_80211_MGMT) {
 				PKTFREE(dhdp->osh, pkt, TRUE);
@@ -2291,11 +2297,7 @@ dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
 	count = 0;
 	tx_report = dhdp->dbg->pkt_mon.tx_report;
 	tx_pkt = tx_report->tx_pkts;
-#if DBG_PKT_MON
-	pkt_count = MIN(req_count, tx_report->pkt_pos);
-#else
 	pkt_count = MIN(req_count, tx_report->status_pos);
-#endif /* DBG_PKT_MON */
 
 #ifdef CONFIG_COMPAT
 	if (is_compat_task()) {
@@ -2627,6 +2629,7 @@ void pr_roam_bcn_req_v3(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_bcn_rep_v3(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_btm_rep_v3(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_6g_novlp_rep_v3(prcd_event_log_hdr_t *plog_hdr);
+void pr_roam_wtc_btm_rep_v3(prcd_event_log_hdr_t *plog_hdr);
 
 static const pr_roam_tbl_t roam_log_print_tbl[] =
 {
@@ -2656,6 +2659,7 @@ static const pr_roam_tbl_t roam_log_print_tbl[] =
 	{ROAM_LOG_VER_3, ROAM_LOG_BCN_REP, pr_roam_bcn_rep_v3},
 	{ROAM_LOG_VER_3, ROAM_LOG_BTM_REP, pr_roam_btm_rep_v3},
 	{ROAM_LOG_VER_3, ROAM_LOG_6G_NOVLP_REP, pr_roam_6g_novlp_rep_v3},
+	{ROAM_LOG_VER_3, ROAM_LOG_WTC_BTM_REP, pr_roam_wtc_btm_rep_v3},
 
 	{0, PRSV_PERIODIC_ID_MAX, NULL}
 };
@@ -2917,6 +2921,41 @@ pr_roam_6g_novlp_rep_v3(prcd_event_log_hdr_t *plog_hdr)
 		plog_hdr->armcycle, log->hdr.version,
 		wf_chspec_ntoa_ex(log->chanspec, chanspec_buf),
 		log->chanspec, MAC2STRDBG((uint8 *)&log->bssid)));
+}
+
+void
+pr_roam_wtc_btm_rep_v3(prcd_event_log_hdr_t *plog_hdr)
+{
+	roam_log_wtc_btmrep_v3_t *log = (roam_log_wtc_btmrep_v3_t *)plog_hdr->log_ptr;
+
+	DHD_ERROR_ROAM(("ROAM_LOG_WTC: time:%d version:%d WTC BTM %s\n",
+		plog_hdr->armcycle, log->hdr.version,
+		(log->wtc_type == WTC_BTMREQ) ? "Request" : "Response"));
+
+	if (log->wtc_type == WTC_BTMREQ) {
+		DHD_ERROR_ROAM(("ROAM_LOG_WTC_CFG: mode:%d Scan mode:%d RSSI TH:%d "
+			"Candidate RSSI TH:%d %d %d\n",
+			log->wtcreq.mode, log->wtcreq.scantype,
+			log->wtcreq.rssithresh[WTC_BAND_2G],
+			log->wtcreq.ap_rssithresh[WTC_BAND_2G],
+			log->wtcreq.ap_rssithresh[WTC_BAND_5G],
+			log->wtcreq.ap_rssithresh[WTC_BAND_6G]));
+		if (log->wtcreq.status) {
+			DHD_ERROR_ROAM(("  Recvd invalid WTC Req len:%d ver:%d\n",
+				log->ie_length, log->wtc_ver));
+		} else {
+			DHD_ERROR_ROAM(("ROAM_LOG_WTC_REQ len:%d WTC ver:%d "
+				"Reason code:%d Subcode:%d duration:%d\n",
+				log->ie_length, log->wtc_ver,
+				log->wtcreq.rsn_code, log->wtcreq.subcode,
+				log->wtcreq.duration));
+		}
+	} else if (log->wtc_type == WTC_BTMRESP) {
+		DHD_ERROR_ROAM(("ROAM_LOG_WTC_RESP len:%d WTC ver:%d "
+			"Reason code:%d Resp status:%d\n",
+			log->ie_length, log->wtc_ver,
+			log->wtcresp.rsn_code, log->wtcresp.status));
+	}
 }
 
 void

@@ -1608,6 +1608,7 @@ wl_cfgvendor_notify_dump_completion(struct wiphy *wiphy,
 	/* call wmb() to synchronize with the previous memory operations */
 	OSL_SMP_WMB();
 	DHD_BUS_BUSY_CLEAR_IN_HALDUMP(dhd_pub);
+	dhd_set_dump_status(dhd_pub, DUMP_READY);
 	/* Call another wmb() to make sure wait_for_dump_completion value
 	 * gets updated before waking up waiting context.
 	 */
@@ -1690,6 +1691,9 @@ wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 	WL_INFORM(("%s,[DUMP] HAL STARTED\n", __FUNCTION__));
 
 	cfg->hal_started = true;
+#ifdef DHD_FILE_DUMP_EVENT
+	dhd_set_dump_status(dhd, DUMP_READY);
+#endif /* DHD_FILE_DUMP_EVENT */
 #ifdef WL_STA_ASSOC_RAND
 	/* If mac randomization is enabled and primary macaddress is not
 	 * randomized, randomize it from HAL init context
@@ -1713,9 +1717,16 @@ wl_cfgvendor_stop_hal(struct wiphy *wiphy,
 		struct wireless_dev *wdev, const void  *data, int len)
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+#ifdef DHD_FILE_DUMP_EVENT
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+#endif /* DHD_FILE_DUMP_EVENT */
+
 	WL_INFORM(("%s,[DUMP] HAL STOPPED\n", __FUNCTION__));
 
 	cfg->hal_started = false;
+#ifdef DHD_FILE_DUMP_EVENT
+	dhd_set_dump_status(dhd, DUMP_NOT_READY);
+#endif /* DHD_FILE_DUMP_EVENT */
 	return BCME_OK;
 }
 #endif /* WL_CFG80211 */
@@ -9979,6 +9990,7 @@ wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 {
 	int err = BCME_OK;
 	struct bcm_cfg80211 *cfg = NULL;
+	struct net_device *dev = wdev_to_ndev(wdev);
 
 	if (wdev == NULL) {
 		WL_ERR(("Invalid wireless device, NULL\n"));
@@ -9986,10 +9998,15 @@ wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 	}
 
 	cfg = wl_get_cfg(wdev_to_ndev(wdev));
-	cfg->inet_ndev = wdev_to_ndev(wdev);
-	WL_INFORM_MEM(("Mark interface (%s) as primary\n", cfg->inet_ndev->name));
 
-	wl_cfgvif_roam_config(cfg, wdev->netdev, ROAM_CONF_PRIMARY_STA);
+	if (dev != cfg->inet_ndev) {
+		WL_INFORM_MEM(("primary iface changed from (%s) to %s\n",
+			cfg->inet_ndev->name, dev->name));
+		cfg->inet_ndev = dev;
+		wl_cfg80211_handle_primary_ifchange(cfg, cfg->inet_ndev);
+	} else {
+		WL_INFORM_MEM(("primary iface:%s\n", cfg->inet_ndev->name));
+	}
 
 	return err;
 }
@@ -11179,6 +11196,7 @@ const struct nla_policy brcm_drv_attr_policy[BRCM_ATTR_DRIVER_MAX] = {
 	[BRCM_ATTR_SAE_PWE] = { .type = NLA_U32 },
 };
 
+#ifdef RTT_SUPPORT
 const struct nla_policy rtt_attr_policy[RTT_ATTRIBUTE_MAX] = {
 	[RTT_ATTRIBUTE_TARGET_CNT] = { .type = NLA_U8 },
 	[RTT_ATTRIBUTE_TARGET_INFO] = { .type = NLA_NESTED },
@@ -11203,6 +11221,7 @@ const struct nla_policy rtt_attr_policy[RTT_ATTRIBUTE_MAX] = {
 	[RTT_ATTRIBUTE_RESULT_DETAIL] = { .type = NLA_BINARY,
 	.len = sizeof(struct rtt_result_detail) },
 };
+#endif /* RTT_SUPPORT */
 
 #ifdef RSSI_MONITOR_SUPPORT
 const struct nla_policy rssi_monitor_attr_policy[RSSI_MONITOR_ATTRIBUTE_MAX] = {
@@ -11361,6 +11380,7 @@ const struct nla_policy gscan_attr_policy[GSCAN_ATTRIBUTE_MAX] = {
 	[GSCAN_ATTRIBUTE_ROAM_STATE_SET] = { .type = NLA_U32 },
 };
 
+#ifdef DHD_WAKE_STATUS
 const struct nla_policy wake_stat_attr_policy[WAKE_STAT_ATTRIBUTE_MAX] = {
 	[WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT] = { .type = NLA_U32 },
 #ifdef CUSTOM_WAKE_REASON_STATS
@@ -11389,6 +11409,7 @@ const struct nla_policy wake_stat_attr_policy[WAKE_STAT_ATTRIBUTE_MAX] = {
 	[WAKE_STAT_ATTRIBUTE_IPV6_RX_MULTICAST_ADD_CNT] = { .type = NLA_U32 },
 	[WAKE_STAT_ATTRIBUTE_OTHER_RX_MULTICAST_ADD_CNT] = { .type = NLA_U32 },
 };
+#endif /* DHD_WAKE_STATUS */
 
 #ifdef WL_SOFTAP_ACS
 const struct nla_policy acs_attr_policy[BRCM_VENDOR_ATTR_ACS_LAST] = {

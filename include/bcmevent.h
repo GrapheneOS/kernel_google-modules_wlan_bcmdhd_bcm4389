@@ -919,7 +919,7 @@ typedef struct wl_dpsta_intf_event {
 
 /*  **********  NAN protocol events/subevents  ********** */
 #ifndef NAN_EVENT_BUFFER_SIZE
-#define NAN_EVENT_BUFFER_SIZE 512 /* max size */
+#define NAN_EVENT_BUFFER_SIZE 1024 /* max size */
 #endif /* NAN_EVENT_BUFFER_SIZE */
 /* NAN Events sent by firmware */
 

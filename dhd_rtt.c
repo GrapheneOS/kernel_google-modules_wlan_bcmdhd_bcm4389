@@ -210,6 +210,10 @@ static int
 dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data,
 	uint16 tlvid, uint16 len);
 
+static int
+dhd_rtt_convert_results_to_host_v3(rtt_result_t *rtt_result, const uint8 *p_data,
+	uint16 tlvid, uint16 len);
+
 static wifi_rate_v1
 dhd_rtt_convert_rate_to_host(uint32 ratespec);
 
@@ -971,6 +975,7 @@ rtt_result_ver(uint16 tlvid, const uint8 *p_data)
 {
 	uint16 ret = BCME_OK;
 	const wl_proxd_rtt_result_v2_t *r_v2 = NULL;
+	const wl_proxd_rtt_result_v3_t *r_v3 = NULL;
 
 	switch (tlvid) {
 	case WL_PROXD_TLV_ID_RTT_RESULT:
@@ -982,6 +987,14 @@ rtt_result_ver(uint16 tlvid, const uint8 *p_data)
 			r_v2 = (const wl_proxd_rtt_result_v2_t *)p_data;
 			if (r_v2->version == WL_PROXD_RTT_RESULT_VERSION_2) {
 				ret = WL_PROXD_RTT_RESULT_VERSION_2;
+			}
+		}
+		break;
+	case WL_PROXD_TLV_ID_RTT_RESULT_V3:
+		if (p_data) {
+			r_v3 = (const wl_proxd_rtt_result_v3_t *)p_data;
+			if (r_v3->version == WL_PROXD_RTT_RESULT_VERSION_3) {
+				ret = WL_PROXD_RTT_RESULT_VERSION_3;
 			}
 		}
 		break;
@@ -1047,6 +1060,7 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 	switch (tlvid) {
 	case WL_PROXD_TLV_ID_RTT_RESULT:
 	case WL_PROXD_TLV_ID_RTT_RESULT_V2:
+	case WL_PROXD_TLV_ID_RTT_RESULT_V3:
 		DHD_RTT(("WL_PROXD_TLV_ID_RTT_RESULT\n"));
 		expected_rtt_result_ver = rtt_result_ver(tlvid, p_data);
 		switch (expected_rtt_result_ver) {
@@ -1056,6 +1070,10 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 			break;
 		case WL_PROXD_RTT_RESULT_VERSION_2:
 			ret = dhd_rtt_convert_results_to_host_v2((rtt_result_t *)ctx,
+					p_data, tlvid, len);
+			break;
+		case WL_PROXD_RTT_RESULT_VERSION_3:
+			ret = dhd_rtt_convert_results_to_host_v3((rtt_result_t *)ctx,
 					p_data, tlvid, len);
 			break;
 		default:
@@ -3761,6 +3779,263 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 				ftm_status_value_to_logstr(ltoh32_ua(&p_sample->status)),
 				ftm_frame_types[i % num_ftm], p_sample->coreid,
 				chanspec));
+			p_sample++;
+		}
+	}
+	return err;
+}
+
+static int
+dhd_rtt_convert_results_to_host_v3(rtt_result_t *rtt_result, const uint8 *p_data,
+	uint16 tlvid, uint16 len)
+{
+	int i;
+	int err = BCME_OK;
+	char eabuf[ETHER_ADDR_STR_LEN];
+	wl_proxd_result_flags_t flags;
+	wl_proxd_session_state_t session_state;
+	wl_proxd_status_t proxd_status;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
+	struct timespec64 ts;
+#endif /* LINUX_VER >= 2.6.39 */
+	uint32 ratespec;
+	int32 avg_dist;
+	const wl_proxd_rtt_result_v3_t *p_data_info = NULL;
+	const wl_proxd_rtt_sample_v3_t *p_sample_avg = NULL;
+	const wl_proxd_rtt_sample_v3_t *p_sample = NULL;
+	uint16 num_rtt = 0;
+	wl_proxd_intvl_t rtt;
+	wl_proxd_intvl_t p_time;
+	uint16 snr = 0, bitflips = 0;
+	wl_proxd_phy_error_t tof_phy_error = 0;
+	wl_proxd_phy_error_t tof_phy_tgt_error = 0;
+	wl_proxd_snr_t tof_target_snr = 0;
+	wl_proxd_bitflips_t tof_target_bitflips = 0;
+	int16 rssi = 0;
+	int32 dist = 0;
+	uint32 chanspec = 0, gd_variance = 0;
+	uint8 num_ftm = 0;
+	char *ftm_frame_types[] =  FTM_FRAME_TYPES;
+	rtt_report_t *rtt_report = &(rtt_result->report);
+
+	BCM_REFERENCE(ftm_frame_types);
+	BCM_REFERENCE(dist);
+	BCM_REFERENCE(rssi);
+	BCM_REFERENCE(tof_target_bitflips);
+	BCM_REFERENCE(tof_target_snr);
+	BCM_REFERENCE(tof_phy_tgt_error);
+	BCM_REFERENCE(tof_phy_error);
+	BCM_REFERENCE(bitflips);
+	BCM_REFERENCE(snr);
+	BCM_REFERENCE(chanspec);
+	BCM_REFERENCE(session_state);
+	BCM_REFERENCE(ftm_session_state_value_to_logstr);
+
+	NULL_CHECK(rtt_report, "rtt_report is NULL", err);
+	NULL_CHECK(p_data, "p_data is NULL", err);
+	DHD_RTT(("%s enter\n", __FUNCTION__));
+	p_data_info = (const wl_proxd_rtt_result_v3_t *) p_data;
+	/* unpack and format 'flags' for display */
+	flags = ltoh16_ua(&p_data_info->flags);
+	/* session state and status */
+	session_state = ltoh16_ua(&p_data_info->state);
+	proxd_status = ltoh32_ua(&p_data_info->status);
+	bcm_ether_ntoa((&(p_data_info->peer)), eabuf);
+
+	if ((proxd_status != BCME_OK) || (p_data_info->num_meas == 0)) {
+		DHD_RTT_ERR((">\tTarget(%s) session state=%d(%s), status=%d(%s) "
+			"num_meas_ota %d num_valid_rtt %d result_flags %x\n",
+			eabuf, session_state,
+			ftm_session_state_value_to_logstr(session_state),
+			proxd_status, ftm_status_value_to_logstr(proxd_status),
+			p_data_info->num_meas, p_data_info->num_valid_rtt,
+			p_data_info->flags));
+	} else {
+		DHD_RTT((">\tTarget(%s) session state=%d(%s), status=%d(%s)\n",
+		eabuf, session_state,
+		ftm_session_state_value_to_logstr(session_state),
+		proxd_status, ftm_status_value_to_logstr(proxd_status)));
+	}
+	/* show avg_dist (1/256m units), burst_num */
+	avg_dist = ltoh32_ua(&p_data_info->avg_dist);
+	if (avg_dist == 0xffffffff) {	/* report 'failure' case */
+		DHD_RTT((">\tavg_dist=-1m, burst_num=%d, valid_measure_cnt=%d\n",
+		ltoh16_ua(&p_data_info->burst_num),
+		p_data_info->num_valid_rtt)); /* in a session */
+		avg_dist = FTM_INVALID;
+	} else {
+		DHD_RTT((">\tavg_dist=%d.%04dm, burst_num=%d, valid_measure_cnt=%d num_ftm=%d "
+			"num_meas_ota=%d, result_flags=%x\n", avg_dist >> 8, /* 1/256m units */
+			((avg_dist & 0xff) * 625) >> 4,
+			ltoh16_ua(&p_data_info->burst_num),
+			p_data_info->num_valid_rtt,
+			p_data_info->num_ftm, p_data_info->num_meas,
+			p_data_info->flags)); /* in a session */
+	}
+	rtt_result->rtt_detail.num_ota_meas = p_data_info->num_meas;
+	rtt_result->rtt_detail.result_flags = p_data_info->flags;
+	/* show 'avg_rtt' sample */
+	/* in v2, avg_rtt is the first element of the variable rtt[] */
+	p_sample_avg = &p_data_info->rtt[0];
+	ftm_tmu_value_to_logstr(ltoh16_ua(&p_sample_avg->rtt.tmu));
+	DHD_RTT((">\tavg_rtt sample: rssi=%d rtt=%d%s std_deviation =%d.%d"
+		"ratespec=0x%08x chanspec=0x%08x gd_variance %u\n",
+		(int16) ltoh16_ua(&p_sample_avg->rssi),
+		ltoh32_ua(&p_sample_avg->rtt.intvl),
+		ftm_tmu_value_to_logstr(ltoh16_ua(&p_sample_avg->rtt.tmu)),
+		ltoh16_ua(&p_data_info->sd_rtt)/10, ltoh16_ua(&p_data_info->sd_rtt)%10,
+		ltoh32_ua(&p_sample_avg->ratespec),
+		ltoh32_ua(&p_sample_avg->chanspec),
+		ltoh32_ua(&p_sample_avg->gd_variance)));
+
+	/* set peer address */
+	rtt_report->addr = p_data_info->peer;
+
+	/* burst num */
+	rtt_report->burst_num = ltoh16_ua(&p_data_info->burst_num);
+
+	/* success num */
+	rtt_report->success_num = p_data_info->num_valid_rtt;
+
+	/* num-ftm configured */
+	rtt_report->ftm_num = p_data_info->num_ftm;
+
+	/* actual number of FTM supported by peer */
+	rtt_report->num_per_burst_peer = p_data_info->num_ftm;
+	rtt_report->negotiated_burst_num = p_data_info->num_ftm;
+
+	/* status */
+	rtt_report->status = ftm_get_statusmap_info(proxd_status,
+			&ftm_status_map_info[0], ARRAYSIZE(ftm_status_map_info));
+
+	/* Framework expects status as SUCCESS else all results will be
+	* set to zero even if we have partial valid result.
+	* So setting status as SUCCESS if we have a valid_rtt
+	* On burst timeout we stop burst with "timeout" reason and
+	* on msch end we set status as "cancel"
+	*/
+	if ((proxd_status == WL_PROXD_E_TIMEOUT ||
+		proxd_status == WL_PROXD_E_CANCELED) &&
+		rtt_report->success_num) {
+		rtt_report->status = RTT_STATUS_SUCCESS;
+	}
+
+	/* rssi (0.5db) */
+	rtt_report->rssi = ABS((wl_proxd_rssi_t)ltoh16_ua(&p_sample_avg->rssi)) * 2;
+
+	/* rx rate */
+	ratespec = ltoh32_ua(&p_sample_avg->ratespec);
+	rtt_report->rx_rate = dhd_rtt_convert_rate_to_host(ratespec);
+
+	/* tx rate */
+	if (flags & WL_PROXD_RESULT_FLAG_VHTACK) {
+		rtt_report->tx_rate = dhd_rtt_convert_rate_to_host(0x2010010);
+	} else {
+		rtt_report->tx_rate = dhd_rtt_convert_rate_to_host(0xc);
+	}
+
+	/* rtt_sd */
+	rtt.tmu = ltoh16_ua(&p_sample_avg->rtt.tmu);
+	rtt.intvl = ltoh32_ua(&p_sample_avg->rtt.intvl);
+	rtt_report->rtt = (wifi_timespan)FTM_INTVL2NSEC(&rtt) * 1000; /* nano -> pico seconds */
+	rtt_report->rtt_sd = ltoh16_ua(&p_data_info->sd_rtt); /* nano -> 0.1 nano */
+	DHD_RTT(("rtt_report->rtt : %llu\n", rtt_report->rtt));
+	DHD_RTT(("rtt_report->rssi : %d (0.5db)\n", rtt_report->rssi));
+
+	/* average distance */
+	if (avg_dist != FTM_INVALID) {
+		rtt_report->distance = (avg_dist >> 8) * 1000; /* meter -> mm */
+		rtt_report->distance += (avg_dist & 0xff) * 1000 / 256;
+		/* rtt_sd is in 0.1 ns.
+		* host needs distance_sd in milli mtrs
+		* (0.1 * rtt_sd/2 * 10^-9) * C * 1000
+		*/
+		rtt_report->distance_sd = rtt_report->rtt_sd * 15; /* mm */
+	} else {
+		rtt_report->distance = FTM_INVALID;
+	}
+	/* time stamp */
+	/* get the time elapsed from boot time */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
+	ts = ktime_to_timespec64(ktime_get_boottime());
+	rtt_report->ts = (uint64)TIMESPEC64_TO_US(ts);
+#endif /* LINUX_VER >= 2.6.39 */
+
+	if (proxd_status == WL_PROXD_E_REMOTE_FAIL) {
+		/* retry time  after failure */
+		p_time.intvl = ltoh32_ua(&p_data_info->u.retry_after.intvl);
+		p_time.tmu = ltoh16_ua(&p_data_info->u.retry_after.tmu);
+		rtt_report->retry_after_duration = FTM_INTVL2SEC(&p_time); /* s -> s */
+		DHD_RTT((">\tretry_after: %d%s\n",
+			ltoh32_ua(&p_data_info->u.retry_after.intvl),
+			ftm_tmu_value_to_logstr(ltoh16_ua(&p_data_info->u.retry_after.tmu))));
+	} else {
+		/* burst duration */
+		p_time.intvl = ltoh32_ua(&p_data_info->u.retry_after.intvl);
+		p_time.tmu = ltoh16_ua(&p_data_info->u.retry_after.tmu);
+		rtt_report->burst_duration =  FTM_INTVL2MSEC(&p_time); /* s -> ms */
+		DHD_RTT((">\tburst_duration: %d%s\n",
+			ltoh32_ua(&p_data_info->u.burst_duration.intvl),
+			ftm_tmu_value_to_logstr(ltoh16_ua(&p_data_info->u.burst_duration.tmu))));
+		DHD_RTT(("rtt_report->burst_duration : %d\n", rtt_report->burst_duration));
+	}
+	/* display detail if available */
+	num_rtt = ltoh16_ua(&p_data_info->num_rtt);
+	if (num_rtt > 0) {
+		DHD_RTT((">\tnum rtt: %d samples\n", num_rtt));
+		p_sample = &p_data_info->rtt[1];
+		for (i = 0; i < num_rtt; i++) {
+			snr = 0;
+			bitflips = 0;
+			tof_phy_error = 0;
+			tof_phy_tgt_error = 0;
+			tof_target_snr = 0;
+			tof_target_bitflips = 0;
+			rssi = 0;
+			dist = 0;
+			num_ftm = p_data_info->num_ftm;
+			/* FTM frames 1,4,7,11 have valid snr, rssi and bitflips */
+			if ((i % num_ftm) == 1) {
+				rssi = (wl_proxd_rssi_t) ltoh16_ua(&p_sample->rssi);
+				snr = (wl_proxd_snr_t) ltoh16_ua(&p_sample->snr);
+				bitflips = (wl_proxd_bitflips_t) ltoh16_ua(&p_sample->bitflips);
+				tof_phy_error =
+					(wl_proxd_phy_error_t)
+					ltoh32_ua(&p_sample->tof_phy_error);
+				tof_phy_tgt_error =
+					(wl_proxd_phy_error_t)
+					ltoh32_ua(&p_sample->tof_tgt_phy_error);
+				tof_target_snr =
+					(wl_proxd_snr_t)
+					ltoh16_ua(&p_sample->tof_tgt_snr);
+				tof_target_bitflips =
+					(wl_proxd_bitflips_t)
+					ltoh16_ua(&p_sample->tof_tgt_bitflips);
+				dist = ltoh32_ua(&p_sample->distance);
+				chanspec = ltoh32_ua(&p_sample->chanspec);
+				gd_variance = ltoh32_ua(&p_sample->gd_variance);
+			} else {
+				rssi = -1;
+				snr = 0;
+				bitflips = 0;
+				dist = 0;
+				tof_target_bitflips = 0;
+				tof_target_snr = 0;
+				tof_phy_tgt_error = 0;
+			}
+			DHD_RTT((">\t sample[%d]: id=%d rssi=%d snr=0x%x bitflips=%d"
+				" tof_phy_error %x tof_phy_tgt_error %x target_snr=0x%x"
+				" target_bitflips=%d dist=%d rtt=%d%s status %s Type %s"
+				" coreid=%d chanspec=0x%08x gd_variance=%u\n",
+				i, p_sample->id, rssi, snr,
+				bitflips, tof_phy_error, tof_phy_tgt_error,
+				tof_target_snr,
+				tof_target_bitflips, dist,
+				ltoh32_ua(&p_sample->rtt.intvl),
+				ftm_tmu_value_to_logstr(ltoh16_ua(&p_sample->rtt.tmu)),
+				ftm_status_value_to_logstr(ltoh32_ua(&p_sample->status)),
+				ftm_frame_types[i % num_ftm], p_sample->coreid,
+				chanspec, gd_variance));
 			p_sample++;
 		}
 	}

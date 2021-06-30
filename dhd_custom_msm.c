@@ -62,7 +62,8 @@ extern void *dhd_wlan_mem_prealloc(int section, unsigned long size);
 #elif defined(CONFIG_ARCH_MSM8998)
 #define MSM_PCIE_DEVICE_ID 0x0105
 #elif defined(CONFIG_ARCH_SDM845) || defined(CONFIG_ARCH_SM8150) || \
-	defined(CONFIG_ARCH_KONA) || defined(CONFIG_ARCH_LAHAINA)
+	defined(CONFIG_ARCH_KONA) || defined(CONFIG_ARCH_LAHAINA) || \
+	defined(CONFIG_ARCH_WAIPIO)
 #define MSM_PCIE_DEVICE_ID 0x0106
 #else
 #error "Not supported platform"
@@ -79,7 +80,7 @@ static int wlan_reg_on = -1;
 
 #if defined(CONFIG_ARCH_MSM8996) || defined(CONFIG_ARCH_MSM8998) || \
 	defined(CONFIG_ARCH_SDM845) || defined(CONFIG_ARCH_SM8150) || defined(CONFIG_ARCH_KONA) \
-	|| defined(CONFIG_ARCH_LAHAINA)
+	|| defined(CONFIG_ARCH_LAHAINA) || defined(CONFIG_ARCH_WAIPIO)
 #define MSM_PCIE_CH_NUM			0
 #else
 #define MSM_PCIE_CH_NUM			1
@@ -372,7 +373,7 @@ uint32 dhd_plat_get_rc_device_id(void)
 #ifndef BCMDHD_MODULAR
 #if defined(CONFIG_ARCH_MSM8996) || defined(CONFIG_ARCH_MSM8998) || \
 	defined(CONFIG_ARCH_SDM845) || defined(CONFIG_ARCH_SM8150) || defined(CONFIG_ARCH_KONA) \
-	|| defined(CONFIG_ARCH_LAHAINA)
+	|| defined(CONFIG_ARCH_LAHAINA) || defined(CONFIG_ARCH_WAIPIO)
 #if defined(CONFIG_DEFERRED_INITCALLS)
 deferred_module_init(dhd_wlan_init);
 #else

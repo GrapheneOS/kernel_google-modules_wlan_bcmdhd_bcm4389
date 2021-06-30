@@ -76,6 +76,7 @@ typedef struct dhd_info {
 	void *adapter;			/* adapter information, interrupt, fw path etc. */
 	char fw_path[PATH_MAX];		/* path to firmware image */
 	char nv_path[PATH_MAX];		/* path to nvram vars file */
+	char sig_path[PATH_MAX];	/* path to rtecdc.sig file */
 #ifdef DHD_UCODE_DOWNLOAD
 	char uc_path[PATH_MAX];	/* path to ucode image */
 #endif /* DHD_UCODE_DOWNLOAD */
@@ -427,6 +428,10 @@ typedef struct dhd_info {
 	pkt_pool_t rx_pkt_pool;
 	tsk_ctl_t rx_pktpool_thread;
 #endif
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	osl_atomic_t dump_status;
+	struct work_struct dhd_dump_proc_work;
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 } dhd_info_t;
 
 /** priv_link is the link between netdev and the dhdif and dhd_info structs. */

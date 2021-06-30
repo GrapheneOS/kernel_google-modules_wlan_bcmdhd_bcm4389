@@ -2510,6 +2510,18 @@ dhdpcie_enable_device(dhd_bus_t *bus)
 		uint32 vid, saved_vid;
 		pci_read_config_dword(bus->dev, PCI_CFG_VID, &vid);
 		saved_vid = bus->dev->saved_config_space[PCI_CFG_VID];
+#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
+		/*
+		 * WAR for changing PCIe config space after OTP writing
+		 * If vid changes 4389 -> 4441 and otpinfo_val = 1, OTP is changed
+		 * so, calling panic for rebooting the device
+		 */
+		if (saved_vid == 0x438914e4 && vid == 0x444114e4 && otpinfo_val == 1) {
+			panic("BCM4389 COB WLAN PCI config space is changed after "
+				"OTP writing process, needs to reboot,\n"
+				"This process is required only once.\n");
+		}
+#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
 		if (vid != saved_vid) {
 			DHD_ERROR(("%s: VID(0x%x) is different from saved VID(0x%x) "
 				"Skip the bus init\n", __FUNCTION__, vid, saved_vid));

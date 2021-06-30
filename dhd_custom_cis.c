@@ -903,6 +903,99 @@ fail:
 
 }
 
+#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
+static int
+dhd_otp_packfn_hw_rgnstatus(void *ctx, uint8 *buf, uint16 *buflen)
+{
+	uint8 *pxtlv = buf;
+	int ret = BCME_OK;
+	uint16 len = *buflen;
+	uint8 rgnid = OTP_RGN_HW;
+
+	BCM_REFERENCE(ctx);
+
+	/* pack option <-r region> */
+	ret = bcm_pack_xtlv_entry(&pxtlv, &len, WL_OTP_XTLV_RGN, sizeof(rgnid),
+			&rgnid, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		DHD_ERROR(("%s: Failed pack xtlv entry of region: %d\n", __FUNCTION__, ret));
+		return ret;
+	}
+
+	*buflen = len;
+	return ret;
+}
+
+static int
+dhd_otp_packfn_hw_rgndump(void *ctx, uint8 *buf, uint16 *buflen)
+{
+	uint8 *pxtlv = buf;
+	int ret = BCME_OK;
+	uint16 len = *buflen, size = WLC_IOCTL_MAXLEN;
+	uint8 rgnid = OTP_RGN_HW;
+
+	/* pack option <-r region> */
+	ret = bcm_pack_xtlv_entry(&pxtlv, &len, WL_OTP_XTLV_RGN,
+			sizeof(rgnid), &rgnid, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		DHD_ERROR(("%s: Failed pack xtlv entry of region: %d\n", __FUNCTION__, ret));
+		goto fail;
+	}
+
+	/* pack option [-s size] */
+	ret = bcm_pack_xtlv_entry(&pxtlv, &len, WL_OTP_XTLV_SIZE,
+			sizeof(size), (uint8 *)&size, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		DHD_ERROR(("%s: Failed pack xtlv entry of size: %d\n", __FUNCTION__, ret));
+		goto fail;
+	}
+	*buflen = len;
+fail:
+	return ret;
+}
+
+int
+dhd_read_otp_hw_rgn(dhd_pub_t *dhdp)
+{
+	int ret = BCME_OK;
+	otp_rgn_rw_info_t rw_info;
+	otp_rgn_stat_info_t stat_info;
+
+	memset(&rw_info, 0, sizeof(rw_info));
+	memset(&stat_info, 0, sizeof(stat_info));
+
+	/* initialization */
+	otpinfo_val = -1;
+
+	ret = dhd_otp_get_iov_resp(dhdp, WL_OTP_CMD_RGNSTATUS, &stat_info,
+			dhd_otp_packfn_hw_rgnstatus, dhd_otp_cbfn_rgnstatus);
+	if (ret != BCME_OK) {
+		DHD_ERROR(("%s: otp region status failed, ret=%d\n", __FUNCTION__, ret));
+		goto fail;
+	}
+
+	rw_info.rgnsize = stat_info.rgnsize;
+	ret = dhd_otp_get_iov_resp(dhdp, WL_OTP_CMD_RGNDUMP, &rw_info,
+			dhd_otp_packfn_hw_rgndump, dhd_otp_cbfn_rgndump);
+	if (ret != BCME_OK) {
+		if (ret == BCME_NOTFOUND) {
+			otpinfo_val = 0;
+			DHD_ERROR(("%s: OTP not found otpinfo_val = %d \n",
+				__FUNCTION__, otpinfo_val));
+
+		}
+		DHD_ERROR(("%s: otp region dump failed, ret=%d\n", __FUNCTION__, ret));
+		goto fail;
+	}
+
+	otpinfo_val = 1;
+	DHD_INFO(("%s: OTP written otpinfo_val = %d\n", __FUNCTION__, otpinfo_val));
+fail:
+	return ret;
+
+}
+#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
+
 #if defined(GET_MAC_FROM_OTP) || defined(USE_CID_CHECK)
 static tuple_entry_t*
 dhd_alloc_tuple_entry(dhd_pub_t *dhdp, const int idx)

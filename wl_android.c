@@ -3668,16 +3668,16 @@ int
 wl_android_sroam_turn_on(struct net_device *dev, int sroam_mode)
 {
 	int ret = BCME_OK;
-	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
-	dhdp->sroam_turn_on = sroam_mode;
-	DHD_INFO(("%s Silent mode %s\n", __FUNCTION__,
+	cfg->sroam_turn_on = sroam_mode;
+	WL_INFORM(("%s Silent mode %s\n", __FUNCTION__,
 		sroam_mode ? "enable" : "disable"));
 
 	if (!sroam_mode) {
-		ret = dhd_sroam_set_mon(dhdp, FALSE);
+		ret = wl_cfg80211_sroam_config(cfg, dev, FALSE);
 		if (ret) {
-			DHD_ERROR(("%s Failed to Set sroam %d\n",
+			WL_ERR(("%s Failed to Set sroam %d\n",
 				__FUNCTION__, ret));
 		}
 	}
@@ -10537,7 +10537,7 @@ _wl_android_bcnrecv_start(struct bcm_cfg80211 *cfg, struct net_device *ndev, boo
 	}
 
 	/* Triggering an sendup_bcn iovar */
-	err = wldev_iovar_setint(pdev, "sendup_bcn", 1);
+	err = wldev_iovar_setint_no_wl(pdev, "sendup_bcn", 1);
 	if (unlikely(err)) {
 		WL_ERR(("sendup_bcn failed to set, error:%d\n", err));
 	} else {
@@ -10574,7 +10574,7 @@ _wl_android_bcnrecv_stop(struct bcm_cfg80211 *cfg, struct net_device *ndev, uint
 
 	/* Stop bcnrx except for fw abort event case */
 	if (reason != WL_BCNRECV_ROAMABORT) {
-		err = wldev_iovar_setint(pdev, "sendup_bcn", 0);
+		err = wldev_iovar_setint_no_wl(pdev, "sendup_bcn", 0);
 		if (unlikely(err)) {
 			WL_ERR(("sendup_bcn failed to set error:%d\n", err));
 			goto exit;

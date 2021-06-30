@@ -1315,6 +1315,12 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
 	uint32 *magic, *type, *length;
 	uint8 num_d11cores = 0, offset = 0;
 
+	/* SSSR dump */
+	if (!sssr_enab || !dhdp->collect_sssr) {
+		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
+		return BCME_UNSUPPORTED;
+	}
+
 	/* SOCRAM dump start with magic code */
 	magic = (uint32*)buf_ptr;
 	*magic = DHD_COREDUMP_MAGIC;
@@ -1337,12 +1343,6 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
 	buf_ptr += total_size;
 
 	DHD_ERROR(("%s: type: %u, length: %u\n", __FUNCTION__, *type, *length));
-
-	/* SSSR dump */
-	if (!sssr_enab || !dhdp->collect_sssr) {
-		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
-		return BCME_ERROR;
-	}
 
 	num_d11cores = dhd_d11_slices_num_get(dhdp);
 	for (i = 0; i < num_d11cores + 1; i++) {
@@ -7106,66 +7106,6 @@ bool dhd_is_associated(dhd_pub_t *dhd, uint8 ifidx, int *retval)
 	return TRUE;
 }
 
-#ifdef CONFIG_SILENT_ROAM
-int
-dhd_sroam_set_mon(dhd_pub_t *dhd, bool set)
-{
-	int ret = BCME_OK;
-	wlc_sroam_t *psroam;
-	wlc_sroam_info_t *sroam;
-	uint sroamlen = sizeof(*sroam) + SROAM_HDRLEN;
-
-	/* Check if associated */
-	if (dhd_is_associated(dhd, 0, NULL) == FALSE) {
-		DHD_TRACE(("%s NOT assoc\n", __FUNCTION__));
-		return ret;
-	}
-
-	if (set && (dhd->op_mode &
-		(DHD_FLAG_HOSTAP_MODE | DHD_FLAG_P2P_GC_MODE | DHD_FLAG_P2P_GO_MODE))) {
-		DHD_INFO((" Failed to set sroam %d, op_mode 0x%04x\n", set, dhd->op_mode));
-		return ret;
-	}
-
-	if (!dhd->sroam_turn_on) {
-		DHD_INFO((" Failed to set sroam %d, sroam turn %d\n", set, dhd->sroam_turn_on));
-		return ret;
-	}
-	psroam = (wlc_sroam_t *)MALLOCZ(dhd->osh, sroamlen);
-	if (!psroam) {
-		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
-		return BCME_NOMEM;
-	}
-
-	ret = dhd_iovar(dhd, 0, "sroam", NULL, 0, (char *)psroam, sroamlen, FALSE);
-	if (ret < 0) {
-		DHD_ERROR(("%s Failed to Get sroam %d\n", __FUNCTION__, ret));
-		goto done;
-	}
-
-	if (psroam->ver != WLC_SILENT_ROAM_CUR_VER) {
-		ret = BCME_VERSION;
-		goto done;
-	}
-
-	sroam = (wlc_sroam_info_t *)psroam->data;
-	sroam->sroam_on = set;
-	DHD_INFO((" Silent roam monitor mode %s\n", set ? "On" : "Off"));
-
-	ret = dhd_iovar(dhd, 0, "sroam", (char *)psroam, sroamlen, NULL, 0, TRUE);
-	if (ret < 0) {
-		DHD_ERROR(("%s Failed to Set sroam %d\n", __FUNCTION__, ret));
-	}
-
-done:
-	if (psroam) {
-	    MFREE(dhd->osh, psroam, sroamlen);
-	}
-
-	return ret;
-}
-#endif /* CONFIG_SILENT_ROAM */
-
 /* Check if the mode supports STA MODE */
 bool dhd_support_sta_mode(dhd_pub_t *dhd)
 {
@@ -8104,9 +8044,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 	 * If country code is not valid, fail the initialization.
 	 */
 #if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
-#ifndef SUPPORT_MULTIPLE_CLMBLOB
 	DHD_ERROR(("Clmblob file : %s\n", clm_blob_path));
-#endif /* !SUPPORT_MULTIPLE_CLMBLOB */
 	len = MAX_CLM_BUF_SIZE;
 #ifdef SUPPORT_MULTIPLE_CLMBLOB
 	if (clm_path[0] != '\0') {
@@ -8117,7 +8055,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 			err = dhd_get_download_buffer(dhd,
 					pclm_path[i], CLM_BLOB, &memblock, (int *)&len);
 			if (err == BCME_OK) {
-				DHD_ERROR(("Clmblob file [%d: %s]\n", i, pclm_path[i]));
+				DHD_LOG_MEM(("Clmblob file [%d: %s]\n", i, pclm_path[i]));
 				break;
 			}
 		}

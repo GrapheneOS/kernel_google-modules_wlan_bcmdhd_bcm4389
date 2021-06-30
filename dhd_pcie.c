@@ -232,6 +232,7 @@ static int dhdpcie_download_rtlv_end(dhd_bus_t *bus);
 static int dhdpcie_bus_save_download_info(dhd_bus_t *bus, uint32 download_addr,
 	uint32 download_size, const char *signature_fname,
 	const char *bloader_fname, uint32 bloader_download_addr);
+static int dhdpcie_read_fwstatus(dhd_bus_t *bus, bl_verif_status_t *status);
 #endif /* FW_SIGNATURE */
 
 static int dhdpcie_bus_write_vars(dhd_bus_t *bus);
@@ -3824,11 +3825,11 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 	} else {
 		file_size = fwpkg_get_firmware_img_size(fwpkg);
 		strlcpy(bus->fwsig_filename, pfw_path, sizeof(bus->fwsig_filename));
-		bus->fw_download_len = file_size;
-		bus->fw_download_addr = bus->dongle_ram_base;
 		DHD_INFO(("%s Using COMBINED image (size %d)\n",
 			__FUNCTION__, file_size));
 	}
+	bus->fw_download_len = file_size;
+	bus->fw_download_addr = bus->dongle_ram_base;
 
 	memptr = memblock = MALLOC(bus->dhd->osh, MEMBLOCK + DHD_SDALIGN);
 	if (memblock == NULL) {
@@ -3871,7 +3872,7 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 #endif /* CACHE_FW_IMAGE */
 
 		read_len += len;
-		if ((read_len > file_size) && IS_FWPKG_SINGLE(fwpkg)) {
+		if (read_len > file_size) {
 			DHD_ERROR(("%s: WARNING! reading beyond EOF, len=%d; read_len=%u;"
 				" file_size=%u truncating len to %d \n", __FUNCTION__,
 				len, read_len, file_size, (len - (read_len - file_size))));
@@ -5109,21 +5110,27 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 #ifdef BOARD_HIKEY
 	unsigned long flags_bus;
 #endif /* BOARD_HIKEY */
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	dhd_dongledump_status_t dump_status;
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 	if (!bus) {
 		DHD_ERROR(("%s: bus is NULL\n", __FUNCTION__));
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto exit;
 	}
 
 	if (!bus->dhd) {
 		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto exit;
 	}
 
 	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
 		DHD_ERROR(("%s: DHD_PCIE_WLAN_BP_DOWN return success and collect only FIS if set\n",
 			__FUNCTION__));
-		return BCME_OK;
+		ret = BCME_OK;
+		goto exit;
 	}
 
 	size = bus->ramsize; /* Full mem size */
@@ -5134,8 +5141,16 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 	if (!p_buf) {
 		DHD_ERROR(("%s: Out of memory (%d bytes)\n",
 			__FUNCTION__, size));
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto exit;
 	}
+
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	dump_status = dhd_get_dump_status(bus->dhd);
+	if (dump_status != DUMP_IN_PROGRESS) {
+		dhd_set_dump_status(bus->dhd, DUMP_IN_PROGRESS);
+	}
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 	/* Read mem content */
 	DHD_TRACE_HW4(("Dump dongle memory\n"));
@@ -5165,6 +5180,13 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 		start += read_size;
 		databuf += read_size;
 	}
+exit:
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	if (ret != BCME_OK) {
+		dhd_set_dump_status(bus->dhd, DUMP_FAILURE);
+	}
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
+
 	return ret;
 }
 
@@ -5322,6 +5344,7 @@ exit:
 			__FUNCTION__, dhd_console_ms_prev));
 		dhdp->dhd_console_ms = dhd_console_ms_prev;
 	}
+
 	return ret;
 }
 
@@ -10341,7 +10364,10 @@ dhdpcie_bus_save_download_info(dhd_bus_t *bus, uint32 download_addr,
 	uint32 download_size, const char *signature_fname,
 	const char *bloader_fname, uint32 bloader_download_addr)
 {
-	bus->fw_download_len = download_size;
+	/* DHD EXE may not have size of the downloaded FW image in case of swpaging binary */
+	if (download_size) {
+		bus->fw_download_len = download_size;
+	}
 	bus->fw_download_addr = download_addr;
 	strlcpy(bus->fwsig_filename, signature_fname, sizeof(bus->fwsig_filename));
 	strlcpy(bus->bootloader_filename, bloader_fname, sizeof(bus->bootloader_filename));
@@ -10390,12 +10416,8 @@ dhdpcie_download_sig_file(dhd_bus_t *bus, char *path, uint32 type)
 		goto exit;
 	}
 
-	if (bcmerror == BCME_UNSUPPORTED) {
-		/* provided single binary formate */
-		srcsize = fwpkg->file_size;
-	} else {
-		srcsize = fwpkg_get_signature_img_size(fwpkg);
-	}
+	srcsize = fwpkg_get_signature_img_size(fwpkg);
+
 	if (srcsize <= 0 || srcsize > MEMBLOCK) {
 		DHD_ERROR(("%s: invalid fwsig size %u\n", __FUNCTION__, srcsize));
 		bcmerror = BCME_BUFTOOSHORT;
@@ -10451,23 +10473,35 @@ exit:
 	return bcmerror;
 } /* dhdpcie_bus_write_fwsig */
 
+static int
+dhdpcie_read_fwstatus(dhd_bus_t *bus, bl_verif_status_t *status)
+{
+	int ret = BCME_OK;
+
+	bzero(status, sizeof(*status));
+	if (bus->fwstat_download_addr != 0) {
+		ret = dhdpcie_bus_membytes(bus, FALSE, bus->fwstat_download_addr,
+			(uint8 *)status, sizeof(*status));
+		if (ret != BCME_OK) {
+			DHD_ERROR(("%s: error %d on reading %zu membytes at 0x%08x\n",
+				__FUNCTION__, ret, sizeof(*status), bus->fwstat_download_addr));
+		}
+	}
+
+	return ret;
+}
+
 /* Dump secure firmware status. */
 static int
 dhd_bus_dump_fws(dhd_bus_t *bus, struct bcmstrbuf *strbuf)
 {
 	bl_verif_status_t status;
 	bl_mem_info_t     meminfo;
-	int                       err = BCME_OK;
+	int               err = BCME_OK;
 
-	bzero(&status, sizeof(status));
-	if (bus->fwstat_download_addr != 0) {
-		err = dhdpcie_bus_membytes(bus, FALSE, bus->fwstat_download_addr,
-			(uint8 *)&status, sizeof(status));
-		if (err != BCME_OK) {
-			DHD_ERROR(("%s: error %d on reading %zu membytes at 0x%08x\n",
-				__FUNCTION__, err, sizeof(status), bus->fwstat_download_addr));
-			return (err);
-		}
+	err = dhdpcie_read_fwstatus(bus, &status);
+	if (err != BCME_OK) {
+		return (err);
 	}
 
 	bzero(&meminfo, sizeof(meminfo));
@@ -13079,7 +13113,7 @@ static int
 dhdpcie_readshared(dhd_bus_t *bus)
 {
 	uint32 addr = 0;
-	int rv, dma_indx_wr_buf, dma_indx_rd_buf;
+	int dma_indx_wr_buf, dma_indx_rd_buf;
 	uint32 shaddr = 0;
 	pciedev_shared_t *sh = bus->pcie_sh;
 	dhd_timeout_t tmo;
@@ -13093,6 +13127,7 @@ dhdpcie_readshared(dhd_bus_t *bus)
 	uint32 timeout = MAX_READ_TIMEOUT;
 	uint32 elapsed;
 	uint32 intstatus;
+	int ret = BCME_OK;
 
 	if (MULTIBP_ENAB(bus->sih)) {
 		dhd_bus_pcie_pwr_req(bus);
@@ -13150,7 +13185,8 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		DHD_ERROR(("%s:### NO dumps will be colelcted and will be marked as linkdown ###\n",
 			__FUNCTION__));
 		bus->is_linkdown = 1;
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto done;
 #endif /* DHD_NO_DUMP_FOR_READSHARED_FAIL */
 
 		dhd_bus_dump_imp_cfg_registers(bus);
@@ -13175,7 +13211,8 @@ dhdpcie_readshared(dhd_bus_t *bus)
 			}
 #endif /* DHD_FW_COREDUMP */
 		}
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto done;
 	}
 
 	if ((addr == 0) || (addr == bus->nvram_csm) || (addr < bus->dongle_ram_base) ||
@@ -13206,7 +13243,8 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		*/
 		ASSERT(0);
 #endif /* defined(NDIS) */
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto done;
 	} else {
 		bus->rd_shared_pass_time = OSL_LOCALTIME_NS();
 		elapsed = tmo.elapsed;
@@ -13225,10 +13263,10 @@ dhdpcie_readshared(dhd_bus_t *bus)
 	bus->dhd->pcie_readshared_done = 1;
 #endif
 	/* Read hndrte_shared structure */
-	if ((rv = dhdpcie_bus_membytes(bus, FALSE, addr, (uint8 *)sh,
+	if ((ret = dhdpcie_bus_membytes(bus, FALSE, addr, (uint8 *)sh,
 		sizeof(pciedev_shared_t))) < 0) {
-		DHD_ERROR(("Failed to read PCIe shared struct with %d\n", rv));
-		return rv;
+		DHD_ERROR(("Failed to read PCIe shared struct with %d\n", ret));
+		goto done;
 	}
 
 	/* Endianness */
@@ -13259,7 +13297,8 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		           "is older than pciedev_shared version %d in dongle\n",
 		           __FUNCTION__, PCIE_SHARED_VERSION,
 		           bus->api.fw_rev));
-		return BCME_ERROR;
+		ret = BCME_ERROR;
+		goto done;
 	}
 	dhdpcie_update_bus_api_revisions(bus->api.fw_rev, PCIE_SHARED_VERSION);
 
@@ -13341,7 +13380,8 @@ dhdpcie_readshared(dhd_bus_t *bus)
 	} else if (!(sh->flags & PCIE_SHARED_D2H_SYNC_MODE_MASK)) {
 		DHD_ERROR(("%s FW has to support either dma indices or d2h sync\n",
 			__FUNCTION__));
-		return BCME_UNSUPPORTED;
+		ret = BCME_UNSUPPORTED;
+		goto done;
 	} else {
 		bus->dhd->dma_h2d_ring_upd_support = FALSE;
 		bus->dhd->dma_d2h_ring_upd_support = FALSE;
@@ -13366,12 +13406,14 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		if ((sh->rings_info_ptr < bus->dongle_ram_base) || (sh->rings_info_ptr > shaddr)) {
 			DHD_ERROR(("%s: rings_info_ptr is invalid 0x%x, skip reading ring info\n",
 				__FUNCTION__, sh->rings_info_ptr));
-			return BCME_ERROR;
+			ret = BCME_ERROR;
+			goto done;
 		}
 
-		if ((rv = dhdpcie_bus_membytes(bus, FALSE, sh->rings_info_ptr,
-			(uint8 *)&ring_info, sizeof(ring_info_t))) < 0)
-			return rv;
+		if ((ret = dhdpcie_bus_membytes(bus, FALSE, sh->rings_info_ptr,
+			(uint8 *)&ring_info, sizeof(ring_info_t))) < 0) {
+			goto done;
+		}
 
 		bus->h2d_mb_data_ptr_addr = ltoh32(sh->h2d_mb_data_ptr);
 		bus->d2h_mb_data_ptr_addr = ltoh32(sh->d2h_mb_data_ptr);
@@ -13395,16 +13437,19 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		if (bus->max_completion_rings == 0) {
 			DHD_ERROR(("dongle completion rings are invalid %d\n",
 				bus->max_completion_rings));
-			return BCME_ERROR;
+			ret = BCME_ERROR;
+			goto done;
 		}
 		if (bus->max_submission_rings == 0) {
 			DHD_ERROR(("dongle submission rings are invalid %d\n",
 				bus->max_submission_rings));
-			return BCME_ERROR;
+			ret = BCME_ERROR;
+			goto done;
 		}
 		if (bus->max_tx_flowrings == 0) {
 			DHD_ERROR(("dongle txflow rings are invalid %d\n", bus->max_tx_flowrings));
-			return BCME_ERROR;
+			ret = BCME_ERROR;
+			goto done;
 		}
 
 		/* If both FW and Host support DMA'ing indices, allocate memory and notify FW
@@ -13443,12 +13488,14 @@ dhdpcie_readshared(dhd_bus_t *bus)
 			uint32 bufsz = bus->rw_index_sz * bus->max_completion_rings;
 			if (dhd_prot_dma_indx_copybuf_init(bus->dhd, bufsz, D2H_DMA_INDX_WR_BUF)
 				!= BCME_OK) {
-				return BCME_NOMEM;
+				ret = BCME_NOMEM;
+				goto done;
 			}
 			bufsz = bus->rw_index_sz * bus->max_submission_rings;
 			if (dhd_prot_dma_indx_copybuf_init(bus->dhd, bufsz, H2D_DMA_INDX_RD_BUF)
 				!= BCME_OK) {
-				return BCME_NOMEM;
+				ret = BCME_NOMEM;
+				goto done;
 			}
 		}
 #endif /* DHD_DMA_INDICES_SEQNUM */
@@ -13565,7 +13612,37 @@ dhdpcie_readshared(dhd_bus_t *bus)
 				DAR_PCIE_PWR_CTRL((bus->sih)->buscorerev), FALSE);
 		}
 	}
-	return BCME_OK;
+done:
+#if defined(FW_SIGNATURE)
+	if ((ret == BCME_ERROR) && (bus->fwsig_filename[0] != 0)) {
+		bl_verif_status_t status;
+
+		(void)dhdpcie_read_fwstatus(bus, &status);
+		DHD_ERROR(("Verification status: (%08x)\n"
+			"\tstatus: %d\n"
+			"\tstate: %u\n"
+			"\talloc_bytes: %u\n"
+			"\tmax_alloc_bytes: %u\n"
+			"\ttotal_alloc_bytes: %u\n"
+			"\ttotal_freed_bytes: %u\n"
+			"\tnum_allocs: %u\n"
+			"\tmax_allocs: %u\n"
+			"\tmax_alloc_size: %u\n"
+			"\talloc_failures: %u\n",
+			bus->fwstat_download_addr,
+			status.status,
+			status.state,
+			status.alloc_bytes,
+			status.max_alloc_bytes,
+			status.total_alloc_bytes,
+			status.total_freed_bytes,
+			status.num_allocs,
+			status.max_allocs,
+			status.max_alloc_size,
+			status.alloc_failures));
+	}
+#endif /* FW_SIGNATURE */
+	return ret;
 } /* dhdpcie_readshared */
 
 /** Read ring mem and ring state ptr info from shared memory area in device memory */
@@ -17526,3 +17603,9 @@ dhd_bus_get_socram_buf(struct dhd_bus *bus, struct dhd_pub *dhdp)
 	return dhd_get_fwdump_buf(dhdp, bus->ramsize);
 }
 #endif /* NDIS */
+
+void
+dhd_bus_set_signature_path(struct dhd_bus *bus, char *sig_path)
+{
+	strlcpy(bus->fwsig_filename, sig_path, sizeof(bus->fwsig_filename));
+}

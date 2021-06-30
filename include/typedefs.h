@@ -150,7 +150,7 @@ typedef unsigned __int64 uint64;
 #endif
 
 /* Do not support the (u)int64 types with strict ansi for GNU C */
-#if defined(__GNUC__) && defined(__STRICT_ANSI__)
+#if defined(__GNUC__) && defined(__STRICT_ANSI__) && (__STDC_VERSION__ < 199901L)
 #define TYPEDEF_INT64
 #define TYPEDEF_UINT64
 #endif /* defined(__GNUC__) && defined(__STRICT_ANSI__) */
@@ -162,7 +162,7 @@ typedef unsigned __int64 uint64;
 
 #define TYPEDEF_INT64
 
-#if defined(__STDC__)
+#if defined(__STDC__) && (__STDC_VERSION__ < 199901L)
 #define TYPEDEF_UINT64
 #endif
 
@@ -400,6 +400,7 @@ typedef UINTN         uintptr;
 #define UNUSED_PARAMETER(x) (void)(x)
 #define DISCARD_QUAL(ptr, type) ((type *)(uintptr)(ptr))
 #define INLINE
+#define INLINE_ALWAYS	INLINE
 #define	AUTO	(-1) /* Auto = -1 */
 #define	ON	1  /* ON = 1 */
 #define	OFF	0

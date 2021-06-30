@@ -702,6 +702,10 @@ typedef struct dot11_rsnxe dot11_rsnxe_t;
 #define RSNXE_CAP_LENGTH(cap)		((uint8)(cap) & RSNXE_CAP_LENGTH_MASK)
 #define RSNXE_SET_CAP_LENGTH(cap, len)\
 		(cap = (cap & ~RSNXE_CAP_LENGTH_MASK) | ((uint8)(len) & RSNXE_CAP_LENGTH_MASK))
+/* The first 4 bit of CAPs field is the length of the Extended RSN Capabilities minus 1 */
+#define IS_RSNXE_VALID(ie)	((ie) && (((dot11_rsnxe_t *)(ie))->len >= 1u) && \
+					(((dot11_rsnxe_t *)(ie))->len > \
+					RSNXE_CAP_LENGTH(((dot11_rsnxe_t *)(ie))->cap[0])))
 
 BWL_PRE_PACKED_STRUCT struct dot11_rejected_groups_ie {
 	uint8 id;	/* DOT11_MNG_EXT_ID */
@@ -1842,6 +1846,11 @@ enum dot11_tag_ids {
 #define DOT11_MNG_ML_ID				(DOT11_MNG_ID_EXT_ID + EXT_MNG_ML_ID)
 #define EXT_MNG_EHT_CAP_ID			113u	/* EHT Capabilities */
 #define DOT11_MNG_EHT_CAP_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_EHT_CAP_ID)
+/* Draft P802.11be D1.0 - TBD */
+#define EXT_MNG_TID_MAP_ID			114u	/* TID-To-Link Mapping */
+#define DOT11_MNG_TID_MAP_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_TID_MAP_ID)
+#define EXT_MNG_ML_TRAFFIC_ID			115u	/* Multi-Link Traffic */
+#define DOT11_MNG_ML_TRAFFIC_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_ML_TRAFFIC_ID)
 
 /* P802.11az/D2.5 - Table 9-322h23fd Ranging Subelement IDs for Ranging Parameters */
 #define RANGING_PARAMS_NTB_SUB_ELT_ID		0u	/* Non-TB specific subelement */
@@ -4581,18 +4590,18 @@ BWL_PRE_PACKED_STRUCT struct ht_prop_cap_ie {
 	uint8	id;		/* IE ID, 221, DOT11_MNG_PROPR_ID */
 	uint8	len;		/* IE length */
 	uint8	oui[3];		/* Proprietary OUI, BRCM_PROP_OUI */
-	uint8	type;           /* type indicates what follows */
+	uint8	type;		/* type indicates what follows */
 	ht_cap_ie_t cap_ie;
 } BWL_POST_PACKED_STRUCT;
 typedef struct ht_prop_cap_ie ht_prop_cap_ie_t;
 
 #define HT_PROP_IE_OVERHEAD	4	/* overhead bytes for prop oui ie */
 #define HT_CAP_IE_LEN		26	/* HT capability len (based on .11n d2.0) */
-#define HT_CAP_IE_TYPE		51      /* used in prop IE 221 only */
+#define HT_CAP_IE_TYPE		51	/* used in prop IE 221 only */
 
 #define HT_CAP_LDPC_CODING	0x0001	/* Support for rx of LDPC coded pkts */
-#define HT_CAP_40MHZ		0x0002  /* FALSE:20Mhz, TRUE:20/40MHZ supported */
-#define HT_CAP_MIMO_PS_MASK	0x000C  /* Mimo PS mask */
+#define HT_CAP_40MHZ		0x0002	/* FALSE:20Mhz, TRUE:20/40MHZ supported */
+#define HT_CAP_MIMO_PS_MASK	0x000C	/* Mimo PS mask */
 #define HT_CAP_MIMO_PS_SHIFT	0x0002	/* Mimo PS shift */
 #define HT_CAP_MIMO_PS_OFF	0x0003	/* Mimo PS, no restriction */
 #define HT_CAP_MIMO_PS_RTS	0x0001	/* Mimo PS, send RTS/CTS around MIMO frames */
@@ -4606,7 +4615,7 @@ typedef struct ht_prop_cap_ie ht_prop_cap_ie_t;
 #define HT_CAP_DELAYED_BA	0x0400	/* delayed BA support */
 #define HT_CAP_MAX_AMSDU	0x0800	/* Max AMSDU size in bytes , 0=3839, 1=7935 */
 
-#define HT_CAP_DSSS_CCK	0x1000	/* DSSS/CCK supported by the BSS */
+#define HT_CAP_DSSS_CCK		0x1000	/* DSSS/CCK supported by the BSS */
 #define HT_CAP_PSMP		0x2000	/* Power Save Multi Poll support */
 #define HT_CAP_40MHZ_INTOLERANT 0x4000	/* 40MHz Intolerant */
 #define HT_CAP_LSIG_TXOP	0x8000	/* L-SIG TXOP protection support */
@@ -4636,10 +4645,10 @@ typedef struct ht_prop_cap_ie ht_prop_cap_ie_t;
 #define HT_CAP_TXBF_CAP_CHAN_ESTIM_SHIFT	27
 #define HT_CAP_TXBF_CAP_CHAN_ESTIM_MASK		0x18000000
 
-#define HT_CAP_TXBF_FB_TYPE_NONE	0
-#define HT_CAP_TXBF_FB_TYPE_DELAYED	1
-#define HT_CAP_TXBF_FB_TYPE_IMMEDIATE	2
-#define HT_CAP_TXBF_FB_TYPE_BOTH	3
+#define HT_CAP_TXBF_FB_TYPE_NONE		0
+#define HT_CAP_TXBF_FB_TYPE_DELAYED		1
+#define HT_CAP_TXBF_FB_TYPE_IMMEDIATE		2
+#define HT_CAP_TXBF_FB_TYPE_BOTH		3
 
 #define HT_CAP_TX_BF_CAP_EXPLICIT_CSI_FB_MASK	0x400
 #define HT_CAP_TX_BF_CAP_EXPLICIT_CSI_FB_SHIFT	10
@@ -4647,48 +4656,51 @@ typedef struct ht_prop_cap_ie ht_prop_cap_ie_t;
 #define HT_CAP_TX_BF_CAP_EXPLICIT_COMPRESSED_FB_SHIFT 15
 
 #define HT_CAP_MCS_FLAGS_SUPP_BYTE 12 /* byte offset in HT Cap Supported MCS for various flags */
-#define HT_CAP_MCS_RX_8TO15_BYTE_OFFSET                1
-#define HT_CAP_MCS_FLAGS_TX_RX_UNEQUAL              0x02
-#define HT_CAP_MCS_FLAGS_MAX_SPATIAL_STREAM_MASK    0x0C
+#define HT_CAP_MCS_RX_8TO15_BYTE_OFFSET		1
+#define HT_CAP_MCS_FLAGS_TX_RX_UNEQUAL		0x02
+#define HT_CAP_MCS_FLAGS_MAX_SPATIAL_STREAM_MASK 0x0C
 
-#define VHT_MAX_MPDU		11454	/* max mpdu size for now (bytes) */
-#define VHT_MPDU_MSDU_DELTA	56		/* Difference in spec - vht mpdu, amsdu len */
+#define VHT_MAX_MPDU			11454	/* max mpdu size for now (bytes) */
+#define VHT_MPDU_MSDU_DELTA		56	/* Difference in spec - vht mpdu, amsdu len */
 /* Max AMSDU len - per spec */
-#define VHT_MAX_AMSDU		(VHT_MAX_MPDU - VHT_MPDU_MSDU_DELTA)
+#define VHT_MAX_AMSDU			(VHT_MAX_MPDU - VHT_MPDU_MSDU_DELTA)
 
-#define HT_MAX_AMSDU		7935	/* max amsdu size (bytes) per the HT spec */
-#define HT_MIN_AMSDU		3835	/* min amsdu size (bytes) per the HT spec */
+#define HT_MAX_AMSDU			7935	/* max amsdu size (bytes) per the HT spec */
+#define HT_MIN_AMSDU			3835	/* min amsdu size (bytes) per the HT spec */
 
 #define HT_PARAMS_RX_FACTOR_MASK	0x03	/* ampdu rcv factor mask */
 #define HT_PARAMS_DENSITY_MASK		0x1C	/* ampdu density mask */
-#define HT_PARAMS_DENSITY_SHIFT	2	/* ampdu density shift */
+#define HT_PARAMS_DENSITY_SHIFT		2	/* ampdu density shift */
 
 /* HT/AMPDU specific define */
-#define AMPDU_MAX_MPDU_DENSITY  7       /* max mpdu density; in 1/4 usec units */
-#define AMPDU_DENSITY_NONE      0       /* No density requirement */
-#define AMPDU_DENSITY_1over4_US 1       /* 1/4 us density */
-#define AMPDU_DENSITY_1over2_US 2       /* 1/2 us density */
-#define AMPDU_DENSITY_1_US      3       /*   1 us density */
-#define AMPDU_DENSITY_2_US      4       /*   2 us density */
-#define AMPDU_DENSITY_4_US      5       /*   4 us density */
-#define AMPDU_DENSITY_8_US      6       /*   8 us density */
-#define AMPDU_DENSITY_16_US     7       /*  16 us density */
-#define AMPDU_RX_FACTOR_8K      0       /* max rcv ampdu len (8kb) */
-#define AMPDU_RX_FACTOR_16K     1       /* max rcv ampdu len (16kb) */
-#define AMPDU_RX_FACTOR_32K     2       /* max rcv ampdu len (32kb) */
-#define AMPDU_RX_FACTOR_64K     3       /* max rcv ampdu len (64kb) */
+#define AMPDU_MAX_MPDU_DENSITY		7	/* max mpdu density; in 1/4 usec units */
+#define AMPDU_DENSITY_NONE		0	/* No density requirement */
+#define AMPDU_DENSITY_1over4_US		1	/* 1/4 us density */
+#define AMPDU_DENSITY_1over2_US		2	/* 1/2 us density */
+#define AMPDU_DENSITY_1_US		3	/*   1 us density */
+#define AMPDU_DENSITY_2_US		4	/*   2 us density */
+#define AMPDU_DENSITY_4_US		5	/*   4 us density */
+#define AMPDU_DENSITY_8_US		6	/*   8 us density */
+#define AMPDU_DENSITY_16_US		7	/*  16 us density */
+#define AMPDU_RX_FACTOR_8K		0	/* max rcv ampdu len (8kb) */
+#define AMPDU_RX_FACTOR_16K		1	/* max rcv ampdu len (16kb) */
+#define AMPDU_RX_FACTOR_32K		2	/* max rcv ampdu len (32kb) */
+#define AMPDU_RX_FACTOR_64K		3	/* max rcv ampdu len (64kb) */
 
 /* AMPDU RX factors for VHT rates */
-#define AMPDU_RX_FACTOR_128K    4       /* max rcv ampdu len (128kb) */
-#define AMPDU_RX_FACTOR_256K    5       /* max rcv ampdu len (256kb) */
-#define AMPDU_RX_FACTOR_512K    6       /* max rcv ampdu len (512kb) */
-#define AMPDU_RX_FACTOR_1024K   7       /* max rcv ampdu len (1024kb) */
+#define AMPDU_RX_FACTOR_128K		4	/* max rcv ampdu len (128kb) */
+#define AMPDU_RX_FACTOR_256K		5	/* max rcv ampdu len (256kb) */
+#define AMPDU_RX_FACTOR_512K		6	/* max rcv ampdu len (512kb) */
+#define AMPDU_RX_FACTOR_1024K		7	/* max rcv ampdu len (1024kb) */
 
-#define AMPDU_RX_FACTOR_BASE    8*1024  /* ampdu factor base for rx len */
+#define AMPDU_RX_FACTOR_BASE		8*1024	/* ampdu factor base for rx len */
+#ifdef WL_EXTBA
+#define AMPDU_RX_FACTOR_BASE_PWR	15	/* ampdu factor base for rx len in power of 2 */
+#else
 #define AMPDU_RX_FACTOR_BASE_PWR	13	/* ampdu factor base for rx len in power of 2 */
-
-#define AMPDU_DELIMITER_LEN	4u	/* length of ampdu delimiter */
-#define AMPDU_DELIMITER_LEN_MAX	63	/* max length of ampdu delimiter(enforced in HW) */
+#endif
+#define AMPDU_DELIMITER_LEN		4u	/* length of ampdu delimiter */
+#define AMPDU_DELIMITER_LEN_MAX		63	/* max length of ampdu delimiter(enforced in HW) */
 
 #define HT_CAP_EXT_PCO			0x0001
 #define HT_CAP_EXT_PCO_TTIME_MASK	0x0006
@@ -4704,7 +4716,7 @@ BWL_PRE_PACKED_STRUCT struct ht_add_ie {
 	uint8	byte1;			/* ext ch,rec. ch. width, RIFS support */
 	uint16	opmode;			/* operation mode */
 	uint16	misc_bits;		/* misc bits */
-	uint8	basic_mcs[MCSSET_LEN];  /* required MCS set */
+	uint8	basic_mcs[MCSSET_LEN];	/* required MCS set */
 } BWL_POST_PACKED_STRUCT;
 typedef struct ht_add_ie ht_add_ie_t;
 

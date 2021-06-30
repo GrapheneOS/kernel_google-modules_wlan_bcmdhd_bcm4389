@@ -821,6 +821,16 @@ enum {
 	BCM_FSM_E_MAX			= -10239
 };
 
+/* QoS Mgmt status codes. [-10240 ... -11263] (1K)
+ */
+typedef enum wl_mscs_status {
+	/* MSCS is already active */
+	WL_MSCS_E_ACTIVE		= -10240,
+
+	/* MSCS activation is in progress */
+	WL_MSCS_E_IN_PROGRESS		= -10241
+} wl_mscs_status_e;
+
 #endif	/* BCMUTILS_ERR_CODES */
 
 #endif	/* _bcmerror_h_ */

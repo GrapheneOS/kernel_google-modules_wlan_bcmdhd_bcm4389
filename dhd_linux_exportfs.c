@@ -438,6 +438,32 @@ store_nvram_path(struct dhd_info *dev, const char *buf, size_t count)
 	return count;
 }
 
+extern char signature_path[];
+
+static ssize_t
+show_signature_path(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%s\n", signature_path);
+
+	return ret;
+}
+
+static ssize_t
+store_signature_path(struct dhd_info *dev, const char *buf, size_t count)
+{
+	char fmt_spec[FMT_BUFSZ] = "";
+
+	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
+		return -EINVAL;
+	}
+
+	snprintf(fmt_spec, FMT_BUFSZ, "%%%ds", MOD_PARAM_PATHLEN - 1);
+	sscanf(buf, fmt_spec, signature_path);
+
+	return count;
+}
+
 #ifdef PWRSTATS_SYSFS
 typedef struct wl_pwrstats_sysfs {
 	uint64	current_ts;
@@ -822,6 +848,9 @@ static struct dhd_attr dhd_attr_firmware_path =
 static struct dhd_attr dhd_attr_nvram_path =
 	__ATTR(nvram_path, 0660, show_nvram_path, store_nvram_path);
 
+static struct dhd_attr dhd_attr_sig_path =
+	__ATTR(signature_path, 0660, show_signature_path, store_signature_path);
+
 #ifdef PWRSTATS_SYSFS
 static struct dhd_attr dhd_attr_pwrstats_path =
 	__ATTR(power_stats, 0664, show_pwrstats_path, NULL);
@@ -1173,6 +1202,21 @@ set_cid_info(struct dhd_info *dev, const char *buf, size_t count)
 static struct dhd_attr dhd_attr_cidinfo =
 	__ATTR(cid, 0660, show_cid_info, set_cid_info);
 #endif /* USE_CID_CHECK || USE_DIRECT_VID_TAG */
+
+#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
+int otpinfo_val = -1;
+
+static ssize_t
+show_otp_info(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	ret = snprintf(buf, PAGE_SIZE-1, "%d\n", otpinfo_val);
+	return ret;
+}
+
+static struct dhd_attr dhd_attr_otpinfo =
+	__ATTR(otp, 0660, show_otp_info, NULL);
+#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
 
 #if defined(GEN_SOFTAP_INFO_FILE)
 char softapinfostr[SOFTAP_INFO_BUF_SZ];
@@ -1999,29 +2043,63 @@ set_wl_debug_level(struct dhd_info *dhd, const char *buf, size_t count)
 
 static struct dhd_attr dhd_attr_wl_dbg_level =
 __ATTR(wl_dbg_level, 0660, show_wl_debug_level, set_wl_debug_level);
+#endif /* WL_CFG80211 */
 
-#ifdef DHD_FILE_DUMP_EVENT
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+#define DUMP_TRIGGER	1
+
 static ssize_t
-show_dhd_dump_done(struct dhd_info *dhd, char *buf)
+show_dhd_dump_in_progress(struct dhd_info *dhd, char *buf)
 {
-	ssize_t ret = 0;
-	bool dump_done;
+	size_t ret = 0;
+	dhd_dongledump_status_t dump_status;
 
 	if (!dhd) {
 		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
-		return ret;
+		return BCME_ERROR;
 	}
 
-	dump_done = DHD_BUS_BUSY_CHECK_IN_HALDUMP(&dhd->pub) ? TRUE : FALSE;
-	ret = scnprintf(buf, PAGE_SIZE - 1, "%d \n", dump_done);
+	dump_status = dhd_get_dump_status(&dhd->pub);
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d \n", dump_status);
 
 	return ret;
 }
 
-static struct dhd_attr dhd_attr_dump_done =
-__ATTR(dump_done, 0660, show_dhd_dump_done, NULL);
-#endif /* DHD_FILE_DUMP_EVENT */
-#endif /* WL_CFG80211 */
+static ssize_t
+set_dhd_dump_in_progress(struct dhd_info *dhd, const char *buf, size_t count)
+{
+	uint32 input;
+	dhd_dongledump_status_t dump_status;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return count;
+	}
+
+	dump_status = dhd_get_dump_status(&dhd->pub);
+	if (dump_status == DUMP_NOT_READY || dump_status == DUMP_IN_PROGRESS) {
+		DHD_ERROR(("%s: Could not start dongle dump: %d\n",
+			__FUNCTION__, dump_status));
+		goto exit;
+	}
+
+	input = bcm_atoi(buf);
+	if (input == DUMP_TRIGGER) {
+		DHD_INFO(("%s: Trigger dongle dump\n", __FUNCTION__));
+		dhd_set_dump_status(&dhd->pub, DUMP_IN_PROGRESS);
+		schedule_work(&dhd->dhd_dump_proc_work);
+	}
+	else {
+		DHD_ERROR(("%s: Invalid value %d\n", __FUNCTION__, input));
+	}
+
+exit:
+	return count;
+}
+
+static struct dhd_attr dhd_attr_dump_in_progress =
+__ATTR(dump_in_progress, 0660, show_dhd_dump_in_progress, set_dhd_dump_in_progress);
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 #ifdef DHD_DUMP_START_COMMAND
 static ssize_t
@@ -2130,10 +2208,10 @@ static struct attribute *default_file_attrs[] = {
 #endif /* PWRSTATS_SYSFS */
 #if defined(WL_CFG80211)
 	&dhd_attr_wl_dbg_level.attr,
-#if defined(DHD_FILE_DUMP_EVENT)
-	&dhd_attr_dump_done.attr,
-#endif /* DHD_FILE_DUMP_EVENT */
 #endif /* WL_CFG80211 */
+#if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
+	&dhd_attr_dump_in_progress.attr,
+#endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 #ifdef DHD_DUMP_START_COMMAND
 	&dhd_attr_dump_start_command.attr,
 #endif /* DHD_DUMP_START_COMMAND */
@@ -2150,6 +2228,10 @@ static struct attribute *default_file_attrs[] = {
 	&dhd_attr_aspm_enab.attr,
 	&dhd_attr_l1ss_enab.attr,
 #endif /* PCIE_FULL_DONGLE */
+#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
+	&dhd_attr_otpinfo.attr,
+#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
+	&dhd_attr_sig_path.attr,
 	NULL
 };
 

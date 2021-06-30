@@ -418,4 +418,6 @@ extern void dhdpcie_db7_trap(struct dhd_bus *bus);
 void * dhd_bus_get_socram_buf(struct dhd_bus *bus, struct dhd_pub *dhdp);
 #endif
 
+void dhd_bus_set_signature_path(struct dhd_bus *bus, char *sig_path);
+
 #endif /* _dhd_bus_h_ */

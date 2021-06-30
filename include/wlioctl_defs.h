@@ -1226,7 +1226,6 @@ typedef uint32 ratespec_t;
 #define WLC_BW_40MHZ_BIT		(1<<1)
 #define WLC_BW_80MHZ_BIT		(1<<2)
 #define WLC_BW_160MHZ_BIT		(1<<3)
-#define WLC_BW_240MHZ_BIT		(1<<4)
 #define WLC_BW_320MHZ_BIT		(1u<<5u)
 
 /* Bandwidth capabilities */
@@ -2182,6 +2181,8 @@ typedef uint32 ratespec_t;
 
 #define WL_PFN_CFG_FLAGS_PROHIBITED	0x00000001	/* Accept and use prohibited channels */
 #define WL_PFN_CFG_FLAGS_HISTORY_OFF	0x00000002	/* Scan history suppressed */
+/* Set to avoid sending direct probe in 6G channels */
+#define WL_PFN_CFG_FLAGS_NOUPREQ_6G	0x00000004
 
 #define WL_PFN_HIDDEN_BIT		2
 #define PNO_SCAN_MAX_FW			508*1000	/* max time scan time in msec */

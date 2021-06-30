@@ -351,6 +351,7 @@ fwpkg_open_unit(fwpkg_info_t *fwpkg, char *fname, uint32 unit_type, FWPKG_FILE *
 	 * means, this is single binary file format.
 	 */
 	if (IS_FWPKG_SINGLE(fwpkg)) {
+		fwpkg->file_size = fwpkg_getsize(*fp);
 		ret = BCME_UNSUPPORTED;
 		goto done;
 	}
@@ -372,7 +373,16 @@ static uint32
 fwpkg_get_unit_size(fwpkg_info_t *fwpkg, uint32 unit_type)
 {
 	fwpkg_unit_t *fw_unit = NULL;
+	uint32 size;
+
+	if (IS_FWPKG_SINGLE(fwpkg)) {
+		size = fwpkg->file_size;
+		goto done;
+	}
 
 	fw_unit = &fwpkg->units[FWPKG_UNIT_IDX(unit_type)];
-	return fw_unit->size;
+	size = fw_unit->size;
+
+done:
+	return size;
 }
