@@ -211,54 +211,117 @@ dhd_wlan_init_mac_addr(void)
 
 #if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 
-#define CMDLINE_REVISION_KEY "androidboot.revision="
-#define CMDLINE_SKU_KEY "androidboot.hardware.sku="
+#define PLT_PATH "/chosen/plat"
+
+#ifndef CDB_PATH
+#define CDB_PATH "/chosen/config"
+#endif /* CDB_PATH */
+
+#define HW_SKU    "sku"
+#define HW_STAGE  "stage"
+#define HW_MAJOR  "major"
+#define HW_MINOR  "minor"
 
 char val_revision[MAX_HW_INFO_LEN] = {0};
 char val_sku[MAX_HW_INFO_LEN] = {0};
+
+enum hw_stage_attr {
+	DEV = 1,
+	PROTO = 2,
+	EVT = 3,
+	DVT = 4,
+	PVT = 5,
+	MP = 6,
+	HW_STAGE_MAX
+};
 
 int
 dhd_wlan_init_hardware_info(void)
 {
 
-	struct device_node *node;
-	char *cp;
-	const char *command_line = NULL;
-	char match_str[MAX_HW_INFO_LEN] = {0};
-	size_t len;
+	struct device_node *node = NULL;
+	const char *hw_sku = NULL;
+	int hw_stage = -1;
+	int hw_major = -1;
+	int hw_minor = -1;
 
-	node = of_find_node_by_path("/chosen");
+	node = of_find_node_by_path(PLT_PATH);
 	if (!node) {
-		DHD_ERROR(("Node not created under chosen\n"));
+		DHD_ERROR(("Node not created under %s\n", PLT_PATH));
 		return -ENODEV;
 	} else {
 
-		of_property_read_string(node, "bootargs", &command_line);
-		len = strlen(command_line);
-
-		cp = strnstr(command_line, CMDLINE_REVISION_KEY, len);
-		if (cp) {
-			sscanf(cp, CMDLINE_REVISION_KEY"%s", val_revision);
+		if (of_property_read_u32(node, HW_STAGE, &hw_stage)) {
+			DHD_ERROR(("%s: Failed to get hw stage\n", __FUNCTION__));
+			return -EINVAL;
 		}
 
-		cp = strnstr(command_line, CMDLINE_SKU_KEY, len);
-		if (cp) {
-			sscanf(cp, CMDLINE_SKU_KEY"%s", match_str);
-			if (strcmp(match_str, "G9S9B") == 0 ||
-				strcmp(match_str, "G8V0U") == 0 ||
-				strcmp(match_str, "GFQM1") == 0) {
-				strcpy(val_sku, "MMW");
-			} else if (strcmp(match_str, "GR1YH") == 0 ||
-				strcmp(match_str, "GF5KQ") == 0 ||
-				strcmp(match_str, "GPQ72") == 0) {
-				strcpy(val_sku, "JPN");
-			} else if (strcmp(match_str, "GB7N6") == 0 ||
-				strcmp(match_str, "GLU0G") == 0 ||
-				strcmp(match_str, "GNA8F") == 0) {
-				strcpy(val_sku, "ROW");
-			} else {
-				strcpy(val_sku, "NA");
-			}
+		if (of_property_read_u32(node, HW_MAJOR, &hw_major)) {
+			DHD_ERROR(("%s: Failed to get hw major\n", __FUNCTION__));
+			return -EINVAL;
+		}
+
+		if (of_property_read_u32(node, HW_MINOR, &hw_minor)) {
+			DHD_ERROR(("%s: Failed to get hw minor\n", __FUNCTION__));
+			return -EINVAL;
+		}
+
+		switch (hw_stage) {
+			case DEV:
+				snprintf(val_revision, MAX_HW_INFO_LEN, "DEV%d.%d",
+					hw_major, hw_minor);
+				break;
+			case PROTO:
+				snprintf(val_revision, MAX_HW_INFO_LEN, "PROTO%d.%d",
+					hw_major, hw_minor);
+				break;
+			case EVT:
+				snprintf(val_revision, MAX_HW_INFO_LEN, "EVT%d.%d",
+					hw_major, hw_minor);
+				break;
+			case DVT:
+				snprintf(val_revision, MAX_HW_INFO_LEN, "DVT%d.%d",
+					hw_major, hw_minor);
+				break;
+			case PVT:
+				snprintf(val_revision, MAX_HW_INFO_LEN, "PVT%d.%d",
+					hw_major, hw_minor);
+				break;
+			case MP:
+				snprintf(val_revision, MAX_HW_INFO_LEN, "MP%d.%d",
+					hw_major, hw_minor);
+				break;
+			default:
+				strcpy(val_revision, "NA");
+				break;
+		}
+	}
+
+	node = of_find_node_by_path(CDB_PATH);
+	if (!node) {
+		DHD_ERROR(("Node not created under %s\n", CDB_PATH));
+		return -ENODEV;
+	} else {
+
+		if (of_property_read_string(node, HW_SKU, &hw_sku)) {
+			DHD_ERROR(("%s: Failed to get hw sku\n", __FUNCTION__));
+			return -EINVAL;
+		}
+
+		if (strcmp(hw_sku, "G9S9B") == 0 ||
+			strcmp(hw_sku, "G8V0U") == 0 ||
+			strcmp(hw_sku, "GFQM1") == 0) {
+			strcpy(val_sku, "MMW");
+		} else if (strcmp(hw_sku, "GR1YH") == 0 ||
+			strcmp(hw_sku, "GF5KQ") == 0 ||
+			strcmp(hw_sku, "GPQ72") == 0) {
+			strcpy(val_sku, "JPN");
+		} else if (strcmp(hw_sku, "GB7N6") == 0 ||
+			strcmp(hw_sku, "GLU0G") == 0 ||
+			strcmp(hw_sku, "GNA8F") == 0) {
+			strcpy(val_sku, "ROW");
+		} else {
+			strcpy(val_sku, "NA");
 		}
 	}
 
