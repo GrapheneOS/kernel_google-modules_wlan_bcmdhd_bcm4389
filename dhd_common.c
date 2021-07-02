@@ -8009,10 +8009,6 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #ifdef SUPPORT_OTA_UPDATE
 	ota_update_info_t *ota_info = &dhd->ota_update_info;
 #endif /* SUPPORT_OTA_UPDATE */
-#ifdef SUPPORT_MULTIPLE_CLMBLOB
-	char pclm_path[MAX_FILE_COUNT][MAX_FILE_LEN] = {{0}};
-	int i;
-#endif /* SUPPORT_MULTIPLE_CLMBLOB */
 
 	if (clm_path[0] != '\0') {
 		if (strlen(clm_path) > MOD_PARAM_PATHLEN) {
@@ -8027,15 +8023,6 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #else
 		clm_blob_path = VENDOR_PATH CONFIG_BCMDHD_CLM_PATH;
 #endif /* DHD_LINUX_STD_FW_API */
-#ifdef SUPPORT_MULTIPLE_CLMBLOB
-		snprintf(pclm_path[0], sizeof(pclm_path[0]),
-			"%s_%s_%s", clm_blob_path, val_revision, val_sku);
-		snprintf(pclm_path[1], sizeof(pclm_path[1]),
-			"%s_%s", clm_blob_path, val_sku);
-		snprintf(pclm_path[2], sizeof(pclm_path[2]),
-			"%s_%s", clm_blob_path, val_revision);
-		strncpy(pclm_path[3], clm_blob_path, MAX_FILE_LEN);
-#endif /* SUPPORT_MULTIPLE_CLMBLOB */
 	}
 
 	/* If CLM blob file is found on the filesystem, download the file.
@@ -8046,23 +8033,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
 	DHD_ERROR(("Clmblob file : %s\n", clm_blob_path));
 	len = MAX_CLM_BUF_SIZE;
-#ifdef SUPPORT_MULTIPLE_CLMBLOB
-	if (clm_path[0] != '\0') {
-		err = dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
-	}
-	else {
-		for (i = 0; i < MAX_FILE_COUNT; i++) {
-			err = dhd_get_download_buffer(dhd,
-					pclm_path[i], CLM_BLOB, &memblock, (int *)&len);
-			if (err == BCME_OK) {
-				DHD_LOG_MEM(("Clmblob file [%d: %s]\n", i, pclm_path[i]));
-				break;
-			}
-		}
-	}
-#else
 	err = dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
-#endif /* SUPPORT_MULTIPLE_CLMBLOB */
 #ifdef DHD_LINUX_STD_FW_API
 	memblock_len = len;
 #else

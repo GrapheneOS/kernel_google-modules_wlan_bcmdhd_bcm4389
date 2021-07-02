@@ -210,6 +210,12 @@ dhd_wlan_init_mac_addr(void)
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
 #if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
+enum {
+	REV_SKU = 0,
+	SKU_ONLY = 1,
+	REV_ONLY = 2,
+	NO_EXT_NAME = 3
+};
 
 #define PLT_PATH "/chosen/plat"
 
@@ -234,6 +240,128 @@ enum hw_stage_attr {
 	MP = 6,
 	HW_STAGE_MAX
 };
+typedef struct platform_hw_info {
+	uint8 avail_bmap;
+	char ext_name[MAX_FILE_COUNT][MAX_HW_EXT_LEN];
+} platform_hw_info_t;
+platform_hw_info_t platform_hw_info;
+
+static void
+dhd_set_platform_ext_name(char *hw_rev, char* hw_sku)
+{
+	bzero(&platform_hw_info, sizeof(platform_hw_info_t));
+
+	if (strncmp (hw_sku, "NA", MAX_HW_INFO_LEN) != 0) {
+		snprintf(platform_hw_info.ext_name[REV_SKU], MAX_HW_EXT_LEN, "_%s_%s",
+			hw_rev, hw_sku);
+		setbit(&platform_hw_info.avail_bmap, REV_SKU);
+
+		snprintf(platform_hw_info.ext_name[SKU_ONLY], MAX_HW_EXT_LEN, "_%s", hw_sku);
+		setbit(&platform_hw_info.avail_bmap, SKU_ONLY);
+	}
+
+	snprintf(platform_hw_info.ext_name[REV_ONLY], MAX_HW_EXT_LEN, "_%s", hw_rev);
+	setbit(&platform_hw_info.avail_bmap, REV_ONLY);
+
+#ifdef USE_CID_CHECK
+	setbit(&platform_hw_info.avail_bmap, NO_EXT_NAME);
+#endif /* USE_CID_CHECK */
+
+	return;
+}
+
+static int
+dhd_check_file_exist(char* fname)
+{
+	int err = BCME_OK;
+#ifdef DHD_LINUX_STD_FW_API
+	const struct firmware *fw = NULL;
+#else
+	struct file *filep = NULL;
+	mm_segment_t fs;
+#endif /* DHD_LINUX_STD_FW_API */
+
+	if (fname == NULL) {
+		DHD_ERROR(("%s: ERROR fname is NULL \n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+#ifdef DHD_LINUX_STD_FW_API
+	err = dhd_os_get_img_fwreq(&fw, fname);
+	if (err < 0) {
+		DHD_LOG_MEM(("dhd_os_get_img(Request Firmware API) error : %d\n",
+			err));
+		goto fail;
+	}
+#else
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	filep = dhd_filp_open(fname, O_RDONLY, 0);
+	if (IS_ERR(filep) || (filep == NULL)) {
+		DHD_LOG_MEM(("%s: Failed to open %s \n",  __FUNCTION__, fname));
+		err = BCME_NOTFOUND;
+		goto fail;
+	}
+#endif /* DHD_LINUX_STD_FW_API */
+
+fail:
+#ifdef DHD_LINUX_STD_FW_API
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+#else
+	if (!IS_ERR(filep))
+		dhd_filp_close(filep, NULL);
+
+	set_fs(fs);
+#endif /* DHD_LINUX_STD_FW_API */
+	return err;
+}
+
+int
+dhd_get_platform_naming_for_nvram_clmblob_file(download_type_t component, char *file_name)
+{
+	int i, error = BCME_OK;
+	char *nvram_clmblob_file;
+	char tmp_fname[MAX_FILE_LEN] = {0, };
+
+	if (!platform_hw_info.avail_bmap) {
+		DHD_ERROR(("ext_name is not composed.\n"));
+		return BCME_ERROR;
+	}
+
+	if (component == NVRAM) {
+#ifdef DHD_LINUX_STD_FW_API
+		nvram_clmblob_file = DHD_NVRAM_NAME;
+#else
+		nvram_clmblob_file = CONFIG_BCMDHD_NVRAM_PATH;
+#endif /* DHD_LINUX_STD_FW_API */
+	}
+	else if (component == CLM_BLOB) {
+#ifdef DHD_LINUX_STD_FW_API
+		nvram_clmblob_file = DHD_CLM_NAME;
+#else
+		nvram_clmblob_file = VENDOR_PATH CONFIG_BCMDHD_CLM_PATH;
+#endif /* DHD_LINUX_STD_FW_API */
+	}
+
+	for (i = 0; i < MAX_FILE_COUNT; i++) {
+		if (!isset(&platform_hw_info.avail_bmap, i)) {
+			continue;
+		}
+		memset_s(tmp_fname, MAX_FILE_LEN, 0, MAX_FILE_LEN);
+		snprintf(tmp_fname, MAX_FILE_LEN,
+			"%s%s", nvram_clmblob_file, platform_hw_info.ext_name[i]);
+		error = dhd_check_file_exist(tmp_fname);
+		if (error == BCME_OK) {
+			DHD_LOG_MEM(("%02d path[%s]\n", i, tmp_fname));
+			strlcpy(file_name, tmp_fname, MAX_FILE_LEN);
+			break;
+		}
+	}
+	return error;
+}
 
 int
 dhd_wlan_init_hardware_info(void)
@@ -323,6 +451,7 @@ dhd_wlan_init_hardware_info(void)
 		} else {
 			strcpy(val_sku, "NA");
 		}
+		dhd_set_platform_ext_name(val_revision, val_sku);
 	}
 
 	return 0;

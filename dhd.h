@@ -3184,10 +3184,9 @@ extern char fw_path2[MOD_PARAM_PATHLEN];
 
 #if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 #define MAX_HW_INFO_LEN   10u
-#define MAX_FILE_COUNT    5u
+#define MAX_HW_EXT_LEN    (MAX_HW_INFO_LEN * 2)
+#define MAX_FILE_COUNT    4u
 #define MAX_FILE_LEN      90u
-extern char val_revision[MAX_HW_INFO_LEN];
-extern char val_sku[MAX_HW_INFO_LEN];
 #endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 
 #define VENDOR_PATH ""

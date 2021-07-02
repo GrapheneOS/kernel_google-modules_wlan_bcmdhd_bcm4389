@@ -545,4 +545,7 @@ int dhd_get_fw_capabilities(dhd_pub_t * dhd);
 int dhd_dbus_txdata(dhd_pub_t *dhdp, void *pktbuf);
 #endif
 void dhd_event_logtrace_enqueue(dhd_pub_t *dhdp, int ifidx, void *pktbuf);
+#if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
+int dhd_get_platform_naming_for_nvram_clmblob_file(download_type_t component, char* file_name);
+#endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 #endif /* __DHD_LINUX_H__ */

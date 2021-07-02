@@ -1039,3 +1039,10 @@ uint16 __attribute__ ((weak)) dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
 {
 	return rxbufpost_sz;
 }
+
+int
+__attribute__ ((weak)) dhd_get_platform_naming_for_nvram_clmblob_file(download_type_t component,
+	char *file_name)
+{
+	return BCME_ERROR;
+}

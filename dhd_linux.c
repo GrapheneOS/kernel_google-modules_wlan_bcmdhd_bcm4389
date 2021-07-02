@@ -10466,6 +10466,10 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 #endif /* WBTEXT && RRM_BCNREQ_MAX_CHAN_TIME */
 
 	uint32 d3_hostwake_delay = D3_HOSTWAKE_DELAY;
+#ifdef SUPPORT_MULTIPLE_CLMBLOB
+	char customer_clm_file_name[MAX_FILE_LEN] = {0, };
+#endif /* SUPPORT_MULTIPLE_CLMBLOB */
+	char* apply_clm;
 
 #ifdef PKT_FILTER_SUPPORT
 	dhd_pkt_filter_enable = TRUE;
@@ -10692,8 +10696,18 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 			dhd->mac.octet, ETHER_ADDR_LEN);
 	}
 
+#ifdef SUPPORT_MULTIPLE_CLMBLOB
+	if (dhd_get_platform_naming_for_nvram_clmblob_file(CLM_BLOB,
+			customer_clm_file_name) == BCME_OK) {
+		apply_clm = customer_clm_file_name;
+	}
+	else
+#endif /* SUPPORT_MULTIPLE_CLMBLOB */
+	{
+		apply_clm = clm_path;
+	}
 
-	if ((ret = dhd_apply_default_clm(dhd, clm_path)) < 0) {
+	if ((ret = dhd_apply_default_clm(dhd, apply_clm)) < 0) {
 		DHD_ERROR(("%s: CLM set failed. Abort initialization.\n", __FUNCTION__));
 		goto done;
 	}
