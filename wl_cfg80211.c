@@ -16643,7 +16643,7 @@ wl_cfg80211_generate_mac_addr(struct ether_addr *ea_addr)
 	/* restore mcast and local admin bits to 0 and 1 */
 	ETHER_SET_UNICAST(ea_addr->octet);
 	ETHER_SET_LOCALADDR(ea_addr->octet);
-	WL_ERR(("%s:generated new MAC="MACDBG" \n",
+	WL_DBG_MEM(("%s:generated new MAC="MACDBG" \n",
 		__FUNCTION__, MAC2STRDBG(ea_addr->octet)));
 	return;
 }
