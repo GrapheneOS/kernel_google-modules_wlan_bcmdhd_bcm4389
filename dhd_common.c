@@ -11335,6 +11335,9 @@ dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
 		case HANG_REASON_P2P_DISC_BUSY:
 			type_str = "P2P_DISC_BUSY";
 			break;
+		case HANG_REASON_DS_SKIP_TIMEOUT:
+			type_str = "DS_SKIP_TIMEOUT";
+			break;
 		default:
 			type_str = "Unknown_type";
 			break;

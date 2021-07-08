@@ -22381,15 +22381,18 @@ static void
 wl_cfg80211_recovery_handler(struct work_struct *work)
 {
 	struct bcm_cfg80211 *cfg = NULL;
+	u32 cfg_hang_reason = HANG_REASON_UNKNOWN;
+
 	BCM_SET_CONTAINER_OF(cfg, work, struct bcm_cfg80211, recovery_work.work);
 
 	if (cfg->recovery_state) {
 		wl_attempt_recovery(cfg, cfg->recovery_state);
+		cfg_hang_reason = HANG_REASON_DS_SKIP_TIMEOUT;
 	}
 
 	WL_ERR(("**trigger hang event for recovery state:%d\n", cfg->recovery_state));
 	wl_cfg80211_handle_hang_event(bcmcfg_to_prmry_ndev(cfg),
-			HANG_REASON_UNKNOWN, DUMP_TYPE_CFG_VENDOR_TRIGGERED);
+			cfg_hang_reason, DUMP_TYPE_CFG_VENDOR_TRIGGERED);
 }
 
 #define WL_DS(x)
