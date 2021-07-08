@@ -228,8 +228,8 @@ enum {
 #define HW_MAJOR  "major"
 #define HW_MINOR  "minor"
 
-char val_revision[MAX_HW_INFO_LEN] = {0};
-char val_sku[MAX_HW_INFO_LEN] = {0};
+char val_revision[MAX_HW_INFO_LEN] = "NA";
+char val_sku[MAX_HW_INFO_LEN] = "NA";
 
 enum hw_stage_attr {
 	DEV = 1,
@@ -376,22 +376,22 @@ dhd_wlan_init_hardware_info(void)
 	node = of_find_node_by_path(PLT_PATH);
 	if (!node) {
 		DHD_ERROR(("Node not created under %s\n", PLT_PATH));
-		return -ENODEV;
+		goto exit;
 	} else {
 
 		if (of_property_read_u32(node, HW_STAGE, &hw_stage)) {
 			DHD_ERROR(("%s: Failed to get hw stage\n", __FUNCTION__));
-			return -EINVAL;
+			goto exit;
 		}
 
 		if (of_property_read_u32(node, HW_MAJOR, &hw_major)) {
 			DHD_ERROR(("%s: Failed to get hw major\n", __FUNCTION__));
-			return -EINVAL;
+			goto exit;
 		}
 
 		if (of_property_read_u32(node, HW_MINOR, &hw_minor)) {
 			DHD_ERROR(("%s: Failed to get hw minor\n", __FUNCTION__));
-			return -EINVAL;
+			goto exit;
 		}
 
 		switch (hw_stage) {
@@ -428,12 +428,12 @@ dhd_wlan_init_hardware_info(void)
 	node = of_find_node_by_path(CDB_PATH);
 	if (!node) {
 		DHD_ERROR(("Node not created under %s\n", CDB_PATH));
-		return -ENODEV;
+		goto exit;
 	} else {
 
 		if (of_property_read_string(node, HW_SKU, &hw_sku)) {
 			DHD_ERROR(("%s: Failed to get hw sku\n", __FUNCTION__));
-			return -EINVAL;
+			goto exit;
 		}
 
 		if (strcmp(hw_sku, "G9S9B") == 0 ||
@@ -451,8 +451,10 @@ dhd_wlan_init_hardware_info(void)
 		} else {
 			strcpy(val_sku, "NA");
 		}
-		dhd_set_platform_ext_name(val_revision, val_sku);
 	}
+
+exit:
+	dhd_set_platform_ext_name(val_revision, val_sku);
 
 	return 0;
 }
