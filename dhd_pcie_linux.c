@@ -2244,12 +2244,10 @@ dhdpcie_free_irq(dhd_bus_t *bus)
 	if (bus) {
 		pdev = bus->dev;
 		if (bus->irq_registered) {
-#if defined(SET_PCIE_IRQ_CPU_CORE) && defined(CONFIG_ARCH_SM8150)
 			/* clean up the affinity_hint before
 			 * the unregistration of PCIe irq
 			 */
 			(void)irq_set_affinity_hint(pdev->irq, NULL);
-#endif /* SET_PCIE_IRQ_CPU_CORE && CONFIG_ARCH_SM8150 */
 			free_irq(pdev->irq, bus);
 			bus->irq_registered = FALSE;
 			if (bus->d2h_intr_method == PCIE_MSI) {
