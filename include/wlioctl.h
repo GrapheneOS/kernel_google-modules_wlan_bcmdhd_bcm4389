@@ -17370,6 +17370,10 @@ enum {
 #define WL_PROXD_SID_CHRE_END WL_PROXD_SID_EXT_BLK_END(WL_PROXD_SID_CHRE_START)
 #endif /* CHRE */
 
+/* host block */
+#define WL_PROXD_SID_HOST_START WL_PROXD_SID_EXT_BLK_START(4)
+#define WL_PROXD_SID_HOST_END WL_PROXD_SID_EXT_BLK_END(WL_PROXD_SID_HOST_START)
+
 /** maximum number sessions that can be allocated, may be less if tunable */
 #define WL_PROXD_MAX_SESSIONS 16
 
