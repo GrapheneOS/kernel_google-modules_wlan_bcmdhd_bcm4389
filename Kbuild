@@ -761,6 +761,8 @@ endif
   DHDCFLAGS += -DDHD_8021X_DUMP
 # prioritize 802.1x packet
   DHDCFLAGS += -DEAPOL_PKT_PRIO
+# Update Tx/Rx rate info
+  DHDCFLAGS += -DWL_RATE_INFO
 endif
 
 ifneq ($(filter y, $(CONFIG_BCM4354) $(CONFIG_BCM4356)),)
