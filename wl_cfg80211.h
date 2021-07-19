@@ -1817,6 +1817,18 @@ typedef struct compat_buf_data {
 } compat_buf_data_t;
 #endif /* CONFIG_COMPAT */
 
+#ifdef CUSTOM_EVENT_PM_WAKE
+#define SOC_SLICE_MAIN		0	/* SLICE ID for 5GHz, 6GHz */
+#define SOC_SLICE_AUX		1	/* SLICE ID for 2GHz */
+#define SOC_MAX_SLICE		2	/* MAX slice in dongle */
+
+typedef struct dpm_info {
+	uint32 dpm_prev_pmdur;		/* pm_dur value at previous dpm event */
+	uint32 dpm_cont_evt_cnt;	/* continuous repeated dpm count */
+	uint32 dpm_total_pkts;		/* total tx/rx packet count */
+} dpm_info_t;
+#endif /* CUSTOM_EVENT_PM_WAKE */
+
 /* private data of cfg80211 interface */
 struct bcm_cfg80211 {
 	struct wireless_dev *wdev;	/* representing cfg cfg80211 device */
@@ -2119,9 +2131,7 @@ struct bcm_cfg80211 {
 	uint32 cached_roam_scan_time;
 #endif /* LINKSTAT_EXT_SUPPORT */
 #ifdef CUSTOM_EVENT_PM_WAKE
-	uint32 dpm_prev_pmdur;          /* pm_dur value at previous dpm event */
-	uint32 dpm_cont_evt_cnt;        /* continuous repeated dpm count */
-	uint32 dpm_total_pkts;          /* total tx/rx packet count */
+	dpm_info_t dpm_info[SOC_MAX_SLICE];
 #endif /* CUSTOM_EVENT_PM_WAKE */
 	u8 stas_associated;
 	u8 ap_cnt;

@@ -13069,6 +13069,52 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 }
 
 #ifdef CUSTOM_EVENT_PM_WAKE
+static int
+wl_return_from_ndev_to_coreidx(struct bcm_cfg80211 *cfg, struct net_device *ndev)
+{
+	int err = 0, cur_chansp = 0;
+	chanspec_t cur_chanspec;
+	uint32 cur_band;
+
+	if (!wl_get_drv_status(cfg, CONNECTED, ndev)) {
+		WL_ERR(("wl_return_from_ndev_to_coreidx: Not connected.\n"));
+		err = BCME_ERROR;
+		goto exit;
+	}
+
+	err = wldev_iovar_getint(ndev, "chanspec", (int*)&cur_chansp);
+	if (err != BCME_OK) {
+		WL_ERR(("wl_return_from_ndev_to_coreidx: chanspec error (%d) \n",
+			err));
+		goto exit;
+	}
+
+	cur_chanspec = wl_chspec_driver_to_host(cur_chansp);
+	if (!wf_chspec_valid(cur_chanspec)) {
+		WL_ERR(("wl_return_from_ndev_to_coreidx: Invalid chanspec : %x\n",
+			cur_chanspec));
+		err = BCME_ERROR;
+		goto exit;
+	}
+
+	cur_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(cur_chansp));
+	if (cur_band == WLC_BAND_2G) {
+		return SOC_SLICE_AUX;
+	} else if (cur_band == WLC_BAND_5G || cur_band == WLC_BAND_6G) {
+		return SOC_SLICE_MAIN;
+	} else {
+		WL_ERR(("wl_return_from_ndev_to_coreidx: Invalid band : %x\n",
+			cur_band));
+		err = BCME_ERROR;
+		goto exit;
+	}
+
+exit:
+	return err;
+}
+#endif /* CUSTOM_EVENT_PM_WAKE */
+
+#ifdef CUSTOM_EVENT_PM_WAKE
 char wl_check_pmstatus_time_str[DEBUG_DUMP_TIME_BUF_LEN];
 #define DPM_MAX_CONT_EVT_CNT	(5u)	/* 120sec * 5times = 10min */
 #define DPM_MIN_CONT_EVT_INTV	(1000u)	/* 1000ms */
@@ -13078,33 +13124,54 @@ static void
 wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	uint32 cur_pm_dur, uint32 cur_total_pkts)
 {
-	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	if ((cur_total_pkts - cfg->dpm_total_pkts) > DPM_MAX_INACT_CNT) {
-		WL_DBG(("Updated DPM event due to tx/rx packets\n"));
+	dpm_info_t *dpm_info = NULL;
+	int val = 0, core_idx = -1;
+	dhd_pub_t *dhd = NULL;
+
+	val = wl_return_from_ndev_to_coreidx(cfg, ndev);
+	if (val < BCME_OK) {
+		return;
+	}
+	core_idx = val;
+
+	if (core_idx >= SOC_MAX_SLICE) {
+		WL_ERR(("core_idx is wrong\n"));
+		return;
+	}
+	dpm_info = &cfg->dpm_info[core_idx];
+
+	dhd = (dhd_pub_t *)(cfg->pub);
+	if ((cur_total_pkts - dpm_info->dpm_total_pkts) > DPM_MAX_INACT_CNT) {
+		WL_INFORM(("Updated DPM event due to tx/rx packets(count: %d)\n",
+			(cur_total_pkts - dpm_info->dpm_total_pkts)));
 		goto exit;
 	}
 
-	if (cur_pm_dur - cfg->dpm_prev_pmdur < DPM_MIN_CONT_EVT_INTV) {
-		cfg->dpm_cont_evt_cnt++;
-		if (cfg->dpm_cont_evt_cnt >= DPM_MAX_CONT_EVT_CNT) {
+	if (cur_pm_dur - dpm_info->dpm_prev_pmdur < DPM_MIN_CONT_EVT_INTV) {
+		dpm_info->dpm_cont_evt_cnt++;
+		WL_INFORM(("Updated DPM event counter for %s(%d).\n",
+			ndev->name, dpm_info->dpm_cont_evt_cnt));
+
+		if (dpm_info->dpm_cont_evt_cnt >= DPM_MAX_CONT_EVT_CNT) {
 #if defined(DHD_FW_COREDUMP)
 			if (dhd->memdump_enabled) {
 				dhd->memdump_type = DUMP_TYPE_CONT_EXCESS_PM_AWAKE;
 				dhd_bus_mem_dump(dhd);
 			}
 #endif /* DHD_FW_COREDUMP */
-			WL_ERR(("Force Disassoc due to updated DPM event.\n"));
+			WL_ERR(("[%s] Force Disassoc due to updated DPM event.\n",
+				ndev->name));
 			wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
 
-			cfg->dpm_cont_evt_cnt = 0;
+			dpm_info->dpm_cont_evt_cnt = 0;
 		}
 	} else {
-		cfg->dpm_cont_evt_cnt = 0;
+		dpm_info->dpm_cont_evt_cnt = 0;
 	}
 
 exit:
-	cfg->dpm_prev_pmdur = cur_pm_dur;
-	cfg->dpm_total_pkts = cur_total_pkts;
+	dpm_info->dpm_prev_pmdur = cur_pm_dur;
+	dpm_info->dpm_total_pkts = cur_total_pkts;
 }
 
 static s32
@@ -13185,16 +13252,25 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 {
 	s32 err = BCME_OK;
 	struct net_device *ndev = NULL;
+	struct wireless_dev *wdev = NULL;
 	u8 *pbuf = NULL;
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 	u32 status = ntoh32(e->status);
 	u32 reason = ntoh32(e->reason);
 	wl_pmalert_t *pm_alert = (wl_pmalert_t *) data;
 
-	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
+	wdev = wl_get_wdev_by_fw_idx(cfg, e->bsscfgidx, e->ifidx);
+	WL_INFORM_MEM(("wl_check_pmstatus: wdev found! bssidx: %d, ifidx: %d",
+		e->bsscfgidx, e->ifidx));
+	if (wdev == NULL || wdev->netdev == NULL) {
+		WL_ERR(("No wdev/ndev corresponding to bssidx: 0x%x found!",
+			e->bsscfgidx));
+		return -EINVAL;
+	}
+	ndev = wdev->netdev;
 
-	WL_ERR(("wl_check_pmstatus: status %d reason %d pm_alert->reasons %d\n",
-		status, reason, pm_alert->reasons));
+	WL_ERR(("[%s] wl_check_pmstatus: status %d reason %d pm_alert->reasons %d\n",
+		ndev->name, status, reason, pm_alert->reasons));
 	if (pm_alert->reasons == MPC_DUR_EXCEEDED) {
 		wl_pmalert_fixed_t *fixed;
 		fixed = (wl_pmalert_fixed_t *)pm_alert->data;
