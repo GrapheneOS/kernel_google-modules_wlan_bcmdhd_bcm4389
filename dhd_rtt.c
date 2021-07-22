@@ -4194,7 +4194,7 @@ dhd_rtt_create_failure_result(rtt_status_info_t *rtt_status,
 	}
 	/* fill out the results from the configuration param */
 	rtt_result->report.ftm_num = rtt_target_info->num_frames_per_burst;
-	rtt_result->report.type = RTT_TWO_WAY;
+	rtt_result->report.type = rtt_target_info->type;
 	DHD_RTT(("report->ftm_num : %d\n", rtt_result->report.ftm_num));
 	rtt_result->report_len = RTT_REPORT_SIZE;
 	rtt_result->report.status = RTT_STATUS_FAIL_NO_RSP;
@@ -4339,9 +4339,9 @@ dhd_rtt_handle_directed_rtt_burst_end(dhd_pub_t *dhd, struct ether_addr *peer_ad
 		ret = dhd_rtt_parse_result_event(proxd_ev_data, tlvs_len, rtt_result);
 #ifdef WL_CFG80211
 		if (ret == BCME_OK) {
-#ifdef WL_RTT_LCI
 			rtt_target_info_t *target =
 				&rtt_status->rtt_config.target_info[rtt_status->cur_idx];
+#ifdef WL_RTT_LCI
 			/* assign the cached location info */
 			if (target->LCI) {
 				rtt_result->report.LCI = (bcm_tlv_t*)target->LCI->data;
@@ -4352,6 +4352,7 @@ dhd_rtt_handle_directed_rtt_burst_end(dhd_pub_t *dhd, struct ether_addr *peer_ad
 				rtt_result->report_len += target->LCR->len;
 			}
 #endif /* WL_RTT_LCI */
+			rtt_result->report.type = target->type;
 
 			list_add_tail(&rtt_result->list, &rtt_results_header->result_list);
 			rtt_results_header->result_cnt++;
