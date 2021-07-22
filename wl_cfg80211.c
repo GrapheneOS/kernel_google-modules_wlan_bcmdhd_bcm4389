@@ -13159,10 +13159,13 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 				dhd_bus_mem_dump(dhd);
 			}
 #endif /* DHD_FW_COREDUMP */
-			WL_ERR(("[%s] Force Disassoc due to updated DPM event.\n",
+			WL_ERR(("[%s] Force hang event due to updated DPM event.\n",
 				ndev->name));
-			wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
 
+#if defined(BCMDONGLEHOST)
+			dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
+			net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
+#endif /* BCMDONGLEHOST && OEM_ANDROID */
 			dpm_info->dpm_cont_evt_cnt = 0;
 		}
 	} else {
@@ -13289,8 +13292,11 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		}
 #endif /* DHD_FW_COREDUMP */
 
-		wl_cfg80211_handle_hang_event(ndev,
-				HANG_REASON_SLEEP_FAILURE, DUMP_TYPE_DONGLE_HOST_EVENT);
+#if defined(BCMDONGLEHOST)
+		dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
+		net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
+#endif /* BCMDONGLEHOST && OEM_ANDROID */
+		return err;
 	}
 
 	/* Dump PM status */

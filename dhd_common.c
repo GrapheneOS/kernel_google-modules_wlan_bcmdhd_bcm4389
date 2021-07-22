@@ -11338,6 +11338,9 @@ dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
 		case HANG_REASON_DS_SKIP_TIMEOUT:
 			type_str = "DS_SKIP_TIMEOUT";
 			break;
+		case HANG_REASON_SLEEP_FAILURE:
+			type_str = "SLEEP_FAILURE";
+			break;
 		default:
 			type_str = "Unknown_type";
 			break;
