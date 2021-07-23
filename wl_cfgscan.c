@@ -3808,8 +3808,10 @@ wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 #endif /* LINUX_VER > 4.11 */
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	struct net_device *pri_ndev;
 
 	WL_INFORM_MEM(("[%s] Enter\n", dev->name));
+	pri_ndev = bcmcfg_to_prmry_ndev(cfg);
 	wl_cfg80211_stop_pno(cfg, dev);
 
 	cancel_delayed_work(&cfg->sched_scan_stop_work);
@@ -3820,7 +3822,7 @@ wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 			/* If targetted escan for PNO is running, abort it */
 			WL_INFORM_MEM(("abort targetted escan\n"));
 			wl_cfgscan_scan_abort(cfg);
-			wl_clr_drv_status(cfg, SCANNING, dev);
+			wl_clr_drv_status(cfg, SCANNING, pri_ndev);
 		} else {
 			WL_INFORM_MEM(("pno escan state:%d\n",
 				cfg->sched_scan_running));
