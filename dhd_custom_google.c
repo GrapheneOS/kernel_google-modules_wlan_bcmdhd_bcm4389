@@ -212,8 +212,8 @@ dhd_wlan_init_mac_addr(void)
 #if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 enum {
 	REV_SKU = 0,
-	SKU_ONLY = 1,
-	REV_ONLY = 2,
+	REV_ONLY = 1,
+	SKU_ONLY = 2,
 	NO_EXT_NAME = 3
 };
 
@@ -251,17 +251,17 @@ dhd_set_platform_ext_name(char *hw_rev, char* hw_sku)
 {
 	bzero(&platform_hw_info, sizeof(platform_hw_info_t));
 
-	if (strncmp (hw_sku, "NA", MAX_HW_INFO_LEN) != 0) {
+	if (strncmp (hw_rev, "NA", MAX_HW_INFO_LEN) != 0) {
 		snprintf(platform_hw_info.ext_name[REV_SKU], MAX_HW_EXT_LEN, "_%s_%s",
 			hw_rev, hw_sku);
 		setbit(&platform_hw_info.avail_bmap, REV_SKU);
 
-		snprintf(platform_hw_info.ext_name[SKU_ONLY], MAX_HW_EXT_LEN, "_%s", hw_sku);
-		setbit(&platform_hw_info.avail_bmap, SKU_ONLY);
+		snprintf(platform_hw_info.ext_name[REV_ONLY], MAX_HW_EXT_LEN, "_%s", hw_rev);
+		setbit(&platform_hw_info.avail_bmap, REV_ONLY);
 	}
 
-	snprintf(platform_hw_info.ext_name[REV_ONLY], MAX_HW_EXT_LEN, "_%s", hw_rev);
-	setbit(&platform_hw_info.avail_bmap, REV_ONLY);
+	snprintf(platform_hw_info.ext_name[SKU_ONLY], MAX_HW_EXT_LEN, "_%s", hw_sku);
+	setbit(&platform_hw_info.avail_bmap, SKU_ONLY);
 
 #ifdef USE_CID_CHECK
 	setbit(&platform_hw_info.avail_bmap, NO_EXT_NAME);
