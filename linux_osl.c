@@ -1165,7 +1165,6 @@ dmaaddr_t
 BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p,
 	hnddma_seg_map_t *dmah)
 {
-	int dir;
 	dmaaddr_t ret_addr;
 	dma_addr_t map_addr;
 	int ret;
@@ -1173,9 +1172,8 @@ BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p
 	DMA_LOCK(osh);
 
 	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
-	dir = (direction == DMA_TX)? PCI_DMA_TODEVICE: PCI_DMA_FROMDEVICE;
 
-	map_addr = pci_map_single(osh->pdev, va, size, dir);
+	map_addr = pci_map_single(osh->pdev, va, size, direction);
 
 	ret = pci_dma_mapping_error(osh->pdev, map_addr);
 
@@ -1200,7 +1198,6 @@ BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p
 void
 BCMFASTPATH(osl_dma_unmap)(osl_t *osh, dmaaddr_t pa, uint size, int direction)
 {
-	int dir;
 #ifdef BCMDMA64OSL
 	dma_addr_t paddr;
 #endif /* BCMDMA64OSL */
@@ -1209,17 +1206,15 @@ BCMFASTPATH(osl_dma_unmap)(osl_t *osh, dmaaddr_t pa, uint size, int direction)
 
 	DMA_LOCK(osh);
 
-	dir = (direction == DMA_TX)? PCI_DMA_TODEVICE: PCI_DMA_FROMDEVICE;
-
 #ifdef DHD_MAP_LOGGING
 	osl_dma_map_logging(osh, osh->dhd_unmap_log, pa, size);
 #endif /* DHD_MAP_LOGGING */
 
 #ifdef BCMDMA64OSL
 	PHYSADDRTOULONG(pa, paddr);
-	pci_unmap_single(osh->pdev, paddr, size, dir);
+	pci_unmap_single(osh->pdev, paddr, size, direction);
 #else /* BCMDMA64OSL */
-	pci_unmap_single(osh->pdev, (uint32)pa, size, dir);
+	pci_unmap_single(osh->pdev, (uint32)pa, size, direction);
 #endif /* BCMDMA64OSL */
 
 	DMA_UNLOCK(osh);

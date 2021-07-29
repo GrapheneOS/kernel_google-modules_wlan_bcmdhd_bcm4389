@@ -244,10 +244,12 @@ extern void *osl_dma_alloc_consistent(osl_t *osh, uint size, uint16 align,
 	uint *tot, dmaaddr_t *pap);
 extern void osl_dma_free_consistent(osl_t *osh, void *va, uint size, dmaaddr_t pa);
 
-/* map/unmap direction */
-#define DMA_NO	0	/* Used to skip cache op */
-#define	DMA_TX	1	/* TX direction for DMA */
-#define	DMA_RX	2	/* RX direction for DMA */
+/* map/unmap direction, refer enum dma_data_direction */
+#include <linux/dma-direction.h>
+#define DMA_RXTX	DMA_BIDIRECTIONAL	/* 0, Bidirectional DMA */
+#define DMA_TX		DMA_TO_DEVICE		/* 1, TX direction for DMA */
+#define DMA_RX		DMA_FROM_DEVICE		/* 2, RX direction for DMA */
+#define DMA_NO		DMA_NONE		/* 3, Used to skip cache op */
 
 /* map/unmap shared (dma-able) memory */
 #define	DMA_UNMAP(osh, pa, size, direction, p, dmah) \
