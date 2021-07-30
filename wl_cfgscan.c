@@ -2443,7 +2443,6 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 		/* find my listen channel */
 		cfg->afx_hdl->my_listen_chan =
 			wl_find_listen_channel(cfg, request->ie, request->ie_len);
-		wl_cfgp2p_set_firm_p2p(cfg);
 		err = wl_cfgp2p_enable_discovery(cfg, ndev, request->ie, request->ie_len);
 		if (unlikely(err)) {
 			goto scan_out;
@@ -3611,6 +3610,11 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		return -EOPNOTSUPP;
 	}
 #endif /* WL_DUAL_STA */
+	/* Avoid PNO trigger in connected state */
+	if (wl_get_drv_status(cfg, CONNECTED, dev)) {
+		WL_ERR(("Sched scan not supported in connected state\n"));
+		return -EINVAL;
+	}
 	if (!request) {
 		WL_ERR(("Sched scan request was NULL\n"));
 		return -EINVAL;
