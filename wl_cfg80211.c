@@ -13161,7 +13161,6 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 #endif /* DHD_FW_COREDUMP */
 			WL_ERR(("[%s] Force hang event due to updated DPM event.\n",
 				ndev->name));
-
 #if defined(BCMDONGLEHOST)
 			dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 			net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
@@ -15986,8 +15985,10 @@ static s32 wl_cfg80211_attach_post(struct net_device *ndev)
 
 				cfg->p2p_supported = true;
 			} else if (ret == 0) {
-				if ((err = wl_cfgp2p_init_priv(cfg)) != 0)
+				if ((err = wl_cfgp2p_init_priv(cfg)) != 0) {
 					goto fail;
+				}
+				cfg->p2p_supported = true;
 			} else {
 				/* SDIO bus timeout */
 				err = -ENODEV;

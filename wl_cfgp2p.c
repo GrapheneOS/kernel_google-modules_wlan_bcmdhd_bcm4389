@@ -1902,7 +1902,6 @@ wl_cfgp2p_generate_bss_mac(struct bcm_cfg80211 *cfg, struct ether_addr *primary_
 {
 	struct ether_addr *mac_addr = wl_to_p2p_bss_macaddr(cfg, P2PAPI_BSSCFG_DEVICE);
 	struct ether_addr *int_addr = NULL;
-
 	if (!cfg->p2p) {
 		WL_ERR(("p2p not initialized\n"));
 		return;
@@ -1912,7 +1911,8 @@ wl_cfgp2p_generate_bss_mac(struct bcm_cfg80211 *cfg, struct ether_addr *primary_
 	/* When p2p rand is enabled, use randomized mac by default */
 	wl_cfg80211_generate_mac_addr(mac_addr);
 #else
-	(void)memcpy_s(mac_addr, sizeof(struct ether_addr), primary_addr, sizeof(struct ether_addr));
+	(void)memcpy_s(mac_addr, sizeof(struct ether_addr),
+		primary_addr, sizeof(struct ether_addr));
 	mac_addr->octet[0] |= 0x02;
 #endif /* WL_P2P_RAND */
 	WL_INFORM_MEM(("P2P Discovery address:"MACDBG "\n", MAC2STRDBG(mac_addr->octet)));

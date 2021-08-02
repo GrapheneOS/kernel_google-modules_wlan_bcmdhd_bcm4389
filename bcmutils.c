@@ -1148,7 +1148,9 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 		case DSCP_CS2:
 			priority = PRIO_8021D_BE;
 			break;
+#ifdef RFC8325_DSCP_CS6_TO_UP7
 		case DSCP_CS6:
+#endif /* RFC8325_DSCP_CS6_TO_UP7 */
 		case DSCP_CS7:
 			priority = PRIO_8021D_NC;
 			break;

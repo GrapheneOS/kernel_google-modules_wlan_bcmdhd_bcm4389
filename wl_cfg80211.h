@@ -2119,7 +2119,7 @@ struct bcm_cfg80211 {
 	bool disable_fw_roam;
 	bool soft_suspend;
 	bool disable_dtim_in_suspend;
-	bool suspend_bcn_li_dtim;
+	uint8 suspend_bcn_li_dtim;
 	bool max_dtim_enable;
 #ifdef LINKSTAT_EXT_SUPPORT
 	uint32 prev_core_idx;

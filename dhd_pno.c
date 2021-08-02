@@ -419,15 +419,6 @@ _dhd_pno_enable(dhd_pub_t *dhd, int enable)
 		err = BCME_BADOPTION;
 		goto exit;
 	}
-	if (enable) {
-		if ((_pno_state->pno_mode & DHD_PNO_LEGACY_MODE) &&
-			dhd_is_associated(dhd, 0, NULL)) {
-			DHD_ERROR(("%s Legacy PNO mode cannot be enabled "
-				"in assoc mode , ignore it\n", __FUNCTION__));
-			err = BCME_BADOPTION;
-			goto exit;
-		}
-	}
 	/* Enable/Disable PNO */
 	err = dhd_iovar(dhd, 0, "pfn", (char *)&enable, sizeof(enable), NULL, 0, TRUE);
 	if (err < 0) {
