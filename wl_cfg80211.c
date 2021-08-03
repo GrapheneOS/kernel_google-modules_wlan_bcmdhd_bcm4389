@@ -24361,7 +24361,8 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		}
 
 		restrict_chan = ((chaninfo & WL_CHAN_RADAR) ||
-				(chaninfo & WL_CHAN_PASSIVE));
+				(chaninfo & WL_CHAN_PASSIVE) ||
+				(chaninfo & WL_CHAN_CLM_RESTRICTED));
 		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
 				(chaninfo & WL_CHAN_BAND_6G_VLP));
 
