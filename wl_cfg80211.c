@@ -13149,10 +13149,15 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	if (cur_pm_dur - dpm_info->dpm_prev_pmdur < DPM_MIN_CONT_EVT_INTV) {
 		dpm_info->dpm_cont_evt_cnt++;
-		WL_INFORM(("Updated DPM event counter for %s(%d).\n",
+		WL_INFORM(("Updated DPM event counter for %s(%d)\n",
 			ndev->name, dpm_info->dpm_cont_evt_cnt));
 
 		if (dpm_info->dpm_cont_evt_cnt >= DPM_MAX_CONT_EVT_CNT) {
+#if defined(CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED)
+			WL_ERR(("[%s] Force Disassoc due to updated DPM event (PM)\n",
+				ndev->name));
+			wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+#else /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 #if defined(DHD_FW_COREDUMP)
 			if (dhd->memdump_enabled) {
 				dhd->memdump_type = DUMP_TYPE_CONT_EXCESS_PM_AWAKE;
@@ -13165,6 +13170,7 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 			net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
 #endif /* BCMDONGLEHOST && OEM_ANDROID */
+#endif /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 			dpm_info->dpm_cont_evt_cnt = 0;
 		}
 	} else {
@@ -13262,10 +13268,10 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	wl_pmalert_t *pm_alert = (wl_pmalert_t *) data;
 
 	wdev = wl_get_wdev_by_fw_idx(cfg, e->bsscfgidx, e->ifidx);
-	WL_INFORM_MEM(("wl_check_pmstatus: wdev found! bssidx: %d, ifidx: %d",
+	WL_INFORM_MEM(("wl_check_pmstatus: wdev found! bssidx: %d, ifidx: %d\n",
 		e->bsscfgidx, e->ifidx));
 	if (wdev == NULL || wdev->netdev == NULL) {
-		WL_ERR(("No wdev/ndev corresponding to bssidx: 0x%x found!",
+		WL_ERR(("No wdev/ndev corresponding to bssidx: 0x%x found!\n",
 			e->bsscfgidx));
 		return -EINVAL;
 	}
@@ -13284,6 +13290,12 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			fixed->prev_stats_time, fixed->cal_dur, fixed->prev_cal_dur,
 			fixed->prev_frts_dur, fixed->prev_mpc_dur, fixed->mpc_dur,
 			fixed->hw_macc, fixed->sw_macc));
+
+#if defined(CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED)
+		WL_ERR(("[%s] Force Disassoc due to updated DPM event (MPC)\n",
+			ndev->name));
+		wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+#else /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 #if defined(DHD_FW_COREDUMP)
 		if (dhd->memdump_enabled) {
 			dhd->memdump_type = DUMP_TYPE_CONT_EXCESS_PM_AWAKE;
@@ -13295,6 +13307,7 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 		net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
 #endif /* BCMDONGLEHOST && OEM_ANDROID */
+#endif /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 		return err;
 	}
 
