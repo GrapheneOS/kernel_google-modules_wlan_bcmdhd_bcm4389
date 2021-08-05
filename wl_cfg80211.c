@@ -24320,6 +24320,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	struct net_device *p2p_ndev = NULL;
 	uint32 sta_band = 0;
 	chanspec_t sta_chanspec;
+	u32 sta_assoc_freq = 0;
 
 	bzero(u_info->channels, sizeof(*u_info->channels) * u_info->max_size);
 	/* Get chan_info_list or chanspec from FW */
@@ -24339,6 +24340,13 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	} else if (err != BCME_OK) {
 		WL_ERR(("get chan_info_list err(%d)\n", err));
 		goto exit;
+	}
+
+	if (cfg->stas_associated == 1) {
+		sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
+		band = CHSPEC_BAND(sta_chanspec);
+		channel = CHSPEC_CHANNEL(sta_chanspec);
+		sta_assoc_freq = wl_channel_to_frequency(channel, band);
 	}
 
 	list_count = ((wl_chanspec_list_v1_t *)chan_list)->count;
@@ -24377,6 +24385,22 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		/* STA set all chanspec but can be filtered out in filter function */
 		mask = (1 << WIFI_INTERFACE_STA);
 
+		if (sta_assoc_freq && (sta_assoc_freq == freq) &&
+			(!CHSPEC_IS6G(chspec))) {
+			if (CHSPEC_IS5G(chspec) && (chaninfo & WL_CHAN_CLM_RESTRICTED)) {
+				/* if restricted channel, specifically allow only DFS channel
+				 * (radar+passive). TDLS operates on STA channel and
+				 * allowed in DFS channel
+				 */
+				if ((chaninfo & WL_CHAN_RADAR) && (chaninfo & WL_CHAN_PASSIVE)) {
+					mask |= (1 << WIFI_INTERFACE_TDLS);
+				}
+			} else {
+				/* 2g channels || 5G non restricted channels */
+				mask |= (1 << WIFI_INTERFACE_TDLS);
+			}
+		}
+
 		/* Only STA supported 160Mhz in 5G */
 		if (CHSPEC_IS5G(chspec) && CHSPEC_IS160(chspec)) {
 			ch_160mhz_5g = true;
@@ -24392,8 +24416,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 			if (!CHSPEC_IS6G(chspec)) {
 				mask |= ((1 << WIFI_INTERFACE_P2P_GO) |
 					(1 << WIFI_INTERFACE_SOFTAP) |
-					(1 << WIFI_INTERFACE_NAN) |
-					(1 << WIFI_INTERFACE_TDLS));
+					(1 << WIFI_INTERFACE_NAN));
 			} else {
 #ifdef WL_NAN_6G
 				mask |= (1 << WIFI_INTERFACE_NAN);
