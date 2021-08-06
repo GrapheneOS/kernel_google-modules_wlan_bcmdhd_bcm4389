@@ -6790,6 +6790,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	if (state == ROAM_CONF_ROAM_DISAB_REQ) {
 		cfg->disable_fw_roam = TRUE;
 #ifdef WL_DUAL_APSTA
+		wl_android_rcroam_turn_on(dev, FALSE);
 		/* Disable roam on all interfaces */
 		wl_dualsta_enable_roam(cfg, dev, FALSE);
 #else
@@ -6812,6 +6813,10 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 
 		/* ROAM enable */
 		wl_roam_off_config(roam_ndev, FALSE);
+#ifdef WL_DUAL_APSTA
+		/* Single Interface. Enable back rcroam */
+		wl_android_rcroam_turn_on(dev, TRUE);
+#endif /* WL_DUAL_APSTA */
 		return;
 	}
 
@@ -6829,6 +6834,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		} else if (cfg->stas_associated == 1) {
 			/* Single sta case. Enable ROAM */
 			wl_roam_off_config(dev, FALSE);
+			wl_android_rcroam_turn_on(dev, TRUE);
 		} else {
 			WL_ERR(("roam_config unexpected state. stas:%d\n",
 				cfg->stas_associated));
@@ -6846,6 +6852,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 
 		/* Enable roam on primary, disable on others */
 		wl_dualsta_enable_roam(cfg, cfg->inet_ndev, TRUE);
+		wl_android_rcroam_turn_on(dev, TRUE);
 		return;
 	}
 
@@ -6855,6 +6862,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		 * on both STA interfaces. Enable it back from linkdown or
 		 * setPrimarySta context.
 		 */
+		wl_android_rcroam_turn_on(dev, FALSE);
 		wl_dualsta_enable_roam(cfg, dev, FALSE);
 
 	} else if (state == ROAM_CONF_LINKDOWN) {
@@ -6863,6 +6871,7 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		 */
 		if (cfg->stas_associated == 1) {
 			wl_roam_enable_on_connected(cfg, TRUE);
+			wl_android_rcroam_turn_on(dev, TRUE);
 		}
 	}
 #endif /* WL_DUAL_APSTA */
