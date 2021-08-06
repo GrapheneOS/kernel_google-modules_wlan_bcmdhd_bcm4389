@@ -952,7 +952,6 @@ int wl_android_priority_roam_enable(struct net_device *dev, int mode);
 #ifdef CONFIG_SILENT_ROAM
 int wl_android_sroam_turn_on(struct net_device *dev, int mode);
 #endif /* CONFIG_SILENT_ROAM */
-int wl_android_rcroam_turn_on(struct net_device *dev, int mode);
 
 #ifdef ENABLE_4335BT_WAR
 extern int bcm_bt_lock(int cookie);
@@ -3610,59 +3609,6 @@ int wl_android_tdls_reset(struct net_device *dev)
 }
 #endif /* WLTDLS */
 
-int
-wl_android_rcroam_turn_on(struct net_device *dev, int rcroam_enab)
-{
-	int ret = BCME_OK;
-	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
-	u8 ioctl_buf[WLC_IOCTL_SMLEN];
-	wlc_rcroam_t *prcroam;
-	wlc_rcroam_info_v1_t *rcroam;
-	uint rcroamlen = sizeof(*rcroam) + RCROAM_HDRLEN;
-
-	WL_INFORM(("RCROAM mode %s\n", rcroam_enab ? "enable" : "disable"));
-
-	prcroam = (wlc_rcroam_t *)MALLOCZ(dhdp->osh, rcroamlen);
-	if (!prcroam) {
-		WL_ERR(("Fail to malloc buffer\n"));
-		return BCME_NOMEM;
-	}
-
-	/* Get RCROAM param */
-	ret = wldev_iovar_getbuf(dev, "rcroam", NULL, 0, prcroam, rcroamlen, NULL);
-	if (ret) {
-		WL_ERR(("Failed to get RCROAM info(%d)\n", ret));
-		goto done;
-	}
-
-	if (prcroam->ver != WLC_RC_ROAM_CUR_VER) {
-		ret = BCME_VERSION;
-		WL_ERR(("Ver(%d:%d). mismatch RCROAM info(%d)\n",
-			prcroam->ver, WLC_RC_ROAM_CUR_VER, ret));
-		goto done;
-	}
-
-	/* Set RCROAM param */
-	rcroam = (wlc_rcroam_info_v1_t *)prcroam->data;
-	prcroam->ver = WLC_RC_ROAM_CUR_VER;
-	prcroam->len = sizeof(*rcroam);
-	rcroam->enab = rcroam_enab;
-
-	ret = wldev_iovar_setbuf(dev, "rcroam", prcroam, rcroamlen,
-		ioctl_buf, sizeof(ioctl_buf), NULL);
-	if (ret) {
-		WL_ERR(("Failed to set RCROAM %s(%d)\n",
-			rcroam_enab ? "Enable" : "Disable", ret));
-		goto done;
-	}
-done:
-	if (prcroam) {
-		MFREE(dhdp->osh, prcroam, rcroamlen);
-	}
-
-	return ret;
-}
-
 #ifdef CONFIG_SILENT_ROAM
 int
 wl_android_sroam_turn_on(struct net_device *dev, int sroam_mode)
@@ -4423,6 +4369,59 @@ exit:
 }
 #endif /* WL_WTC */
 #endif /* CUSTOMER_HW4_PRIVATE_CMD */
+
+int
+wl_android_rcroam_turn_on(struct net_device *dev, int rcroam_enab)
+{
+	int ret = BCME_OK;
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
+	u8 ioctl_buf[WLC_IOCTL_SMLEN];
+	wlc_rcroam_t *prcroam;
+	wlc_rcroam_info_v1_t *rcroam;
+	uint rcroamlen = sizeof(*rcroam) + RCROAM_HDRLEN;
+
+	WL_INFORM(("RCROAM mode %s\n", rcroam_enab ? "enable" : "disable"));
+
+	prcroam = (wlc_rcroam_t *)MALLOCZ(dhdp->osh, rcroamlen);
+	if (!prcroam) {
+		WL_ERR(("Fail to malloc buffer\n"));
+		return BCME_NOMEM;
+	}
+
+	/* Get RCROAM param */
+	ret = wldev_iovar_getbuf(dev, "rcroam", NULL, 0, prcroam, rcroamlen, NULL);
+	if (ret) {
+		WL_ERR(("Failed to get RCROAM info(%d)\n", ret));
+		goto done;
+	}
+
+	if (prcroam->ver != WLC_RC_ROAM_CUR_VER) {
+		ret = BCME_VERSION;
+		WL_ERR(("Ver(%d:%d). mismatch RCROAM info(%d)\n",
+			prcroam->ver, WLC_RC_ROAM_CUR_VER, ret));
+		goto done;
+	}
+
+	/* Set RCROAM param */
+	rcroam = (wlc_rcroam_info_v1_t *)prcroam->data;
+	prcroam->ver = WLC_RC_ROAM_CUR_VER;
+	prcroam->len = sizeof(*rcroam);
+	rcroam->enab = rcroam_enab;
+
+	ret = wldev_iovar_setbuf(dev, "rcroam", prcroam, rcroamlen,
+		ioctl_buf, sizeof(ioctl_buf), NULL);
+	if (ret) {
+		WL_ERR(("Failed to set RCROAM %s(%d)\n",
+			rcroam_enab ? "Enable" : "Disable", ret));
+		goto done;
+	}
+done:
+	if (prcroam) {
+		MFREE(dhdp->osh, prcroam, rcroamlen);
+	}
+
+	return ret;
+}
 
 #ifdef WBTEXT
 static int wl_android_wbtext(struct net_device *dev, char *command, int total_len)

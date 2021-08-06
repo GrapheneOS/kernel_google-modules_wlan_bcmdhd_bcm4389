@@ -198,3 +198,4 @@ extern int wl_android_bcnrecv_event(struct net_device *ndev,
 #if defined(CUSTOM_CONTROL_HE_6G_FEATURES)
 extern int wl_android_set_he_6g_band(struct net_device *dev, bool enable);
 #endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
+extern int wl_android_rcroam_turn_on(struct net_device *dev, int rcroam_enab);
