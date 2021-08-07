@@ -3353,6 +3353,9 @@ concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 		}
 #endif /* BCM4361_CHIP */
 		strncat(nv_path, info->nvram_ext, strlen(info->nvram_ext));
+#if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
+		dhd_set_platform_ext_name_for_chip_version(info->nvram_ext);
+#endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 		strncat(fw_path, info->fw_ext, strlen(info->fw_ext));
 #if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
 		if (!bcmstrnstr(map_path, PATH_MAX, info->fw_ext, strlen(info->fw_ext)))

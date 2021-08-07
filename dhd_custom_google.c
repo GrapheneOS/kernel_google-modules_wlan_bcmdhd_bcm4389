@@ -211,10 +211,14 @@ dhd_wlan_init_mac_addr(void)
 
 #if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 enum {
-	REV_SKU = 0,
-	REV_ONLY = 1,
-	SKU_ONLY = 2,
-	NO_EXT_NAME = 3
+	CHIP_REV_SKU = 0,
+	CHIP_REV = 1,
+	CHIP_SKU = 2,
+	CHIP = 3,
+	REV_SKU = 4,
+	REV_ONLY = 5,
+	SKU_ONLY = 6,
+	NO_EXT_NAME = 7
 };
 
 #define PLT_PATH "/chosen/plat"
@@ -251,21 +255,50 @@ dhd_set_platform_ext_name(char *hw_rev, char* hw_sku)
 {
 	bzero(&platform_hw_info, sizeof(platform_hw_info_t));
 
-	if (strncmp (hw_rev, "NA", MAX_HW_INFO_LEN) != 0) {
-		snprintf(platform_hw_info.ext_name[REV_SKU], MAX_HW_EXT_LEN, "_%s_%s",
-			hw_rev, hw_sku);
-		setbit(&platform_hw_info.avail_bmap, REV_SKU);
-
+	if (strncmp(hw_rev, "NA", MAX_HW_INFO_LEN) != 0) {
+		if (strncmp(hw_sku, "NA", MAX_HW_INFO_LEN) != 0) {
+			snprintf(platform_hw_info.ext_name[REV_SKU], MAX_HW_EXT_LEN, "_%s_%s",
+				hw_rev, hw_sku);
+			setbit(&platform_hw_info.avail_bmap, REV_SKU);
+		}
 		snprintf(platform_hw_info.ext_name[REV_ONLY], MAX_HW_EXT_LEN, "_%s", hw_rev);
 		setbit(&platform_hw_info.avail_bmap, REV_ONLY);
 	}
 
-	snprintf(platform_hw_info.ext_name[SKU_ONLY], MAX_HW_EXT_LEN, "_%s", hw_sku);
-	setbit(&platform_hw_info.avail_bmap, SKU_ONLY);
+	if (strncmp(hw_sku, "NA", MAX_HW_INFO_LEN) != 0) {
+		snprintf(platform_hw_info.ext_name[SKU_ONLY], MAX_HW_EXT_LEN, "_%s", hw_sku);
+		setbit(&platform_hw_info.avail_bmap, SKU_ONLY);
+	}
 
 #ifdef USE_CID_CHECK
 	setbit(&platform_hw_info.avail_bmap, NO_EXT_NAME);
 #endif /* USE_CID_CHECK */
+
+	return;
+}
+
+void
+dhd_set_platform_ext_name_for_chip_version(char* chip_version)
+{
+	if (strncmp(val_revision, "NA", MAX_HW_INFO_LEN) != 0) {
+		if (strncmp(val_sku, "NA", MAX_HW_INFO_LEN) != 0) {
+			snprintf(platform_hw_info.ext_name[CHIP_REV_SKU], MAX_HW_EXT_LEN,
+				"%s_%s_%s", chip_version, val_revision, val_sku);
+			setbit(&platform_hw_info.avail_bmap, CHIP_REV_SKU);
+		}
+
+		snprintf(platform_hw_info.ext_name[CHIP_REV], MAX_HW_EXT_LEN, "%s_%s",
+			chip_version, val_revision);
+		setbit(&platform_hw_info.avail_bmap, CHIP_REV);
+	}
+	if (strncmp(val_sku, "NA", MAX_HW_INFO_LEN) != 0) {
+		snprintf(platform_hw_info.ext_name[CHIP_SKU], MAX_HW_EXT_LEN, "%s_%s",
+			chip_version, val_sku);
+		setbit(&platform_hw_info.avail_bmap, CHIP_SKU);
+	}
+
+	snprintf(platform_hw_info.ext_name[CHIP], MAX_HW_EXT_LEN, "%s", chip_version);
+	setbit(&platform_hw_info.avail_bmap, CHIP);
 
 	return;
 }
