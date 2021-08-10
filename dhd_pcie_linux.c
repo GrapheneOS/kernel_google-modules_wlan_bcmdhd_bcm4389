@@ -1619,6 +1619,10 @@ dhdpcie_pci_stop(struct pci_dev *pdev)
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
 	if (bus) {
+		if (bus->dhd->up == FALSE) {
+			DHD_ERROR(("%s: Wlan is in OFF state return\n", __FUNCTION__));
+			return;
+		}
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 		dhd_plat_pcie_deregister_event(bus->dhd->plat_info);
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
