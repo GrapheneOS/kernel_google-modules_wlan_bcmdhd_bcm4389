@@ -5513,8 +5513,8 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 		PKTPULL(dhd->osh, p, BCMEXTRAHDROOM);
 #endif /* BCM_ROUTER_DHD */
 		pktlen[i] = PKTLEN(dhd->osh, p);
-		/* For Rx buffers, keep direction as bidirectional to handle packet fetch cases */
-		pa = DMA_MAP(dhd->osh, PKTDATA(dhd->osh, p), pktlen[i], DMA_RXTX, p, 0);
+		pa = DMA_MAP(dhd->osh, PKTDATA(dhd->osh, p), pktlen[i], DMA_RX, p, 0);
+
 		if (PHYSADDRISZERO(pa)) {
 			PKTFREE(dhd->osh, p, FALSE);
 			DHD_ERROR(("Invalid phyaddr 0\n"));
@@ -5557,7 +5557,7 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 		pa = pktbuf_pa[i];
 
 		pktid = DHD_NATIVE_TO_PKTID(dhd, dhd->prot->pktid_rx_map, p, pa,
-			pktlen[i], DMA_RXTX, NULL, ring->dma_buf.secdma, PKTTYPE_DATA_RX);
+			pktlen[i], DMA_RX, NULL, ring->dma_buf.secdma, PKTTYPE_DATA_RX);
 #if defined(DHD_PCIE_PKTID)
 		if (pktid == DHD_PKTID_INVALID) {
 			break;
@@ -5655,7 +5655,7 @@ cleanup:
 		p = pktbuf[i];
 		pa = pktbuf_pa[i];
 
-		DMA_UNMAP(dhd->osh, pa, pktlen[i], DMA_RXTX, 0, DHD_DMAH_NULL);
+		DMA_UNMAP(dhd->osh, pa, pktlen[i], DMA_RX, 0, DHD_DMAH_NULL);
 		PKTFREE(dhd->osh, p, FALSE);
 	}
 
@@ -6754,7 +6754,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 			}
 			dhd->prot->tot_rxcpl++;
 
-			DMA_UNMAP(dhd->osh, pa, (uint) len, DMA_RXTX, 0, dmah);
+			DMA_UNMAP(dhd->osh, pa, (uint) len, DMA_RX, 0, dmah);
 
 #ifdef DMAMAP_STATS
 			dhd->dma_stats.rxdata--;
