@@ -24206,15 +24206,15 @@ wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid, chanspec_t
 }
 
 #ifdef WL_USABLE_CHAN
-bool wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 freq)
+int wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 freq)
 {
 	int i;
 	for (i = 0; i < cur_idx; i++) {
 		if (channels[i].freq == freq) {
-			return true;
+			return i;
 		}
 	}
-	return false;
+	return BCME_NOTFOUND;
 }
 
 void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint32 *mask,
@@ -24310,10 +24310,10 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	int i, err, idx = 0, band = 0;
 	u32 mask = 0;
 	uint32 channel;
-	uint32 freq;
+	uint32 freq, width;
 	uint32 chspec, chaninfo;
 	u16 list_count;
-	bool exist = false;
+	int found_idx = BCME_NOTFOUND;
 	bool ch_160mhz_5g;
 	u32 restrict_chan, vlp_psc_include;
 	uint32 conn[WL_IF_TYPE_MAX] = {0};
@@ -24352,19 +24352,14 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		chspec = wl_chspec_driver_to_host(chspec);
 		chaninfo = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chaninfo);
 		band = CHSPEC_BAND(chspec);
-		channel = CHSPEC_CHANNEL(chspec);
+		channel = wf_chspec_primary20_chan(chspec);
 		freq = wl_channel_to_frequency(channel, band);
+		width = wl_chanspec_to_host_bw_map(chspec);
 
 		WL_DBG(("chspec:%x chaninfo:%x freq:%u band:%u"
 				"req_band:%u req_iface_mode:%u filter:%u\n",
 				chspec, chaninfo, freq, band,
 				u_info->band_mask, u_info->iface_mode_mask, u_info->filter_mask));
-
-		/* (36,40,44,48) / 80 have the same center freq. Avoid adding duplicated freq */
-		exist = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
-		if (exist) {
-			continue;
-		}
 
 		/* Skip if it is not interested */
 		if (!((u_info->band_mask & WLAN_MAC_2_4_BAND) && CHSPEC_IS2G(chspec)) &&
@@ -24418,10 +24413,21 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 			continue;
 		}
 
+		/* Return only primary channel and max bandwidth.
+		 * If freq is already added and found bigger bandwidth
+		 * replace bandwidth with found one  */
+		found_idx = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
+		if (found_idx != BCME_NOTFOUND) {
+			if (width > u_info->channels[found_idx].width) {
+				u_info->channels[found_idx].width = width;
+			}
+			continue;
+		}
+
 		/* Add current channel to list */
 		cur_ch = &u_info->channels[idx];
 		cur_ch->freq = freq;
-		cur_ch->width = wl_chanspec_to_host_bw_map(chspec);
+		cur_ch->width = width;
 		cur_ch->iface_mode_mask = mask & u_info->iface_mode_mask;
 		cur_ch->chspec = chspec;
 		WL_INFORM_MEM(("idx:%d chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
