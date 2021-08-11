@@ -680,7 +680,7 @@ DHDCFLAGS += -DWL_TWT_HAL_IF
 DHDCFLAGS += -DDHD_SCAN_INC_RNR
 
 # Allow wl event forwarding as network packet
-DHDCFLAGS += -DWL_EVENT_ENAB
+#DHDCFLAGS += -DWL_EVENT_ENAB
 
 ##########################
 # driver type
