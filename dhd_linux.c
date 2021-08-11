@@ -6362,6 +6362,10 @@ dhd_stop(struct net_device *net)
 #ifdef APF
 	dhd_dev_apf_delete_filter(net);
 #endif /* APF */
+#ifdef CUSTOM_EVENT_PM_WAKE
+	/* Clear EXCESS_PM_PERIOD explicitly when Wi-Fi turn off */
+	dhd_set_excess_pm_awake(&dhd->pub, FALSE);
+#endif /* CUSTOM_EVENT_PM_WAKE */
 
 	/* Stop the protocol module */
 	dhd_prot_stop(&dhd->pub);
