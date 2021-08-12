@@ -8340,8 +8340,8 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 	struct sk_buff *skb;
 	struct nlmsghdr *nlh;
 	struct bcm_cfg80211 *cfg;
-	if (!ndev) {
-		WL_ERR(("ndev is NULL\n"));
+	if (ndev == NULL || ndev->ieee80211_ptr == NULL) {
+		WL_ERR(("no device for debug ring\n"));
 		return;
 	}
 	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
@@ -8364,7 +8364,7 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 #endif /* (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || */
 		/* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0) */
 	if (!skb) {
-		WL_ERR(("skb alloc failed"));
+		WL_ERR(("skb alloc failed\n"));
 		return;
 	}
 	/* Set halpid for sending unicast event to wifi hal */
