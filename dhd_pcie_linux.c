@@ -1680,8 +1680,22 @@ dhdpcie_pci_remove(struct pci_dev *pdev)
 void __devexit
 dhdpcie_pci_shutdown(struct pci_dev *pdev)
 {
+	dhdpcie_info_t *pch = NULL;
+	dhd_bus_t *bus = NULL;
+
+	pch = pci_get_drvdata(pdev);
+	bus = pch->bus;
 	DHD_ERROR(("%s Enter\n", __FUNCTION__));
-	dhdpcie_pci_stop(pdev);
+
+	/* Stop all interface network queue */
+	dhd_bus_stop_queue(bus);
+	/* Disable IRQ */
+	dhdpcie_disable_irq(bus);
+	/* Kill dpc */
+	dhd_dpc_kill(bus->dhd);
+	/* Stop RPM timer */
+	DHD_STOP_RPM_TIMER(bus->dhd);
+	dhdpcie_busbusy_wait(bus->dhd);
 	return;
 }
 
