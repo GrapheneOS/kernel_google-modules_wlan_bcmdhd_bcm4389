@@ -773,6 +773,7 @@ uint32 dhdpcie_os_rtcm32(dhd_bus_t *bus, ulong offset);
 void dhdpcie_os_wtcm64(dhd_bus_t *bus, ulong offset, uint64 data);
 uint64 dhdpcie_os_rtcm64(dhd_bus_t *bus, ulong offset);
 #endif
+extern void dhd_dpc_kill(dhd_pub_t *dhdp);
 #endif /* LINUX || linux */
 
 #if defined(linux) || defined(LINUX) || defined(DHD_EFI)
