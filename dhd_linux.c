@@ -7078,11 +7078,7 @@ dhd_static_if_stop(struct net_device *net)
 
 	/* Ensure queue is disabled */
 	netif_tx_disable(net);
-	/* Set the interface del_in_progress flag */
-	dhd_set_del_in_progress(&dhd->pub, net);
 	ret = wl_cfg80211_static_if_close(net);
-	/* Clear the interface del_in_progress flag */
-	dhd_clear_del_in_progress(&dhd->pub, net);
 
 	if (dhd->pub.up == 0) {
 		/* If fw is down, return */
