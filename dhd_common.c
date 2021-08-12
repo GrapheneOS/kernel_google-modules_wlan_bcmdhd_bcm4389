@@ -5521,6 +5521,7 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 	case WLC_E_IF:
 		{
 		struct wl_event_data_if *ifevent = (struct wl_event_data_if *)event_data;
+		struct net_device *ndev = dhd_idx2net(dhd_pub, ifevent->ifidx);
 
 		/* Ignore the event if NOIF is set */
 		if (ifevent->reserved & WLC_E_IF_FLAGS_BSSCFG_NOIF) {
@@ -5567,12 +5568,15 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 					return (BCME_ERROR);
 				}
 			} else if (ifevent->opcode == WLC_E_IF_DEL) {
+				dhd_set_del_in_progress(dhd_pub, ndev);
+				netif_tx_disable(ndev);
 #ifdef PCIE_FULL_DONGLE
 				dhd_flow_rings_delete(dhd_pub,
 					(uint8)dhd_ifname2idx(dhd_pub->info, event->ifname));
 #endif /* PCIE_FULL_DONGLE */
 				dhd_event_ifdel(dhd_pub->info, ifevent, event->ifname,
 					event->addr.octet);
+				dhd_clear_del_in_progress(dhd_pub, ndev);
 			} else if (ifevent->opcode == WLC_E_IF_CHANGE) {
 #ifdef WL_CFG80211
 				dhd_event_ifchange(dhd_pub->info, ifevent, event->ifname,
