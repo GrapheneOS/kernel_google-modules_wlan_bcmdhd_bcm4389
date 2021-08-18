@@ -6362,6 +6362,10 @@ dhd_stop(struct net_device *net)
 #ifdef APF
 	dhd_dev_apf_delete_filter(net);
 #endif /* APF */
+#ifdef CUSTOM_EVENT_PM_WAKE
+	/* Clear EXCESS_PM_PERIOD explicitly when Wi-Fi turn off */
+	dhd_set_excess_pm_awake(&dhd->pub, FALSE);
+#endif /* CUSTOM_EVENT_PM_WAKE */
 
 	/* Stop the protocol module */
 	dhd_prot_stop(&dhd->pub);
@@ -7074,11 +7078,7 @@ dhd_static_if_stop(struct net_device *net)
 
 	/* Ensure queue is disabled */
 	netif_tx_disable(net);
-	/* Set the interface del_in_progress flag */
-	dhd_set_del_in_progress(&dhd->pub, net);
 	ret = wl_cfg80211_static_if_close(net);
-	/* Clear the interface del_in_progress flag */
-	dhd_clear_del_in_progress(&dhd->pub, net);
 
 	if (dhd->pub.up == 0) {
 		/* If fw is down, return */

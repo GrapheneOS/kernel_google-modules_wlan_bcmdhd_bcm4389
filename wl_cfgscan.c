@@ -2443,7 +2443,6 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 		/* find my listen channel */
 		cfg->afx_hdl->my_listen_chan =
 			wl_find_listen_channel(cfg, request->ie, request->ie_len);
-		wl_cfgp2p_set_firm_p2p(cfg);
 		err = wl_cfgp2p_enable_discovery(cfg, ndev, request->ie, request->ie_len);
 		if (unlikely(err)) {
 			goto scan_out;
@@ -3556,8 +3555,8 @@ wl_cfg80211_scan_mac_disable(struct net_device *dev)
 #define PNO_TIME                    30u
 #define PNO_REPEAT_MAX              100u
 #define PNO_FREQ_EXPO_MAX           2u
-#define PNO_ADAPTIVE_SCAN_LIMIT     60u
-#define ADP_PNO_REPEAT_DEFAULT      1u
+#define PNO_ADAPTIVE_SCAN_LIMIT     80u
+#define ADP_PNO_REPEAT_DEFAULT      2u
 static bool
 is_ssid_in_list(struct cfg80211_ssid *ssid, struct cfg80211_ssid *ssid_list, int count)
 {
@@ -3611,6 +3610,11 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 		return -EOPNOTSUPP;
 	}
 #endif /* WL_DUAL_STA */
+	/* Avoid PNO trigger in connected state */
+	if (wl_get_drv_status(cfg, CONNECTED, dev)) {
+		WL_ERR(("Sched scan not supported in connected state\n"));
+		return -EINVAL;
+	}
 	if (!request) {
 		WL_ERR(("Sched scan request was NULL\n"));
 		return -EINVAL;
@@ -3640,7 +3644,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 
 	if (adaptive_pno) {
 		/* Run adaptive PNO */
-		pno_time = PNO_TIME;
+		pno_time = request->scan_plans->interval;
 		pno_freq_expo_max = PNO_FREQ_EXPO_MAX;
 		pno_repeat = ADP_PNO_REPEAT_DEFAULT;
 	} else {
@@ -3818,7 +3822,7 @@ wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
 
 	mutex_lock(&cfg->scan_sync);
 	if (cfg->sched_scan_req) {
-		if (cfg->sched_scan_running && wl_get_drv_status_all(cfg, SCANNING)) {
+		if (cfg->sched_scan_running && wl_get_drv_status(cfg, SCANNING, pri_ndev)) {
 			/* If targetted escan for PNO is running, abort it */
 			WL_INFORM_MEM(("abort targetted escan\n"));
 			wl_cfgscan_scan_abort(cfg);

@@ -13149,10 +13149,15 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	if (cur_pm_dur - dpm_info->dpm_prev_pmdur < DPM_MIN_CONT_EVT_INTV) {
 		dpm_info->dpm_cont_evt_cnt++;
-		WL_INFORM(("Updated DPM event counter for %s(%d).\n",
+		WL_INFORM(("Updated DPM event counter for %s(%d)\n",
 			ndev->name, dpm_info->dpm_cont_evt_cnt));
 
 		if (dpm_info->dpm_cont_evt_cnt >= DPM_MAX_CONT_EVT_CNT) {
+#if defined(CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED)
+			WL_ERR(("[%s] Force Disassoc due to updated DPM event (PM)\n",
+				ndev->name));
+			wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+#else /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 #if defined(DHD_FW_COREDUMP)
 			if (dhd->memdump_enabled) {
 				dhd->memdump_type = DUMP_TYPE_CONT_EXCESS_PM_AWAKE;
@@ -13161,11 +13166,11 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 #endif /* DHD_FW_COREDUMP */
 			WL_ERR(("[%s] Force hang event due to updated DPM event.\n",
 				ndev->name));
-
 #if defined(BCMDONGLEHOST)
 			dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 			net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
 #endif /* BCMDONGLEHOST && OEM_ANDROID */
+#endif /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 			dpm_info->dpm_cont_evt_cnt = 0;
 		}
 	} else {
@@ -13263,10 +13268,10 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	wl_pmalert_t *pm_alert = (wl_pmalert_t *) data;
 
 	wdev = wl_get_wdev_by_fw_idx(cfg, e->bsscfgidx, e->ifidx);
-	WL_INFORM_MEM(("wl_check_pmstatus: wdev found! bssidx: %d, ifidx: %d",
+	WL_INFORM_MEM(("wl_check_pmstatus: wdev found! bssidx: %d, ifidx: %d\n",
 		e->bsscfgidx, e->ifidx));
 	if (wdev == NULL || wdev->netdev == NULL) {
-		WL_ERR(("No wdev/ndev corresponding to bssidx: 0x%x found!",
+		WL_ERR(("No wdev/ndev corresponding to bssidx: 0x%x found!\n",
 			e->bsscfgidx));
 		return -EINVAL;
 	}
@@ -13285,6 +13290,12 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			fixed->prev_stats_time, fixed->cal_dur, fixed->prev_cal_dur,
 			fixed->prev_frts_dur, fixed->prev_mpc_dur, fixed->mpc_dur,
 			fixed->hw_macc, fixed->sw_macc));
+
+#if defined(CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED)
+		WL_ERR(("[%s] Force Disassoc due to updated DPM event (MPC)\n",
+			ndev->name));
+		wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+#else /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 #if defined(DHD_FW_COREDUMP)
 		if (dhd->memdump_enabled) {
 			dhd->memdump_type = DUMP_TYPE_CONT_EXCESS_PM_AWAKE;
@@ -13296,6 +13307,7 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 		net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
 #endif /* BCMDONGLEHOST && OEM_ANDROID */
+#endif /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 		return err;
 	}
 
@@ -15986,8 +15998,10 @@ static s32 wl_cfg80211_attach_post(struct net_device *ndev)
 
 				cfg->p2p_supported = true;
 			} else if (ret == 0) {
-				if ((err = wl_cfgp2p_init_priv(cfg)) != 0)
+				if ((err = wl_cfgp2p_init_priv(cfg)) != 0) {
 					goto fail;
+				}
+				cfg->p2p_supported = true;
 			} else {
 				/* SDIO bus timeout */
 				err = -ENODEV;
@@ -24192,15 +24206,15 @@ wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid, chanspec_t
 }
 
 #ifdef WL_USABLE_CHAN
-bool wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 freq)
+int wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 freq)
 {
 	int i;
 	for (i = 0; i < cur_idx; i++) {
 		if (channels[i].freq == freq) {
-			return true;
+			return i;
 		}
 	}
-	return false;
+	return BCME_NOTFOUND;
 }
 
 void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint32 *mask,
@@ -24296,16 +24310,17 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	int i, err, idx = 0, band = 0;
 	u32 mask = 0;
 	uint32 channel;
-	uint32 freq;
+	uint32 freq, width;
 	uint32 chspec, chaninfo;
 	u16 list_count;
-	bool exist = false;
+	int found_idx = BCME_NOTFOUND;
 	bool ch_160mhz_5g;
 	u32 restrict_chan, vlp_psc_include;
 	uint32 conn[WL_IF_TYPE_MAX] = {0};
 	struct net_device *p2p_ndev = NULL;
 	uint32 sta_band = 0;
 	chanspec_t sta_chanspec;
+	u32 sta_assoc_freq = 0;
 
 	bzero(u_info->channels, sizeof(*u_info->channels) * u_info->max_size);
 	/* Get chan_info_list or chanspec from FW */
@@ -24327,6 +24342,13 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		goto exit;
 	}
 
+	if (cfg->stas_associated == 1) {
+		sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
+		band = CHSPEC_BAND(sta_chanspec);
+		channel = CHSPEC_CHANNEL(sta_chanspec);
+		sta_assoc_freq = wl_channel_to_frequency(channel, band);
+	}
+
 	list_count = ((wl_chanspec_list_v1_t *)chan_list)->count;
 	for (i = 0; i < list_count; i++) {
 		if (u_info->max_size <= idx) {
@@ -24338,19 +24360,14 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		chspec = wl_chspec_driver_to_host(chspec);
 		chaninfo = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chaninfo);
 		band = CHSPEC_BAND(chspec);
-		channel = CHSPEC_CHANNEL(chspec);
+		channel = wf_chspec_primary20_chan(chspec);
 		freq = wl_channel_to_frequency(channel, band);
+		width = wl_chanspec_to_host_bw_map(chspec);
 
 		WL_DBG(("chspec:%x chaninfo:%x freq:%u band:%u"
 				"req_band:%u req_iface_mode:%u filter:%u\n",
 				chspec, chaninfo, freq, band,
 				u_info->band_mask, u_info->iface_mode_mask, u_info->filter_mask));
-
-		/* (36,40,44,48) / 80 have the same center freq. Avoid adding duplicated freq */
-		exist = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
-		if (exist) {
-			continue;
-		}
 
 		/* Skip if it is not interested */
 		if (!((u_info->band_mask & WLAN_MAC_2_4_BAND) && CHSPEC_IS2G(chspec)) &&
@@ -24360,12 +24377,29 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		}
 
 		restrict_chan = ((chaninfo & WL_CHAN_RADAR) ||
-				(chaninfo & WL_CHAN_PASSIVE));
+				(chaninfo & WL_CHAN_PASSIVE) ||
+				(chaninfo & WL_CHAN_CLM_RESTRICTED));
 		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
 				(chaninfo & WL_CHAN_BAND_6G_VLP));
 
 		/* STA set all chanspec but can be filtered out in filter function */
 		mask = (1 << WIFI_INTERFACE_STA);
+
+		if (sta_assoc_freq && (sta_assoc_freq == freq) &&
+			(!CHSPEC_IS6G(chspec))) {
+			if (CHSPEC_IS5G(chspec) && (chaninfo & WL_CHAN_CLM_RESTRICTED)) {
+				/* if restricted channel, specifically allow only DFS channel
+				 * (radar+passive). TDLS operates on STA channel and
+				 * allowed in DFS channel
+				 */
+				if ((chaninfo & WL_CHAN_RADAR) && (chaninfo & WL_CHAN_PASSIVE)) {
+					mask |= (1 << WIFI_INTERFACE_TDLS);
+				}
+			} else {
+				/* 2g channels || 5G non restricted channels */
+				mask |= (1 << WIFI_INTERFACE_TDLS);
+			}
+		}
 
 		/* Only STA supported 160Mhz in 5G */
 		if (CHSPEC_IS5G(chspec) && CHSPEC_IS160(chspec)) {
@@ -24382,8 +24416,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 			if (!CHSPEC_IS6G(chspec)) {
 				mask |= ((1 << WIFI_INTERFACE_P2P_GO) |
 					(1 << WIFI_INTERFACE_SOFTAP) |
-					(1 << WIFI_INTERFACE_NAN) |
-					(1 << WIFI_INTERFACE_TDLS));
+					(1 << WIFI_INTERFACE_NAN));
 			} else {
 #ifdef WL_NAN_6G
 				mask |= (1 << WIFI_INTERFACE_NAN);
@@ -24403,10 +24436,21 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 			continue;
 		}
 
+		/* Return only primary channel and max bandwidth.
+		 * If freq is already added and found bigger bandwidth
+		 * replace bandwidth with found one  */
+		found_idx = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
+		if (found_idx != BCME_NOTFOUND) {
+			if (width > u_info->channels[found_idx].width) {
+				u_info->channels[found_idx].width = width;
+			}
+			continue;
+		}
+
 		/* Add current channel to list */
 		cur_ch = &u_info->channels[idx];
 		cur_ch->freq = freq;
-		cur_ch->width = wl_chanspec_to_host_bw_map(chspec);
+		cur_ch->width = width;
 		cur_ch->iface_mode_mask = mask & u_info->iface_mode_mask;
 		cur_ch->chspec = chspec;
 		WL_INFORM_MEM(("idx:%d chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",

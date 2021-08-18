@@ -1173,7 +1173,9 @@ BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p
 	DMA_LOCK(osh);
 
 	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
-	dir = (direction == DMA_TX)? PCI_DMA_TODEVICE: PCI_DMA_FROMDEVICE;
+
+	/* For Rx buffers, keep direction as bidirectional to handle packet fetch cases */
+	dir = (direction == DMA_RX)? DMA_RXTX: direction;
 
 	map_addr = pci_map_single(osh->pdev, va, size, dir);
 
@@ -1209,11 +1211,12 @@ BCMFASTPATH(osl_dma_unmap)(osl_t *osh, dmaaddr_t pa, uint size, int direction)
 
 	DMA_LOCK(osh);
 
-	dir = (direction == DMA_TX)? PCI_DMA_TODEVICE: PCI_DMA_FROMDEVICE;
-
 #ifdef DHD_MAP_LOGGING
 	osl_dma_map_logging(osh, osh->dhd_unmap_log, pa, size);
 #endif /* DHD_MAP_LOGGING */
+
+	/* For Rx buffers, keep direction as bidirectional to handle packet fetch cases */
+	dir = (direction == DMA_RX)? DMA_RXTX: direction;
 
 #ifdef BCMDMA64OSL
 	PHYSADDRTOULONG(pa, paddr);

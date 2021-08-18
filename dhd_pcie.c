@@ -288,9 +288,6 @@ static void dhd_bus_ds_trace(dhd_bus_t *bus, uint32 dsval, bool d2h);
 #ifdef DHD_MMIO_TRACE
 static void dhd_bus_mmio_trace(dhd_bus_t *bus, uint32 addr, uint32 value, bool set);
 #endif /* defined(DHD_MMIO_TRACE) */
-#if defined(LINUX) || defined(linux)
-extern void dhd_dpc_kill(dhd_pub_t *dhdp);
-#endif /* LINUX || linux */
 
 #ifdef IDLE_TX_FLOW_MGMT
 static void dhd_bus_check_idle_scan(dhd_bus_t *bus);
@@ -2616,6 +2613,41 @@ dhdpcie_advertise_bus_cleanup(dhd_pub_t *dhdp)
 	return;
 }
 
+/*
+ * dhdpcie_busbusy_wait mark busstate as DHD_BUS_DOWN_IN_PROGRESS and waits
+ * for all the contexts to garacefully exit. All the bus usage contexts before
+ * marking busstate as busy, will check for whether the busstate is DHD_BUS_DOWN
+ * or DHD_BUS_DOWN_IN_PROGRESS, if so they will exit from there itself without
+ * marking dhd_bus_busy_state as BUSY.
+ */
+void
+dhdpcie_busbusy_wait(dhd_pub_t *dhdp)
+{
+	unsigned long flags;
+	int timeleft;
+
+	dhdp->dhd_watchdog_ms_backup = dhd_watchdog_ms;
+	if (dhdp->dhd_watchdog_ms_backup) {
+		DHD_ERROR(("%s: Disabling wdtick\n", __FUNCTION__));
+		dhd_os_wd_timer(dhdp, 0);
+	}
+
+	DHD_GENERAL_LOCK(dhdp, flags);
+	dhdp->busstate = DHD_BUS_DOWN_IN_PROGRESS;
+	DHD_GENERAL_UNLOCK(dhdp, flags);
+
+	timeleft = dhd_os_busbusy_wait_negation(dhdp, &dhdp->dhd_bus_busy_state);
+	if ((timeleft == 0) || (timeleft == 1)) {
+		DHD_ERROR(("%s : Timeout due to dhd_bus_busy_state=0x%x\n",
+				__FUNCTION__, dhdp->dhd_bus_busy_state));
+	}
+
+	DHD_GENERAL_LOCK(dhdp, flags);
+	dhdp->busstate = DHD_BUS_DOWN;
+	DHD_GENERAL_UNLOCK(dhdp, flags);
+	return;
+}
+
 static void
 dhdpcie_bus_remove_prep(dhd_bus_t *bus)
 {
@@ -3316,10 +3348,9 @@ static int concate_revision_bcm4359(dhd_bus_t *bus, char *fw_path, char *nv_path
 }
 
 #define NVRAM_FEM_MURATA	"_murata"
-#if defined(SUPPORT_MIXED_MODULES) && defined(USE_CID_CHECK) && defined(DHD_COREDUMP) \
-	&& defined(SUPPORT_MULTIPLE_REVISION_MAP)
+#if defined(DHD_FW_COREDUMP) && defined(DHD_COREDUMP)
 extern char map_path[PATH_MAX];
-#endif /* SUPPORT_MIXED_MODULES && USE_CID_CHECK && DHD_COREDUMP && SUPPORT_MULTIPLE_REVISION_MAP */
+#endif /* DHD_FW_COREDUMP && DHD_COREDUMP */
 
 static int
 concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
@@ -3354,6 +3385,9 @@ concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 		}
 #endif /* BCM4361_CHIP */
 		strncat(nv_path, info->nvram_ext, strlen(info->nvram_ext));
+#if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
+		dhd_set_platform_ext_name_for_chip_version(info->nvram_ext);
+#endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 		strncat(fw_path, info->fw_ext, strlen(info->fw_ext));
 #if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
 		if (!bcmstrnstr(map_path, PATH_MAX, info->fw_ext, strlen(info->fw_ext)))
@@ -3416,7 +3450,7 @@ vendor_concat_revision(dhd_bus_t *bus, char *fw_path, char *nv_path)
 	if (!bcmstrnstr(map_path, PATH_MAX, tag, strlen(tag))) {
 		strlcat(map_path, tag, PATH_MAX);
 	}
-#endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
+#endif /* DHD_COREDUMP && SUPPORT_MULTIPLE_REVISION_MAP */
 	return ret;
 }
 #endif /* CONCAT_DEF_REV_FOR_NOMATCH_VID */
