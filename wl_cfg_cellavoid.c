@@ -1596,8 +1596,7 @@ wl_cellavoid_set_cell_channels(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *p
 		if (ret != BCME_OK || cnt == 0) {
 			WL_ERR(("channel is not supported ch : %d band %d\n",
 				param_ch, param_band));
-			ret = -EINVAL;
-			goto fail;
+			continue;
 		}
 
 		for (j = 0; j < cnt; j++) {
