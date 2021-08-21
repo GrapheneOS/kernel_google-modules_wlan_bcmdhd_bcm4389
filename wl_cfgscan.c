@@ -5983,7 +5983,7 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 		chspec_bw = WL_CHANSPEC_BW_20;
 		if (((pParameter->ht_enabled) || (pParameter->ht40_enabled) ||
 				(pParameter->vht_enabled) || (pParameter->he_enabled)) &&
-				(20 <= pParameter->ch_width)) {
+				(20 == pParameter->ch_width)) {
 			chspec_ctl_ch = channel;
 			chspec_sb = WL_CHANSPEC_CTL_SB_NONE;
 			chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
@@ -5995,9 +5995,10 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 		/* HT40 */
 		chspec_bw = WL_CHANSPEC_BW_40;
 		if (((pParameter->ht40_enabled) || (pParameter->vht_enabled) ||
-		          (pParameter->he_enabled)) && (pParameter->ch_width >= 40)) {
-			for (i = -CH_20MHZ_APART; i <= CH_20MHZ_APART; i++) {
-				chspec_ctl_ch = channel + i;
+				(pParameter->he_enabled)) && (pParameter->ch_width == 40) &&
+				(channel != 165)) {
+			for (i = 0; i <= CH_20MHZ_APART * 2; i++) {
+				chspec_ctl_ch = channel + (i - CH_20MHZ_APART);
 				/* L-sideband */
 				chspec_sb = WL_CHANSPEC_CTL_SB_LOWER;
 				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
@@ -6018,9 +6019,10 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 		/* HT80 */
 		chspec_bw = WL_CHANSPEC_BW_80;
 		if ((pParameter->vht_enabled || pParameter->he_enabled) &&
-				(80 <= pParameter->ch_width)) {
-			for (i = -CH_40MHZ_APART; i <= CH_40MHZ_APART; i++) {
-				chspec_ctl_ch = channel + i;
+				(80 == pParameter->ch_width) &&
+				(channel != 165)) {
+			for (i = 0; i <= CH_40MHZ_APART * 2; i++) {
+				chspec_ctl_ch = channel + (i - CH_40MHZ_APART);
 				/* L-L-sideband */
 				chspec_sb = WL_CHANSPEC_CTL_SB_LL;
 				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
@@ -6050,9 +6052,10 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 
 		/* HT160 */
 		chspec_bw = WL_CHANSPEC_BW_160;
-		if (pParameter->he_enabled && (160 <= pParameter->ch_width)) {
-			for (i = -CH_80MHZ_APART; i <= CH_80MHZ_APART; i++) {
-				chspec_ctl_ch = channel + i;
+		if (pParameter->he_enabled && (160 == pParameter->ch_width) &&
+				(channel != 165)) {
+			for (i = 0; i <= CH_80MHZ_APART * 2; i++) {
+				chspec_ctl_ch = channel + (i - CH_80MHZ_APART);
 				/* L-L-L-sideband */
 				chspec_sb = WL_CHANSPEC_CTL_SB_LLL;
 				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
