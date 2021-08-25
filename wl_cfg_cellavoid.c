@@ -687,7 +687,7 @@ wl_cellavoid_dump_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 	list_for_each_entry_safe(chan_info, next, &cellavoid_info->cell_chan_info_list, list) {
 		GCC_DIAGNOSTIC_POP();
 		wf_chspec_ntoa(chan_info->chanspec, chanspec_str);
-		WL_INFORM_MEM(("Cellular : chanspec %s(%x), pwrcap %d\n",
+		WL_MEM(("Cellular : chanspec %s(%x), pwrcap %d\n",
 			chanspec_str, chan_info->chanspec, chan_info->pwr_cap));
 	}
 
@@ -695,7 +695,7 @@ wl_cellavoid_dump_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 	list_for_each_entry_safe(chan_info, next, &cellavoid_info->avail_chan_info_list, list) {
 		GCC_DIAGNOSTIC_POP();
 		wf_chspec_ntoa(chan_info->chanspec, chanspec_str);
-		WL_INFORM_MEM(("Avail : chanspec %s(%x), pwrcap %d\n",
+		WL_MEM(("Avail : chanspec %s(%x), pwrcap %d\n",
 			chanspec_str, chan_info->chanspec, chan_info->pwr_cap));
 	}
 
@@ -740,7 +740,7 @@ wl_cellavoid_alloc_avail_chan_list_band(wl_cellavoid_info_t *cellavoid_info,
 		/* If channel from Kernel wiphy is disabled state or DFS channel, drop */
 		if (channel->flags & IEEE80211_CHAN_DISABLED ||
 			IS_RADAR_CHAN(channel->flags)) {
-			WL_INFORM(("chanspec %x is not allowed\n", channel->hw_value));
+			WL_MEM(("chanspec %x is not allowed\n", channel->hw_value));
 			continue;
 		}
 
@@ -868,7 +868,7 @@ wl_cellavoid_verify_avail_chan_list(struct bcm_cfg80211 *cfg, wl_cellavoid_info_
 		if (found == FALSE) {
 			list_del(&chan_info->list);
 			wf_chspec_ntoa(chan_info->chanspec, chanspec_str);
-			WL_INFORM(("chanspec %s(%x) is removed from avail list\n",
+			WL_MEM(("chanspec %s(%x) is removed from avail list\n",
 				chanspec_str, chan_info->chanspec));
 			MFREE(cfg->osh, chan_info, sizeof(*chan_info));
 		}
@@ -1607,7 +1607,7 @@ wl_cellavoid_set_cell_channels(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *p
 			chan_info = wl_cellavoid_get_chan_info_from_avail_chan_list(cellavoid_info,
 				chspecs[j]);
 			if (chan_info == NULL) {
-				WL_ERR(("no chan info for chanspec %x\n", chspecs[j]));
+				WL_MEM(("no chan info for chanspec %x\n", chspecs[j]));
 				continue;
 			}
 
