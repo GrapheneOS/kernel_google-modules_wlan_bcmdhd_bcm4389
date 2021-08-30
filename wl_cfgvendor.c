@@ -11111,6 +11111,7 @@ wl_cfgvendor_trigger_ssr(struct wiphy *wiphy,
 {
 	WL_INFORM_MEM(("trigger subsystem recovery\n"));
 	dhd_dev_set_accel_force_reg_on(wdev->netdev);
+
 	return BCME_OK;
 }
 #endif /* WLAN_ACCEL_BOOT */

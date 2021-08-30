@@ -12561,17 +12561,17 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 	wl_init_prof(cfg, ndev);
 
 	if (wl_get_drv_status(cfg, DISCONNECTING, ndev)) {
-		WL_DBG_MEM(("locally generated disassoc\n"));
+		/* If DISCONNECTING bit is set, mark locally generated */
 		loc_gen = 1;
 	}
 
 	CFG80211_DISCONNECTED(ndev, reason, ie_ptr, ie_len,
 		loc_gen, GFP_KERNEL);
 	WL_INFORM_MEM(("[%s] Disconnect event sent to upper layer"
-		"event:%d e->reason=%d reason=%d ie_len=%d "
+		"event:%d e->reason=%d reason=%d ie_len=%d loc_gen=%d"
 		"from " MACDBG "\n",
 		ndev->name,	event, ntoh32(as->reason), reason, ie_len,
-		MAC2STRDBG((const u8*)(&as->addr))));
+		loc_gen, MAC2STRDBG((const u8*)(&as->addr))));
 
 	/* clear connected state */
 	wl_clr_drv_status(cfg, CONNECTED, ndev);
@@ -13174,7 +13174,7 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 #if defined(BCMDONGLEHOST)
 			dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 			net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
-#endif /* BCMDONGLEHOST && OEM_ANDROID */
+#endif /* BCMDONGLEHOST */
 #endif /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 			dpm_info->dpm_cont_evt_cnt = 0;
 		}
@@ -13311,7 +13311,7 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #if defined(BCMDONGLEHOST)
 		dhd->hang_reason = HANG_REASON_SLEEP_FAILURE;
 		net_os_send_hang_message(bcmcfg_to_prmry_ndev(cfg));
-#endif /* BCMDONGLEHOST && OEM_ANDROID */
+#endif /* BCMDONGLEHOST */
 #endif /* CUSTOM_EVENT_PM_WAKE_MEMDUMP_DISABLED */
 		return err;
 	}
@@ -24443,7 +24443,8 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 
 		/* Return only primary channel and max bandwidth.
 		 * If freq is already added and found bigger bandwidth
-		 * replace bandwidth with found one  */
+		 * replace bandwidth with found one
+		 */
 		found_idx = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
 		if (found_idx != BCME_NOTFOUND) {
 			if (width > u_info->channels[found_idx].width) {

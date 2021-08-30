@@ -6813,8 +6813,8 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 
 		/* ROAM enable */
 		wl_roam_off_config(roam_ndev, FALSE);
-#ifdef WL_DUAL_APSTA
 		/* Single Interface. Enable back rcroam */
+#ifdef WL_DUAL_APSTA
 		wl_android_rcroam_turn_on(dev, TRUE);
 #endif /* WL_DUAL_APSTA */
 		return;
