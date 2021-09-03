@@ -180,7 +180,6 @@ dhd_dbg_update_to_ring(dhd_pub_t *dhdp, void *ring, uint32 w_len)
 	return dhd_dbg_push_to_ring(dhdp, ((dhd_dbg_ring_t *)ring)->id, NULL, (void*)&w_len);
 }
 
-extern void dhd_os_dbg_urgent_pullreq(void *os_priv, int ring_id);
 static uint32
 dhd_dbg_urgent_pull(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 {
@@ -205,11 +204,6 @@ dhd_dbg_urgent_pull(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 	if (pending_len > ring->threshold) {
 		DHD_INFO(("%s: pending_len(%d) is exceeded threshold(%d), pktcount(%d)\n",
 			__FUNCTION__, pending_len, ring->threshold, pktlog_ring->pktcount));
-	}
-
-	if (!dhd_pktlog_is_enabled(dhdp)) {
-		dhd_os_dbg_urgent_pullreq(dhdp->dbg->private, ring->id);
-		return 0;
 	}
 
 	return pending_len;
@@ -354,6 +348,10 @@ dhd_dbg_pull_from_pktlog(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_le
 	r_entry = (dhd_dbg_ring_entry_t *)data;
 	r_entry->len = buf_len - DBG_RING_ENTRY_SIZE;
 	written_bytes = (uint32)r_entry->len;
+	if (!written_bytes) {
+		return 0;
+	}
+
 	r_entry->type = DBG_RING_ENTRY_DATA_TYPE;
 	r_entry->flags = (DBG_RING_ENTRY_FLAGS_HAS_TIMESTAMP |
 		DBG_RING_ENTRY_FLAGS_HAS_BINARY);
