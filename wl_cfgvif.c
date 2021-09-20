@@ -3670,7 +3670,7 @@ wl_cfg80211_start_ap(
 #if ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) && !defined(WL_COMPAT_WIRELESS))
 	if ((err = wl_cfg80211_set_channel(wiphy, dev,
 		dev->ieee80211_ptr->preset_chandef.chan,
-		NL80211_CHAN_HT20) < 0)) {
+		NL80211_CHAN_HT20)) < 0) {
 		WL_ERR(("Set channel failed \n"));
 		goto fail;
 	}
