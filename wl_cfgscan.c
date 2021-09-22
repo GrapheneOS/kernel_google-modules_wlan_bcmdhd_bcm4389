@@ -2405,12 +2405,11 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	if (request) {
 		/* scan bss */
 		p2p_ssid = is_p2p_ssid_present(request);
-		if (p2p_ssid && !(IS_P2P_IFACE(request->wdev))) {
-			/* P2P scan on non-p2p iface. Fail scan */
-			WL_ERR(("p2p_search on non p2p iface %d\n",
+		if (!(IS_P2P_IFACE(request->wdev))) {
+			/* P2P SSID in legacy scan */
+			WL_DBG(("p2p_search on non p2p iface %d\n",
 				request->wdev->iftype));
-			err = -EINVAL;
-			goto scan_out;
+			p2p_ssid = FALSE;
 		}
 	}
 
