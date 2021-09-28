@@ -5965,8 +5965,9 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 		channel = wf_chspec_ctlchan((chanspec_t)chanspec);
 		qty = *pLen;
 
-		/* Handle 6G as a special case */
-		if (chspec_band == WL_CHANSPEC_BAND_6G) {
+		/* Handle 20MHz case for 2G and 6G (PSC) */
+		if (chspec_band == WL_CHANSPEC_BAND_2G ||
+				chspec_band == WL_CHANSPEC_BAND_6G) {
 			/* Firmware expects 20Mhz PSC channels. */
 			chspec_bw = WL_CHANSPEC_BW_20;
 			chspec_ctl_ch = channel;
