@@ -230,8 +230,6 @@ dhd_os_detach_pktlog(dhd_pub_t *dhdp)
 #ifdef DHD_PKT_LOGGING_DBGRING
 int dhd_pktlog_is_enabled(dhd_pub_t *dhdp)
 {
-	struct dhd_pktlog_ring *pktlog_ring;
-
 	if (!dhdp || !dhdp->pktlog) {
 		DHD_ERROR(("%s(): dhdp=%p pktlog=%p\n",
 			__FUNCTION__, dhdp, (dhdp ? dhdp->pktlog : NULL)));
@@ -244,7 +242,6 @@ int dhd_pktlog_is_enabled(dhd_pub_t *dhdp)
 		return BCME_ERROR;
 	}
 
-	pktlog_ring = dhdp->pktlog->pktlog_ring;
 	return OSL_ATOMIC_READ(dhdp->osh, &dhdp->pktlog->enable);
 }
 

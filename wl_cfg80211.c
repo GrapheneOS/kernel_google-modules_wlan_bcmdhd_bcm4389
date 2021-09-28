@@ -13131,7 +13131,6 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 {
 	dpm_info_t *dpm_info = NULL;
 	int val = 0, core_idx = -1;
-	dhd_pub_t *dhd = NULL;
 
 	val = wl_return_from_ndev_to_coreidx(cfg, ndev);
 	if (val < BCME_OK) {
@@ -13145,7 +13144,6 @@ wl_check_pmstatus_memdump(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	}
 	dpm_info = &cfg->dpm_info[core_idx];
 
-	dhd = (dhd_pub_t *)(cfg->pub);
 	if ((cur_total_pkts - dpm_info->dpm_total_pkts) > DPM_MAX_INACT_CNT) {
 		WL_INFORM(("Updated DPM event due to tx/rx packets(count: %d)\n",
 			(cur_total_pkts - dpm_info->dpm_total_pkts)));
@@ -24323,7 +24321,6 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	u32 restrict_chan, vlp_psc_include;
 	uint32 conn[WL_IF_TYPE_MAX] = {0};
 	struct net_device *p2p_ndev = NULL;
-	uint32 sta_band = 0;
 	chanspec_t sta_chanspec;
 	u32 sta_assoc_freq = 0;
 
@@ -24468,9 +24465,6 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	if (u_info->filter_mask) {
 		/* Get conneceted bands to clear STA bit when Dual STA is connected */
 		sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
-		if (sta_chanspec) {
-			sta_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(sta_chanspec));
-		}
 
 		/* Get connected STA, AP, P2P and NAN interface count */
 		conn[WL_IF_TYPE_STA] = wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_STA);
