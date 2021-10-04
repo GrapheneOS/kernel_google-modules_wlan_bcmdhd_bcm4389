@@ -4702,6 +4702,13 @@ wl_cfgnan_trigger_geofencing_ranging(struct net_device *dev,
 				/* TODO: Attempt again over a timer */
 				err_at = 2;
 			} else {
+				/*
+				 * Report disc result
+				 * without ranging result,
+				 * on ranging failure
+				 */
+				wl_cfgnan_disc_result_on_geofence_cancel(cfg,
+					ranging_inst);
 				/* Remove target and clean ranging inst */
 				wl_cfgnan_remove_ranging_instance(cfg, ranging_inst);
 				err_at = 3;
