@@ -5548,6 +5548,14 @@ dhd_add_monitor_if(dhd_info_t *dhd)
 
 	dev->netdev_ops = &netdev_monitor_ops;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9))
+	/* as priv_destructor calls free_netdev, no need to set need_free_netdev */
+	dev->needs_free_netdev = 0;
+	dev->priv_destructor = free_netdev;
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9) */
+	dev->destructor = free_netdev;
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9) */
+
 	/* XXX: This is called from IOCTL path, in this case, rtnl_lock is already taken.
 	 * So, register_netdev() shouldn't be called. It leads to deadlock.
 	 * To avoid deadlock due to rtnl_lock(), register_netdevice() should be used.
