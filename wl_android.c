@@ -13498,6 +13498,8 @@ wl_cfg80211_register_static_if(struct bcm_cfg80211 *cfg, u16 iftype, char *ifnam
 	struct ether_addr ea_addr;
 #endif /* DHD_USE_RANDMAC */
 
+	BCM_REFERENCE(primary_ndev);
+
 	WL_INFORM_MEM(("[STATIC_IF] Enter (%s) iftype:%d\n", ifname, iftype));
 
 	if (!cfg) {

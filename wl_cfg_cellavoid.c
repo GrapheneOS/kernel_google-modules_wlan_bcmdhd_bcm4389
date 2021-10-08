@@ -640,7 +640,11 @@ wl_cellavoid_move_chan_info_to_avail_chan_list(wl_cellavoid_info_t *cellavoid_in
  * narrower bw, small channel number comes later after sorting
  */
 static int
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 70))
+wl_cellavoid_chan_info_compare(void *priv, const struct list_head *a, const struct list_head *b)
+#else
 wl_cellavoid_chan_info_compare(void *priv, struct list_head *a, struct list_head *b)
+#endif
 {
 	uint8 i1_chan, i2_chan;
 	uint16 i1_bw, i2_bw;
