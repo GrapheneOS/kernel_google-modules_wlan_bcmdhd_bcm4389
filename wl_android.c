@@ -13493,9 +13493,12 @@ wl_cfg80211_register_static_if(struct bcm_cfg80211 *cfg, u16 iftype, char *ifnam
 	struct wireless_dev *wdev = NULL;
 	int ifidx = WL_STATIC_IFIDX; /* Register ndev with a reserved ifidx */
 	u8 mac_addr[ETH_ALEN];
+	struct net_device *primary_ndev;
 #ifdef DHD_USE_RANDMAC
 	struct ether_addr ea_addr;
 #endif /* DHD_USE_RANDMAC */
+
+	BCM_REFERENCE(primary_ndev);
 
 	WL_INFORM_MEM(("[STATIC_IF] Enter (%s) iftype:%d\n", ifname, iftype));
 
@@ -13503,7 +13506,7 @@ wl_cfg80211_register_static_if(struct bcm_cfg80211 *cfg, u16 iftype, char *ifnam
 		WL_ERR(("cfg null\n"));
 		return NULL;
 	}
-	bcmcfg_to_prmry_ndev(cfg);
+	primary_ndev = bcmcfg_to_prmry_ndev(cfg);
 
 #ifdef DHD_USE_RANDMAC
 	wl_cfg80211_generate_mac_addr(&ea_addr);

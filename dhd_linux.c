@@ -5548,6 +5548,14 @@ dhd_add_monitor_if(dhd_info_t *dhd)
 
 	dev->netdev_ops = &netdev_monitor_ops;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9))
+	/* as priv_destructor calls free_netdev, no need to set need_free_netdev */
+	dev->needs_free_netdev = 0;
+	dev->priv_destructor = free_netdev;
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9) */
+	dev->destructor = free_netdev;
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9) */
+
 	/* XXX: This is called from IOCTL path, in this case, rtnl_lock is already taken.
 	 * So, register_netdev() shouldn't be called. It leads to deadlock.
 	 * To avoid deadlock due to rtnl_lock(), register_netdevice() should be used.
@@ -19842,15 +19850,17 @@ dhd_os_get_pktlog_lock(dhd_pub_t *dhdp)
 uint32
 dhd_os_get_pktlog_dump_size(struct net_device *dev)
 {
-	uint32 size = 0;
+	int ret = 0;
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 	dhd_pub_t *dhdp = &dhd->pub;
 
-	size = dhd_pktlog_get_dump_length(dhdp);
-	if (size == 0) {
-		DHD_ERROR(("%s(): fail to get pktlog size, err = %d\n", __FUNCTION__, size));
+	ret = dhd_pktlog_get_dump_length(dhdp);
+	if (ret < 0) {
+		DHD_ERROR(("%s(): fail to get pktlog size, err = %d\n",
+			__FUNCTION__, ret));
+		return 0;
 	}
-	return size;
+	return ret;
 }
 
 void
