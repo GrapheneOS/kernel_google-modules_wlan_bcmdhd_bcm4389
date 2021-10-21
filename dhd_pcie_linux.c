@@ -2373,16 +2373,22 @@ void
 dhdpcie_enable_irq_loop(dhd_bus_t *bus)
 {
 	/* Enable IRQ in a loop till host_irq_disable_count becomes 0 */
-	uint host_irq_disable_count = dhdpcie_irq_disabled(bus);
-	while (host_irq_disable_count--) {
-		dhdpcie_enable_irq(bus); /* Enable back interrupt!! */
+	int host_irq_disable_count = dhdpcie_irq_disabled(bus);
+	if (host_irq_disable_count != BCME_ERROR) {
+		while (host_irq_disable_count--) {
+			dhdpcie_enable_irq(bus); /* Enable back interrupt!! */
+		}
 	}
 }
 
 int
 dhdpcie_irq_disabled(dhd_bus_t *bus)
 {
-	struct irq_desc *desc = irq_to_desc(bus->dev->irq);
+	struct irq_desc *desc = (struct irq_desc *)dhd_irq_to_desc(bus->dev->irq);
+	if (!desc) {
+		DHD_ERROR(("%s : irqdesc is not found \n", __FUNCTION__));
+		return BCME_ERROR;
+	}
 	/* depth will be zero, if enabled */
 	return desc->depth;
 }

@@ -21282,7 +21282,7 @@ dhd_print_kirqstats(dhd_pub_t *dhd, unsigned int irq_num)
 	char tmp_buf[KIRQ_PRINT_BUF_LEN];
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28))
-	desc = irq_to_desc(irq_num);
+	desc = dhd_irq_to_desc(irq_num);
 	if (!desc) {
 		DHD_ERROR(("%s : irqdesc is not found \n", __FUNCTION__));
 		return;
@@ -23150,6 +23150,25 @@ int dhd_os_send_alert_message(dhd_pub_t *dhdp)
 	return ret;
 }
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
+
+void *dhd_irq_to_desc(unsigned int irq)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0))
+	struct irq_data *irqdata = irq_get_irq_data(irq);
+	struct irq_desc *desc;
+
+	if (!irqdata) {
+		DHD_ERROR(("%s : irqdata is not found \n", __FUNCTION__));
+		return NULL;
+	}
+	desc = irq_data_to_desc(irqdata);
+#else
+	struct irq_desc *desc = irq_to_desc(irq);
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0) */
+
+	return (void *)desc;
+}
+
 int
 dhd_dev_set_accel_force_reg_on(struct net_device *dev)
 {

@@ -12294,7 +12294,10 @@ BCMFASTPATH(dhd_bus_dpc)(struct dhd_bus *bus)
 			 * using dongle intmask to control INTR enable/disable
 			 */
 			if (bus->d2h_intr_control == PCIE_HOST_IRQ_CTRL) {
-				bus->host_irq_enable_count += dhdpcie_irq_disabled(bus);
+				int host_irq_disabled = dhdpcie_irq_disabled(bus);
+				if (host_irq_disabled != BCME_ERROR) {
+					bus->host_irq_enable_count += host_irq_disabled;
+				}
 				dhdpcie_enable_irq_loop(bus);
 			} else {
 				/* Enable back interrupt using Intmask! */
