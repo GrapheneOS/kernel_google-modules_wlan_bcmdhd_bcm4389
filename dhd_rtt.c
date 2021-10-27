@@ -2568,13 +2568,15 @@ dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt)
 		DHD_RTT_ERR(("rtt is not started\n"));
 		return BCME_OK;
 	}
-	DHD_RTT(("%s enter\n", __FUNCTION__));
+	DHD_RTT_ERR(("dhd_rtt_stop tgt_count %d\n", mac_cnt));
 	mutex_lock(&rtt_status->rtt_mutex);
 	for (i = 0; i < mac_cnt; i++) {
 		for (j = 0; j < rtt_status->rtt_config.rtt_target_cnt; j++) {
 			if (!bcmp(&mac_list[i], &rtt_status->rtt_config.target_info[j].addr,
 				ETHER_ADDR_LEN)) {
 				rtt_status->rtt_config.target_info[j].disable = TRUE;
+				dhd_rtt_delete_session(dhd,
+					rtt_status->rtt_config.target_info[j].sid);
 #ifdef WL_RTT_LCI
 				if (rtt_status->rtt_config.target_info[j].LCI) {
 					MFREE(dhd->osh, rtt_status->rtt_config.target_info[j].LCI,
@@ -2595,6 +2597,10 @@ dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt)
 	if (rtt_status->all_cancel) {
 		/* cancel all of request */
 		rtt_status->status = RTT_STOPPED;
+		for (i = 0; i < rtt_status->rtt_config.rtt_target_cnt; i++) {
+			dhd_rtt_delete_session(dhd,
+				rtt_status->rtt_config.target_info[i].sid);
+		}
 		DHD_RTT(("current RTT process is cancelled\n"));
 		/* remove the rtt results in cache */
 		if (!list_empty(&rtt_status->rtt_results_cache)) {
