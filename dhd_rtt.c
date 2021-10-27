@@ -1495,6 +1495,8 @@ dhd_rtt_nan_start_session(dhd_pub_t *dhd, rtt_target_info_t *rtt_target)
 	ftm_config_param_info_t ftm_params[FTM_MAX_PARAMS];
 	int ftm_param_cnt = 0;
 
+	memset(ftm_params, 0, sizeof(ftm_params));
+
 	NAN_MUTEX_LOCK();
 
 	if (!rtt_status) {
@@ -3754,9 +3756,15 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	/* rtt_sd */
 	rtt.tmu = ltoh16_ua(&p_sample_avg->rtt.tmu);
 	rtt.intvl = ltoh32_ua(&p_sample_avg->rtt.intvl);
-	rtt_report->rtt = (wifi_timespan)FTM_INTVL2NSEC(&rtt) * 1000; /* nano -> pico seconds */
+	if (rtt.tmu == WL_PROXD_TMU_PICO_SEC) {
+		rtt_report->rtt = (wifi_timespan)rtt.intvl;
+	} else {
+		 /* nano -> pico seconds */
+		rtt_report->rtt = (wifi_timespan)(FTM_INTVL2NSEC(&rtt) * 1000);
+	}
+
 	rtt_report->rtt_sd = ltoh16_ua(&p_data_info->sd_rtt); /* nano -> 0.1 nano */
-	DHD_RTT(("rtt_report->rtt : %llu\n", rtt_report->rtt));
+	DHD_RTT(("rtt_report->rtt : %lld\n", rtt_report->rtt));
 	DHD_RTT(("rtt_report->rssi : %d (0.5db)\n", rtt_report->rssi));
 
 	/* average distance */
@@ -3771,6 +3779,12 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	} else {
 		rtt_report->distance = FTM_INVALID;
 	}
+
+	if (p_data_info->flags & WL_PROXD_RESULT_SIGNED) {
+		rtt_report->rtt *= -1;
+		rtt_report->distance *= -1;
+	}
+
 	/* time stamp */
 	/* get the time elapsed from boot time */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
@@ -4480,7 +4494,9 @@ dhd_rtt_nan_range_report(struct bcm_cfg80211 *cfg,
 
 	rtt_status = rtt_result->report.status;
 	bzero(&range_res, sizeof(range_res));
-	range_res.dist_mm = rtt_result->report.distance;
+	/* RTT can be negative(for GG req).. for geofence make it zero */
+	range_res.dist_mm = (rtt_result->report.distance < 0) ?
+		0 : rtt_result->report.distance;
 	/* same src and header len, ignoring ret val here */
 	(void)memcpy_s(&range_res.peer_m_addr, ETHER_ADDR_LEN,
 		&rtt_result->report.addr, ETHER_ADDR_LEN);
