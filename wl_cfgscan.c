@@ -188,10 +188,13 @@ wl_escan_check_sync_id(struct bcm_cfg80211 *cfg, s32 status, u16 result_id, u16 
 		return 0;
 	}
 }
-#define wl_escan_increment_sync_id(a, b) ((a)->escan_info.cur_sync_id += b)
 #ifdef SYNCID_MISMATCH_DEBUG
+#define wl_escan_increment_sync_id(a, b) \
+	((u8)((a)->escan_info.cur_sync_id + (b)) == 0 ? \
+	((a)->escan_info.cur_sync_id = 1) : ((a)->escan_info.cur_sync_id += (b)))
 #define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 1)
 #else
+#define wl_escan_increment_sync_id(a, b) ((a)->escan_info.cur_sync_id += (b))
 #define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 0)
 #endif /* SYNCID_MISMATCH_DEBUG */
 #else
