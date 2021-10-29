@@ -4413,6 +4413,11 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	WL_DBG(("Enter\n"));
 
+	if (cfg->sched_scan_running) {
+		WL_INFORM_MEM(("sched_scan is already running. return\n"));
+		return BCME_OK;
+	}
+
 	/* These static asserts guarantee v1/v2 net_info and subnet_info are compatible
 	 * in size and SSID offset, allowing v1 to be used below except for the results
 	 * fields themselves (status, count, offset to netinfo).
