@@ -7311,12 +7311,6 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		tot_pno_dur,
 		dtoh32(p_scan_stats->other_scans.dur)));
 
-	err = wldev_iovar_getint(inet_ndev, "chanspec", (int*)&cur_chansp);
-	if (err != BCME_OK) {
-		WL_ERR(("error (%d) \n", err));
-		goto exit;
-	}
-
 #ifdef LINKSTAT_EXT_SUPPORT
 	p_data = pwrstats->data + taglen;
 	type = dtoh16(((uint16*)p_data)[0]);
@@ -7360,6 +7354,12 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	radio_h.on_time_pno_scan = scan_stat_cores->on_time_pno_scan_main +
 		scan_stat_cores->on_time_pno_scan_aux;
 #endif /* LINKSTAT_EXT_SUPPORT  */
+
+	err = wldev_iovar_getint(inet_ndev, "chanspec", (int*)&cur_chansp);
+	if (err != BCME_OK) {
+		WL_ERR(("error (%d) \n", err));
+		goto exit;
+	}
 
 	cur_chanspec = wl_chspec_driver_to_host(cur_chansp);
 
