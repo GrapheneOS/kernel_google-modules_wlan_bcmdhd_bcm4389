@@ -677,8 +677,8 @@ DHDCFLAGS += -DWL_TWT_HAL_IF
 # RNR INCLUSION
 DHDCFLAGS += -DDHD_SCAN_INC_RNR
 
-# Allow wl event forwarding as network packet
-#DHDCFLAGS += -DWL_EVENT_ENAB
+# debug code to identify root cause of scan timeout due to syncid mismatch
+DHDCFLAGS += -DSYNCID_MISMATCH_DEBUG
 
 ##########################
 # driver type

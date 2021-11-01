@@ -188,8 +188,15 @@ wl_escan_check_sync_id(struct bcm_cfg80211 *cfg, s32 status, u16 result_id, u16 
 		return 0;
 	}
 }
-#define wl_escan_increment_sync_id(a, b) ((a)->escan_info.cur_sync_id += b)
+#ifdef SYNCID_MISMATCH_DEBUG
+#define wl_escan_increment_sync_id(a, b) \
+	((u8)((a)->escan_info.cur_sync_id + (b)) == 0 ? \
+	((a)->escan_info.cur_sync_id = 1) : ((a)->escan_info.cur_sync_id += (b)))
+#define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 1)
+#else
+#define wl_escan_increment_sync_id(a, b) ((a)->escan_info.cur_sync_id += (b))
 #define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 0)
+#endif /* SYNCID_MISMATCH_DEBUG */
 #else
 #define wl_escan_get_buf(a, b) ((wl_scan_results_t *) (a)->escan_info.escan_buf)
 #define wl_escan_check_sync_id(a, b, c, d) 0
@@ -4405,6 +4412,11 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	u8 tmp_buf[DOT11_MAX_SSID_LEN + 1];
 
 	WL_DBG(("Enter\n"));
+
+	if (cfg->sched_scan_running) {
+		WL_INFORM_MEM(("sched_scan is already running. return\n"));
+		return BCME_OK;
+	}
 
 	/* These static asserts guarantee v1/v2 net_info and subnet_info are compatible
 	 * in size and SSID offset, allowing v1 to be used below except for the results
