@@ -1829,6 +1829,17 @@ typedef struct dpm_info {
 } dpm_info_t;
 #endif /* CUSTOM_EVENT_PM_WAKE */
 
+#ifdef LINKSTAT_EXT_SUPPORT
+typedef struct scan_stat_cache_cores {
+	uint32 on_time_scan_aux;
+	uint32 on_time_roam_scan_aux;
+	uint32 on_time_pno_scan_aux;
+	uint32 on_time_scan_main;
+	uint32 on_time_roam_scan_main;
+	uint32 on_time_pno_scan_main;
+} scan_stat_cache_cores_t;
+#endif /* LINKSTAT_EXT_SUPPORT */
+
 /* private data of cfg80211 interface */
 struct bcm_cfg80211 {
 	struct wireless_dev *wdev;	/* representing cfg cfg80211 device */
@@ -2122,13 +2133,7 @@ struct bcm_cfg80211 {
 	uint8 suspend_bcn_li_dtim;
 	bool max_dtim_enable;
 #ifdef LINKSTAT_EXT_SUPPORT
-	uint32 prev_core_idx;
-	uint32 prev_scan_time;
-	uint32 cached_scan_time;
-	uint32 prev_pno_scan_time;
-	uint32 cached_pno_scan_time;
-	uint32 prev_roam_scan_time;
-	uint32 cached_roam_scan_time;
+	scan_stat_cache_cores_t scan_stat_cores;
 #endif /* LINKSTAT_EXT_SUPPORT */
 #ifdef CUSTOM_EVENT_PM_WAKE
 	dpm_info_t dpm_info[SOC_MAX_SLICE];

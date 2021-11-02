@@ -6785,8 +6785,9 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 
 	if (state == ROAM_CONF_ROAM_DISAB_REQ) {
 		cfg->disable_fw_roam = TRUE;
-
+#ifdef WL_DUAL_APSTA
 		wl_android_rcroam_turn_on(dev, FALSE);
+#endif /* WL_DUAL_APSTA */
 		/* roam off for incoming ndev interface */
 		wl_roam_off_config(dev, TRUE);
 		return;
@@ -6810,7 +6811,9 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		/* ROAM enable */
 		wl_roam_off_config(dev, FALSE);
 		/* Single Interface. Enable back rcroam */
+#ifdef WL_DUAL_APSTA
 		wl_android_rcroam_turn_on(dev, TRUE);
+#endif /* WL_DUAL_APSTA */
 		return;
 	}
 

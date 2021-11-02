@@ -4516,4 +4516,7 @@ void dhd_ota_buf_clean(dhd_pub_t *dhdp);
 #if !defined(AP) && defined(WLP2P)
 extern uint32 dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
 #endif
+
+extern void *dhd_irq_to_desc(unsigned int irq);
+
 #endif /* _dhd_h_ */

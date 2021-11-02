@@ -663,9 +663,6 @@ DHDCFLAGS += -DCUSTOM_SET_SHORT_DWELL_TIME
 # WPS
 DHDCFLAGS += -DWL_WPS_SYNC -DBCMCRYPTO_COMPONENT
 
-# TCP SYNC flood attack block
-DHDCFLAGS += -DDHDTCPSYNC_FLOOD_BLK -DTCP_SYNC_FLOOD_LIMIT=50
-
 # Path name to store the FW Debug symbol files
 DHDCFLAGS += -DPLATFORM_PATH="\"/vendor/etc/wifi/\""
 
@@ -682,6 +679,9 @@ DHDCFLAGS += -DWL_TWT_HAL_IF
 
 # RNR INCLUSION
 DHDCFLAGS += -DDHD_SCAN_INC_RNR
+
+# debug code to identify root cause of scan timeout due to syncid mismatch
+DHDCFLAGS += -DSYNCID_MISMATCH_DEBUG
 
 ##########################
 # driver type
