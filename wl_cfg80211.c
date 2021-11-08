@@ -5227,11 +5227,15 @@ wl_set_fils_params(struct net_device *dev, struct cfg80211_connect_params *sme)
 			goto exit;
 		}
 	}
-	err = bcm_xtlv_put_data(&tbuf, WL_FILS_XTLV_ERP_NEXT_SEQ_NUM,
+
+	if (sme->fils_erp_username_len && sme->fils_erp_realm_len &&
+		sme->fils_erp_rrk_len) {
+		err = bcm_xtlv_put_data(&tbuf, WL_FILS_XTLV_ERP_NEXT_SEQ_NUM,
 			(u8 *)&sme->fils_erp_next_seq_num, sizeof(sme->fils_erp_next_seq_num));
-	if (err != BCME_OK) {
-		WL_ERR(("%s: write xtlv failed\n", __FUNCTION__));
-		goto exit;
+		if (err != BCME_OK) {
+			WL_ERR(("%s: write xtlv failed\n", __FUNCTION__));
+			goto exit;
+		}
 	}
 	iov_buf->len = bcm_xtlv_buf_len(&tbuf);
 	err = wldev_iovar_setbuf(dev, "fils", iov_buf, iov_buf->len + sizeof(bcm_iov_buf_t) -
