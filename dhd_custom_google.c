@@ -141,6 +141,27 @@ dhd_set_coredump(const char *buf, int buf_len, const char *info)
 #define WIFI_MAC "wlan_mac1"
 static u8 wlan_mac[6] = {0};
 
+typedef struct {
+    char hw_id[MAX_HW_INFO_LEN];
+    char sku[MAX_HW_INFO_LEN];
+} sku_info_t;
+
+sku_info_t sku_table[] = {
+	{ {"G9S9B"}, {"MMW"} },
+	{ {"G8V0U"}, {"MMW"} },
+	{ {"GFQM1"}, {"MMW"} },
+	{ {"GB62Z"}, {"MMW"} },
+	{ {"GB7N6"}, {"ROW"} },
+	{ {"GLU0G"}, {"ROW"} },
+	{ {"GNA8F"}, {"ROW"} },
+	{ {"GX7AS"}, {"ROW"} },
+	{ {"GR1YH"}, {"JPN"} },
+	{ {"GF5KQ"}, {"JPN"} },
+	{ {"GPQ72"}, {"JPN"} },
+	{ {"GB17L"}, {"JPN"} },
+	{ {"G1AZG"}, {"EU"} }
+};
+
 static int
 dhd_wlan_get_mac_addr(unsigned char *buf)
 {
@@ -405,6 +426,7 @@ dhd_wlan_init_hardware_info(void)
 	int hw_stage = -1;
 	int hw_major = -1;
 	int hw_minor = -1;
+	int i;
 
 	node = of_find_node_by_path(PLT_PATH);
 	if (!node) {
@@ -469,21 +491,13 @@ dhd_wlan_init_hardware_info(void)
 			goto exit;
 		}
 
-		if (strcmp(hw_sku, "G9S9B") == 0 ||
-			strcmp(hw_sku, "G8V0U") == 0 ||
-			strcmp(hw_sku, "GFQM1") == 0) {
-			strcpy(val_sku, "MMW");
-		} else if (strcmp(hw_sku, "GR1YH") == 0 ||
-			strcmp(hw_sku, "GF5KQ") == 0 ||
-			strcmp(hw_sku, "GPQ72") == 0) {
-			strcpy(val_sku, "JPN");
-		} else if (strcmp(hw_sku, "GB7N6") == 0 ||
-			strcmp(hw_sku, "GLU0G") == 0 ||
-			strcmp(hw_sku, "GNA8F") == 0) {
-			strcpy(val_sku, "ROW");
-		} else {
-			strcpy(val_sku, "NA");
+		for (i = 0; i < ARRAYSIZE(sku_table); i ++) {
+			if (strcmp(hw_sku, sku_table[i].hw_id) == 0) {
+				strcpy(val_sku, sku_table[i].sku);
+				break;
+			}
 		}
+		DHD_ERROR(("%s: hw_sku is %s, val_sku is %s\n", __FUNCTION__, hw_sku, val_sku));
 	}
 
 exit:
