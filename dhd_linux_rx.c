@@ -1569,8 +1569,8 @@ dhd_rx_pktpool_deinit(dhd_info_t *dhd)
 	pkt_pool_t *rx_pool = &dhd->rx_pkt_pool;
 	tsk_ctl_t *tsk = &dhd->rx_pktpool_thread;
 
-	if (tsk->parent && dhd->rx_pktpool_thread.thr_pid >= 0) {
-		PROC_STOP_USING_BINARY_SEMA(&dhd->rx_pktpool_thread);
+	if (tsk->parent && tsk->thr_pid >= 0) {
+		PROC_STOP_USING_BINARY_SEMA(tsk);
 	} else {
 		DHD_ERROR(("%s: rx_pktpool_thread(%ld) not inited\n",
 			__FUNCTION__, tsk->thr_pid));
