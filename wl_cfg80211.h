@@ -1418,6 +1418,10 @@ struct parsed_ies {
 	u32 wpa2_ie_len;
 	const bcm_tlv_t *fils_ind_ie;
 	u32 fils_ind_ie_len;
+	const bcm_tlv_t *rate_ie;
+	u32 rate_ie_len;
+	const bcm_tlv_t *ext_rate_ie;
+	u32 ext_rate_ie_len;
 };
 
 #ifdef WL_SDO

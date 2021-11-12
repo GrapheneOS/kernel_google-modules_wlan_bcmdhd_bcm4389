@@ -3068,7 +3068,6 @@ dhd_ifadd_event_handler(void *handle, void *event_info, u8 event)
 	}
 
 	dhd_net_if_lock_local(dhd);
-	DHD_OS_WAKE_LOCK(&dhd->pub);
 
 	ifidx = if_event->event.ifidx;
 	bssidx = if_event->event.bssidx;
@@ -3134,7 +3133,6 @@ done:
 
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
 
-	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	dhd_net_if_unlock_local(dhd);
 }
 
@@ -3161,7 +3159,6 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 	}
 
 	dhd_net_if_lock_local(dhd);
-	DHD_OS_WAKE_LOCK(&dhd->pub);
 
 	ifidx = if_event->event.ifidx;
 	DHD_TRACE(("Removing interface with idx %d\n", ifidx));
@@ -3188,7 +3185,6 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 
 done:
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
-	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	dhd_net_if_unlock_local(dhd);
 }
 
@@ -4009,11 +4005,13 @@ void
 dhd_cancel_logtrace_process_sync(dhd_info_t *dhd)
 {
 #ifdef DHD_USE_KTHREAD_FOR_LOGTRACE
-	if (dhd->thr_logtrace_ctl.thr_pid >= 0) {
+	tsk_ctl_t *tsk = &dhd->thr_logtrace_ctl;
+
+	if (tsk->parent && dhd->thr_logtrace_ctl.thr_pid >= 0) {
 		PROC_STOP_USING_BINARY_SEMA(&dhd->thr_logtrace_ctl);
 	} else {
-		DHD_ERROR(("%s: thr_logtrace_ctl(%ld) not inited\n", __FUNCTION__,
-			dhd->thr_logtrace_ctl.thr_pid));
+		DHD_ERROR(("%s: thr_logtrace_ctl(%ld) not inited\n",
+			__FUNCTION__, tsk->thr_pid));
 	}
 #else
 	cancel_delayed_work_sync(&dhd->event_log_dispatcher_work);
