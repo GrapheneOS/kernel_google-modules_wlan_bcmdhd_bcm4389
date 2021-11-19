@@ -581,7 +581,7 @@ dhd_os_dbg_detach(dhd_pub_t *dhdp)
 			cancel_delayed_work_sync(&ring_info->work);
 		}
 	}
-	MFREE(dhdp->osh, os_priv, sizeof(*os_priv) * DEBUG_RING_ID_MAX);
+	VMFREE(dhdp->osh, os_priv, sizeof(*os_priv) * DEBUG_RING_ID_MAX);
 
 	return dhd_dbg_detach(dhdp);
 }
