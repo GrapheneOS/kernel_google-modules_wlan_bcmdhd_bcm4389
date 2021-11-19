@@ -3180,9 +3180,7 @@ error:
 		}
 	}
 
-	if (dbg) {
-		VMFREE(dhdp->osh, dbg, sizeof(dhd_dbg_t));
-	}
+	VMFREE(dhdp->osh, dbg, sizeof(dhd_dbg_t));
 
 	return ret;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
@@ -3197,14 +3195,23 @@ error:
 void
 dhd_dbg_detach(dhd_pub_t *dhdp)
 {
-	int ring_id;
 	dhd_dbg_t *dbg;
+#if defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined(BTLOG) || \
+	defined(DHD_DEBUGABILITY_EVENT_RING) || defined(DHD_PKT_LOGGING_DBGRING)
+	int ring_id;
 	dhd_dbg_ring_t *ring = NULL;
-
-	if (!dhdp->dbg)
-		return;
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
+	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING ||
+	* (DEBUGABILITY && CUSTOMER_HW6)
+	*/
 
 	dbg = dhdp->dbg;
+	if (!dbg) {
+		return;
+	}
+
+#if defined(DHD_DEBUGABILITY_LOG_DUMP_RING) || defined(BTLOG) || \
+	defined(DHD_DEBUGABILITY_EVENT_RING) || defined(DHD_PKT_LOGGING_DBGRING)
 	for (ring_id = DEBUG_RING_ID_INVALID + 1; ring_id < DEBUG_RING_ID_MAX; ring_id++) {
 		if (VALID_RING(dbg->dbg_rings[ring_id].id)) {
 			ring = &dbg->dbg_rings[ring_id];
@@ -3220,15 +3227,19 @@ dhd_dbg_detach(dhd_pub_t *dhdp)
 				if (ring_id != PACKET_LOG_RING_ID)
 #endif /* DHD_PKT_LOGGING_DBGRING */
 				{
-					MFREE(dhdp->osh, ring->ring_buf, ring->ring_size);
+					VMFREE(dhdp->osh, ring->ring_buf, ring->ring_size);
 				}
 				ring->ring_buf = NULL;
 			}
 			ring->ring_size = 0;
 		}
 	}
-	MFREE(dhdp->osh, dhdp->dbg, sizeof(dhd_dbg_t));
 
+	VMFREE(dhdp->osh, dhdp->dbg, sizeof(dhd_dbg_t));
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING || BTLOG ||
+	* DHD_DEBUGABILITY_EVENT_RING || DHD_PKT_LOGGING_DBGRING ||
+	* (DEBUGABILITY && CUSTOMER_HW6)
+	*/
 #ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	g_ring_buf.dhd_pub = NULL;
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
