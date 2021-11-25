@@ -3068,7 +3068,6 @@ dhd_ifadd_event_handler(void *handle, void *event_info, u8 event)
 	}
 
 	dhd_net_if_lock_local(dhd);
-	DHD_OS_WAKE_LOCK(&dhd->pub);
 
 	ifidx = if_event->event.ifidx;
 	bssidx = if_event->event.bssidx;
@@ -3134,7 +3133,6 @@ done:
 
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
 
-	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	dhd_net_if_unlock_local(dhd);
 }
 
@@ -3161,7 +3159,6 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 	}
 
 	dhd_net_if_lock_local(dhd);
-	DHD_OS_WAKE_LOCK(&dhd->pub);
 
 	ifidx = if_event->event.ifidx;
 	DHD_TRACE(("Removing interface with idx %d\n", ifidx));
@@ -3188,7 +3185,6 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 
 done:
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
-	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	dhd_net_if_unlock_local(dhd);
 }
 
