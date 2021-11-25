@@ -656,10 +656,11 @@ wl_cfg80211_disc_if_mgmt(struct bcm_cfg80211 *cfg,
 						* Fall through
 						*/
 					} else {
-						/* Active iface is present, returning error */
-						WL_INFORM_MEM(("P2P group is active,"
-							" cant support new iface\n"));
-						ret = BCME_ERROR;
+                                                /* clear associated group interfaces */
+                                                WL_INFORM_MEM(("remove P2P group,"
+                                                        " to support new iface\n"));
+                                                ret = wl_cfg80211_delete_iface(cfg,
+                                                        sec_wl_if_type);
 					}
 				} else if (sec_wl_if_type == WL_IF_TYPE_NAN) {
 					ret = wl_cfg80211_delete_iface(cfg, sec_wl_if_type);

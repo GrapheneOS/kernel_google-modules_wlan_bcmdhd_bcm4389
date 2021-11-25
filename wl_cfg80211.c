@@ -2616,7 +2616,7 @@ _wl_cfg80211_check_axi_error(struct bcm_cfg80211 *cfg)
 /* All Android/Linux private/Vendor Interface calls should make
  *  use of below API for interface creation.
  */
-struct wireless_dev *
+static struct wireless_dev *
 _wl_cfg80211_add_if(struct bcm_cfg80211 *cfg,
 	struct net_device *primary_ndev,
 	wl_iftype_t wl_iftype, const char *name, u8 *mac)
