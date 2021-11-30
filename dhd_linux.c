@@ -5167,11 +5167,11 @@ typedef struct dhd_mon_dev_priv {
 #define DHD_MON_DEV_INFO(dev)		(((dhd_mon_dev_priv_t *)DEV_PRIV(dev))->dhd)
 #define DHD_MON_DEV_STATS(dev)		(((dhd_mon_dev_priv_t *)DEV_PRIV(dev))->stats)
 
-static int
+static netdev_tx_t
 dhd_monitor_start(struct sk_buff *skb, struct net_device *dev)
 {
 	PKTFREE(NULL, skb, FALSE);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 #ifdef WL_CFG80211_MONITOR
