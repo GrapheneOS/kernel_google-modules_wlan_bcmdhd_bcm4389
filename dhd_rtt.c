@@ -5379,6 +5379,7 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 
 	cancel_delayed_work_sync(&rtt_status->proxd_timeout);
 
+	mutex_lock(&rtt_status->rtt_mutex);
 	/*
 	 * Cleanup attempt is required,
 	 * if legacy RTT session is in progress
@@ -5416,6 +5417,7 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 			MFREE(dhd->osh, rtt_header, sizeof(rtt_results_header_t));
 		}
 	}
+	mutex_unlock(&rtt_status->rtt_mutex);
 	GCC_DIAGNOSTIC_POP();
 	DHD_RTT_MEM(("dhd_rtt_deinit: EXIT, err = %d\n", err));
 #endif /* WL_CFG80211 */
