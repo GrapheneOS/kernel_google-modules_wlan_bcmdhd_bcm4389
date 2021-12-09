@@ -5569,6 +5569,9 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 						__FUNCTION__, ifevent->ifidx, event->ifname));
 					return (BCME_ERROR);
 				}
+#if defined(__linux__)
+				dhd_clear_del_in_progress(dhd_pub, ndev);
+#endif /* __linux__ */
 			} else if (ifevent->opcode == WLC_E_IF_DEL) {
 #if defined(__linux__)
 				dhd_set_del_in_progress(dhd_pub, ndev);
@@ -5580,9 +5583,6 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 #endif /* PCIE_FULL_DONGLE */
 				dhd_event_ifdel(dhd_pub->info, ifevent, event->ifname,
 					event->addr.octet);
-#if defined(__linux__)
-				dhd_clear_del_in_progress(dhd_pub, ndev);
-#endif /* __linux__ */
 			} else if (ifevent->opcode == WLC_E_IF_CHANGE) {
 #ifdef WL_CFG80211
 				dhd_event_ifchange(dhd_pub->info, ifevent, event->ifname,

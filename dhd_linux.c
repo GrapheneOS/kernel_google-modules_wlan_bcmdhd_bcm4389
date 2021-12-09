@@ -7062,6 +7062,7 @@ dhd_static_if_open(struct net_device *net)
 		/* Allow transmit calls */
 		netif_start_queue(net);
 	}
+	dhd_clear_del_in_progress(cfg->pub, net);
 done:
 	return ret;
 }
@@ -7082,6 +7083,7 @@ dhd_static_if_stop(struct net_device *net)
 		return BCME_OK;
 	}
 
+	dhd_set_del_in_progress(cfg->pub, net);
 	/* Ensure queue is disabled */
 	netif_tx_disable(net);
 	ret = wl_cfg80211_static_if_close(net);
@@ -7489,6 +7491,7 @@ dhd_allocate_if(dhd_pub_t *dhdpub, int ifidx, const char *name,
 	ifp->info = dhdinfo;
 	ifp->idx = ifidx;
 	ifp->bssidx = bssidx;
+	ifp->del_in_progress = FALSE;
 #ifdef DHD_MCAST_REGEN
 	ifp->mcast_regen_bss_enable = FALSE;
 #endif
@@ -7699,7 +7702,7 @@ dhd_remove_if(dhd_pub_t *dhdpub, int ifidx, bool need_rtnl_lock)
 			DHD_ERROR(("deleting interface '%s' idx %d\n", ifp->net->name, ifp->idx));
 
 			DHD_GENERAL_LOCK(dhdpub, flags);
-			ifp->del_in_progress = true;
+			ifp->del_in_progress = TRUE;
 			DHD_GENERAL_UNLOCK(dhdpub, flags);
 
 			/* If TX is in progress, hold the if del */
@@ -7739,9 +7742,6 @@ dhd_remove_if(dhd_pub_t *dhdpub, int ifidx, bool need_rtnl_lock)
 					unregister_netdevice(ifp->net);
 			}
 			ifp->net = NULL;
-			DHD_GENERAL_LOCK(dhdpub, flags);
-			ifp->del_in_progress = false;
-			DHD_GENERAL_UNLOCK(dhdpub, flags);
 		}
 #ifdef DHD_WMF
 		dhd_wmf_cleanup(dhdpub, ifidx);
@@ -13447,6 +13447,7 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 	struct net_device *net = NULL;
 	int err = 0;
 	uint8 temp_addr[ETHER_ADDR_LEN] = { 0x00, 0x90, 0x4c, 0x11, 0x22, 0x33 };
+	unsigned long flags;
 
 	DHD_TRACE(("%s: ifidx %d\n", __FUNCTION__, ifidx));
 
@@ -13587,6 +13588,11 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 		}
 	}
 #endif /* OEM_ANDROID && (BCMPCIE || (BCMLXSDMMC) */
+
+	DHD_GENERAL_LOCK(dhdp, flags);
+	ifp->del_in_progress = FALSE;
+	DHD_GENERAL_UNLOCK(dhdp, flags);
+
 	return 0;
 
 fail:
