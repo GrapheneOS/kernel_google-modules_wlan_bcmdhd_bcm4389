@@ -3,7 +3,7 @@
  *
  * Dependencies: bcmeth.h
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -240,7 +240,8 @@ typedef union bcm_event_msg_u {
 #define WLC_E_TX_STAT_ERROR		126	/* tx error indication */
 #define WLC_E_BCMC_CREDIT_SUPPORT	127	/* credit check for BCMC supported */
 #define WLC_E_PEER_TIMEOUT	128 /* silently drop a STA because of inactivity */
-#define WLC_E_BT_WIFI_HANDOVER_REQ	130	/* Handover Request Initiated */
+// 129 unused
+// 130 unused
 #define WLC_E_SPW_TXINHIBIT		131     /* Southpaw TxInhibit notification */
 #define WLC_E_FBT_AUTH_REQ_IND		132	/* FBT Authentication Request Indication */
 #define WLC_E_RSSI_LQM			133	/* Enhancement addition for WLC_E_RSSI */
@@ -309,8 +310,11 @@ typedef union bcm_event_msg_u {
 #define WLC_E_ROAM_SCAN_RESULT		197	/* roam/reassoc scan result event */
 
 #define WLC_E_MSCS			200	/* MSCS success/failure events */
-
-#define WLC_E_LAST			201	/* highest val + 1 for range checking */
+#define WLC_E_RXDMA_RECOVERY_ATMPT	201	/* RXDMA Recovery Attempted Event */
+#define WLC_E_PFN_PARTIAL_RESULT	202
+#define WLC_E_MLO_LINK_INFO		203	/* 11be MLO link information */
+#define WLC_E_C2C			204	/* Client to client (C2C) for 6GHz TX */
+#define WLC_E_LAST			205	/* highest val + 1 for range checking */
 
 /* define an API for getting the string name of an event */
 extern const char *bcmevent_get_name(uint event_type);
@@ -503,10 +507,11 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_REASON_ESTM_LOW		15	/* roamed due to ESTM low tput */
 #define WLC_E_REASON_SILENT_ROAM	16	/* roamed due to Silent roam */
 #define WLC_E_REASON_INACTIVITY		17	/* full roam scan due to inactivity */
-#define WLC_E_REASON_ROAM_SCAN_TIMEOUT		18	/* roam scan timer timeout */
+#define WLC_E_REASON_ROAM_SCAN_TIMEOUT	18	/* roam scan timer timeout */
 #define WLC_E_REASON_REASSOC		19	/* roamed due to reassoc iovar */
-#define WLC_E_REASON_CCA		20       /* roamed due to better AP from cca measurement */
-#define WLC_E_REASON_LAST		21	/* NOTE: increment this as you add reasons above */
+#define WLC_E_REASON_CCA		20	/* roamed due to better AP from cca measurement */
+#define WLC_E_REASON_BTCX_ROAM		21	/* roamed due to Btcx roam */
+#define WLC_E_REASON_LAST		22	/* NOTE: increment this as you add reasons above */
 
 /* prune reason codes */
 #define WLC_E_PRUNE_ENCR_MISMATCH	1	/* encryption mismatch */
@@ -1002,7 +1007,8 @@ typedef enum wl_nan_events {
 
 typedef enum wl_scan_events {
 	WL_SCAN_START = 1,
-	WL_SCAN_END = 2
+	WL_SCAN_END = 2,
+	WL_SCAN_ADD = 3
 } wl_scan_events;
 
 /* WLC_E_ULP event data */
@@ -1188,6 +1194,7 @@ typedef enum wl_twt_td_rc {
 	WL_TWT_TD_RC_SETUP_FAIL	= 6u, /* Setup fail midway. Teardown all connections */
 	WL_TWT_TD_RC_SCHED	= 7u,	/* Teardown by TWT Scheduler */
 	WL_TWT_TD_RC_TIMEOUT	= 8u,	/* NoAck/Ack timeout for Teardown */
+	WL_TWT_TD_RC_PM_OFF	= 9u,	/* Teardown due to PM Mode 0 */
 	/* Any new reason code add before this */
 	WL_TWT_TD_RC_ERROR	= 255u,	/* Generic Error cases */
 } wl_twt_td_rc_t;
@@ -1544,17 +1551,32 @@ typedef struct wl_event_dynsar {
 					 */
 #define BCN_MUTE_MITI_END	2u	/* Sent when beacon is received */
 #define BCN_MUTE_MITI_TIMEOUT	3u	/* Mitigation period is reached */
+#define BCN_MUTE_MITI_FAILED	4u	/* Mitigation attempt failed */
 
 /* Status code for sending event */
-#define BCN_MUTE_MITI_UNKNOWN		0u	/* Mitigation status unknown */
-#define BCN_MUTE_MITI_ASSOC_COMP	1u	/* Mitigation during Assoc phase */
-#define BCN_MUTE_MITI_BCN_LOST		2u	/* Mitigation due to beacon lost */
-#define BCN_MUTE_MITI_BCN_RECV		3u	/* Mitigation end due to bcn reception */
-#define BCN_MUTE_MITI_ROAM		4u	/* Mitigation end due to Roam */
-#define BCN_MUTE_MITI_LINK_DOWN		5u	/* Mitigation end due to link down */
-#define BCN_MUTE_MITI_RX_DEAUTH		6u	/* Mitigation end due to AP deauth */
-#define BCN_MUTE_MITI_RX_DISASSOC	7u	/* Mitigation end due to AP disassoc */
-#define BCN_MUTE_MITI_LOW_RSSI		8u	/* Mitigation end due to Low RSSI */
+#define BCN_MUTE_MITI_UNKNOWN			0u /* Mitigation status unknown */
+#define BCN_MUTE_MITI_ASSOC_COMP		1u /* Mitigation during Assoc phase */
+#define BCN_MUTE_MITI_BCN_LOST			2u /* Mitigation due to beacon lost */
+#define BCN_MUTE_MITI_BCN_RECV			3u /* Mitigation end due to bcn reception */
+#define BCN_MUTE_MITI_ROAM			4u /* Mitigation end due to Roam */
+#define BCN_MUTE_MITI_LINK_DOWN			5u /* Mitigation end due to link down */
+#define BCN_MUTE_MITI_RX_DEAUTH			6u /* Mitigation end due to AP deauth */
+#define BCN_MUTE_MITI_RX_DISASSOC		7u /* Mitigation end due to AP disassoc */
+#define BCN_MUTE_MITI_LOW_RSSI			8u /* Mitigation end due to Low RSSI */
+#define BCN_MUTE_MITI_ASSOC_COMP_RX_UPR		9u /* Assoc succeeded using UPR reception */
+#define BCN_MUTE_MITI_BCN_LOST_RX_UPR		10u /* Beacon lost and Mitigation success with
+						     * recent UPR Reception
+						     */
+#define BCN_MUTE_MITI_ASSOC_COMP_RX_FILS	11u /* Assoc succeeded using FILS reception */
+#define BCN_MUTE_MITI_BCN_LOST_RX_FILS		12u /* Beacon lost and Mitigation success with
+						     * recent FILS Reception
+						     */
+#define BCN_MUTE_MITI_NO_PRB_RESP		13u /* Beacon lost and mitigation failed due to
+						     * no Rx probe response.
+						     */
+#define BCN_MUTE_MITI_PRB_RESP_LOW_RSSI		14u /* Beacon lost and mitigation failed due Rx
+						     * Probe response with Low RSSI.
+						     */
 
 /* bcn_mute_miti event data */
 #define WLC_BCN_MUTE_MITI_EVENT_DATA_VER_1	1u
@@ -1599,6 +1621,8 @@ typedef struct wl_csa_event {
 	uint32 switch_time;		/**< csa switch time: TSF + BI * count, msec */
 } wl_csa_event_t;
 
+/* SIB sub events */
+
 /* Event structure for WLC_E_MSCS */
 typedef struct wl_event_mscs {
 	uint16 version;		/* structure version */
@@ -1609,5 +1633,53 @@ typedef struct wl_event_mscs {
 
 /* WLC_E_MSCS event structure version */
 #define WL_MSCS_EVENT_VERSION	1u
+
+/* MLO link information (WLC_E_MLO_LINK_INFO) event data */
+#define WL_MLO_LINK_INFO_EVENT_VERSION_1	(1u)
+
+typedef enum wl_mlo_link_info_opcode {
+	WL_MLO_LINK_INFO_OPCODE_ADD	= 1,	/* MLO links addition */
+	WL_MLO_LINK_INFO_OPCODE_DEL	= 2	/* MLO links deletion */
+} wl_mlo_link_info_opcode_t;
+
+typedef enum wl_mlo_link_info_role {
+	WL_MLO_LINK_INFO_ROLE_STA	= 1,	/* infrastructure mode station */
+	WL_MLO_LINK_INFO_ROLE_AP	= 2	/* access point */
+} wl_mlo_link_info_role_t;
+
+/* MLO per link information structure */
+typedef struct wl_mlo_per_link_info_v1 {
+	uint8			if_idx;		/* RTE virtual device index (for dongle) */
+	uint8			cfg_idx;	/* bsscfg index */
+	uint8			link_id;	/* link identifier - AP managed unique identifier */
+	uint8			link_idx;	/* link index - local link config index */
+	struct ether_addr	link_addr;	/* link specific address */
+	uint8			PAD[2];
+} wl_mlo_per_link_info_v1_t;
+
+/* MLO link information event structure */
+typedef struct wl_mlo_link_info_event_v1 {
+	uint16				version;	/* structure version */
+	uint16				length;		/* length of this structure */
+	uint8				opcode;		/* link opcode - wl_mlo_link_info_opcode */
+	uint8				role;		/* link role - wl_mlo_link_info_role */
+	struct ether_addr		mld_addr;	/* mld addres */
+	uint8				num_links;	/* number of operative links */
+	uint8				PAD[3];
+	wl_mlo_per_link_info_v1_t	link_info[];	/* per link information */
+} wl_mlo_link_info_event_v1_t;
+
+/* ===== C2C event definitions ===== */
+#define C2C_EVENT_BUFFER_SIZE		1024u
+#define IS_C2C_EVT_ON(param, evt)	((param) & (1u << (evt)))
+
+/* WLC_E_C2C subevent ID */
+typedef enum wl_c2c_events {
+	WL_C2C_EVT_ESIG_START,		/* new enabling signal */
+	WL_C2C_EVT_ESIG_END,		/* esig expired */
+	WL_C2C_EVT_ESIG_PRE_EXPIRY,	/* esig expiring soon; do scan or let expire */
+	WL_C2C_EVT_CACHE_ADD,		/* added new LPI AP to cache */
+	WL_C2C_EVT_CACHE_DEL		/* removed LPI AP from cache */
+} wl_c2c_events_e;
 
 #endif /* _BCMEVENT_H_ */

@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 Vendor Extension Code
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -701,6 +701,7 @@ typedef enum wl_vendor_event {
 	BRCM_VENDOR_EVENT_TPUT_DUMP		= 44,
 	GOOGLE_NAN_EVENT_MATCH_EXPIRY		= 45,
 	BRCM_VENDOR_EVENT_RCC_FREQ_INFO		= 46,
+	BRCM_VENDOR_EVENT_CONNECTIVITY_LOG	= 47,
 	BRCM_VENDOR_EVENT_LAST
 } wl_vendor_event_t;
 
@@ -1019,6 +1020,13 @@ typedef enum {
 } andr_twt_sub_event;
 #endif /* WL_TWT_HAL_IF */
 
+typedef enum {
+	ANDR_LSTAT_ATTRIBUTE_INVALID	= 0,
+	ANDR_LSTAT_ATTRIBUTE_NUM_RADIO	= 1,
+	ANDR_LSTAT_ATTRIBUTE_STATS_INFO	= 2,
+	ANDR_LSTAT_ATTRIBUTE_STATS_MAX	= 3
+} LINK_STAT_ATTRIBUTE;
+
 /* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
 #define BRCM_VENDOR_SCMD_CAPA	"cap"
 #define MEMDUMP_PATH_LEN	128
@@ -1053,6 +1061,15 @@ int wl_cfgvendor_notify_supp_event_str(const char *evt_name, const char *fmt, ..
 #define SUPP_EVT_LOG(evt_name, fmt, ...) \
     wl_cfgvendor_notify_supp_event_str(evt_name, fmt, ##__VA_ARGS__);
 #define SUPP_EVENT(args) SUPP_EVT_LOG args
+
+#ifdef WL_CFGVENDOR_CUST_ADVLOG
+extern int wl_cfgvendor_send_supp_advlog(const char *fmt, ...);
+#define PRINT_SUPP_ADVLOG(fmt, ...) \
+	 wl_cfgvendor_send_supp_advlog(fmt, ##__VA_ARGS__);
+#define SUPP_ADVLOG(args) PRINT_SUPP_ADVLOG args;
+#else
+#define SUPP_ADVLOG(x)
+#endif /* WL_CFGVENDOR_CUST_ADVLOG */
 #else
 #define SUPP_LOG(x)
 #define SUPP_EVENT(x)
@@ -1146,4 +1163,8 @@ int wl_cfgdbg_tput_debug_get_cmd(struct wiphy *wiphy,
 #endif /* TPUT_DEBUG_DUMP */
 extern int wl_cfgvendor_multista_set_primary_connection(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len);
+
+#ifdef WL_CFGVENDOR_CUST_ADVLOG
+void wl_cfgvendor_custom_advlog_roam_log(void *plog, uint32 armcycle);
+#endif /* WL_CFGVENDOR_CUST_ADVLOG */
 #endif /* _wl_cfgvendor_h_ */

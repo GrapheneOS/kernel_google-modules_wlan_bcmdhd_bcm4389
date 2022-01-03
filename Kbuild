@@ -1,6 +1,6 @@
 # bcmdhd
 #
-# Copyright (C) 2021, Broadcom.
+# Copyright (C) 2022, Broadcom.
 #
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
@@ -287,6 +287,8 @@ DHDCFLAGS += -DDHD_DUMP_START_COMMAND
 DHDCFLAGS += -DDHD_MAP_PKTID_LOGGING
 else
 DHDCFLAGS += -DDHD_FILE_DUMP_EVENT
+# The debug dump file path is blank in DHD, it is defined in HAL.
+DHDCFLAGS += -DDHD_COMMON_DUMP_PATH="\"/\""
 endif
 DHDCFLAGS := $(filter-out -DDHD_DUMP_FILE_WRITE_FROM_KERNEL ,$(DHDCFLAGS))
 endif
@@ -592,6 +594,8 @@ DHDCFLAGS += -DDUAL_ESCAN_RESULT_BUFFER
 # NAN
 DHDCFLAGS += -DWL_NAN -DWL_NAN_DISC_CACHE -DWL_NANP2P
 
+DHDCFLAGS += -DQOS_MAP_SET
+
 # Thermal mitigation flag
 DHDCFLAGS += -DWL_THERMAL_MITIGATION
 
@@ -680,9 +684,6 @@ DHDCFLAGS += -DWL_TWT_HAL_IF
 # RNR INCLUSION
 DHDCFLAGS += -DDHD_SCAN_INC_RNR
 
-# debug code to identify root cause of scan timeout due to syncid mismatch
-DHDCFLAGS += -DSYNCID_MISMATCH_DEBUG
-
 ##########################
 # driver type
 # m: module type driver
@@ -697,6 +698,10 @@ DRIVER_TYPE ?= $(CONFIG_BCMDHD)
 ifneq ($(filter y, $(CONFIG_BCM4389)),)
   #6GHz support
   DHDCFLAGS += -DWL_6G_BAND
+  # UNII4 channel support
+  DHDCFLAGS += -DWL_5P9G
+  # UNII-4 channel filter for non-sta roles
+  DHDCFLAGS += -DWL_UNII4_CHAN
 endif
 
 # For 4389 and 43752
@@ -902,6 +907,9 @@ else ifneq ($(CONFIG_ARCH_HISI),)
 	DHDCFLAGS += -DDHD_SUPPORT_VFS_CALL
 	# Skip pktlogging of data packets
 	DHDCFLAGS += -DDHD_SKIP_PKTLOGGING_FOR_DATA_PKTS
+	# NAN 3.1 specific
+	DHDCFLAGS += -DWL_NAN_INSTANT_MODE
+
 	# Allow wl event forwarding as network packet
 	DHDCFLAGS += -DWL_EVENT_ENAB
 
@@ -917,8 +925,6 @@ endif
 	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"hikey \""
 	# Dongle init fail
 	DHDCFLAGS += -DPOWERUP_MAX_RETRY=3
-	# UNII4 channel support
-	DHDCFLAGS += -DWL_5P9G
 	DHDCFLAGS := $(filter-out -DSIMPLE_MAC_PRINT ,$(DHDCFLAGS))
 endif
 

@@ -1,7 +1,7 @@
 /*
  * bcmevent read-only data shared by kernel or app layers
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -186,9 +186,6 @@ static const bcmevent_name_str_t bcmevent_names[] = {
 #ifdef WLBSSLOAD_REPORT
 	BCMEVENT_NAME(WLC_E_BSS_LOAD),
 #endif
-#if defined(BT_WIFI_HANDOVER) || defined(WL_TBOW)
-	BCMEVENT_NAME(WLC_E_BT_WIFI_HANDOVER_REQ),
-#endif
 #ifdef WLFBT
 	BCMEVENT_NAME(WLC_E_FBT),
 #endif /* WLFBT */
@@ -236,6 +233,10 @@ static const bcmevent_name_str_t bcmevent_names[] = {
 #endif /* WL_TWT */
 
 	BCMEVENT_NAME(WLC_E_MSCS),
+#ifdef WL_SCHED_SCAN
+	BCMEVENT_NAME(WLC_E_PFN_PARTIAL_RESULT),
+#endif /* WL_SCHED_SCAN */
+	BCMEVENT_NAME(WLC_E_MLO_LINK_INFO),
 };
 
 const char *bcmevent_get_name(uint event_type)

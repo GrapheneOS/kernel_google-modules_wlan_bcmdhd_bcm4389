@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -794,9 +794,6 @@ wl_cfg_uwb_coex_make_coex_bitmap(int start_ch_idx, int end_ch_idx,
 {
 	int i;
 	uwbcx_coex_bitmap_t *coex_bitmap = (uwbcx_coex_bitmap_t *) (&coex_bitmap_cfg->coex_bitmap);
-	coex_bitmap_cfg->version = UWBCX_COEX_BITMAP_VERSION_V2;
-	coex_bitmap_cfg->len = sizeof(*coex_bitmap_cfg);
-	coex_bitmap_cfg->band = UWBCX_BAND_6G;
 
 	for (i = start_ch_idx; i <= end_ch_idx; i++) {
 		if (i < 16u) {
@@ -880,6 +877,9 @@ wl_cfg_uwb_coex_enable(struct net_device *dev, int enable, int start_ch, int end
 	}
 
 	bzero(&coex_bitmap_cfg, sizeof(uwbcx_coex_bitmap_v2_t));
+	coex_bitmap_cfg.version = UWBCX_COEX_BITMAP_VERSION_V2;
+	coex_bitmap_cfg.len = sizeof(coex_bitmap_cfg);
+	coex_bitmap_cfg.band = UWBCX_BAND_6G;
 
 	/* Validate UWB Coex channel in case of turnning on */
 	if (enable && (((start_ch_idx = wl_cfg_uwb_coex_get_ch_idx(start_ch)) < 0) ||

@@ -3,7 +3,7 @@
  *
  * Dependencies: bcmeth.h
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -50,6 +50,7 @@
 #define DNGL_E_RSRVD_2				0x1
 #define DNGL_E_SOCRAM_IND			0x2
 #define DNGL_E_PROFILE_DATA_IND			0x3
+#define DNGL_E_SPMI_RESET_IND			0x4
 typedef BWL_PRE_PACKED_STRUCT struct
 {
 	uint16  version; /* Current version is 1 */
@@ -76,6 +77,16 @@ typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_profile_data_ind_t {
 	uint16 length;
 	uint8 value[];
 } BWL_POST_PACKED_STRUCT bcm_dngl_profile_data_ind_t;
+
+#define DNGL_E_SPMI_RESET_IND_VERSION_1 1u
+#define DNGL_E_SPMI_RESET_IND_VERSION DNGL_E_SPMI_RESET_IND_VERSION_1
+
+typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_spmi_reset_ind_v1_t {
+	uint16		version;	/* Current version is 1 */
+	uint16		num_resets;	/* number of resets seen since last message */
+	uint8		slave_idx;	/* Slave idx of the SPMI core that was reset */
+	uint8		PAD[3];
+} BWL_POST_PACKED_STRUCT bcm_dngl_spmi_reset_ind_v1_t;
 
 typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_arm_event {
 	uint32 type;

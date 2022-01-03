@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -155,6 +155,9 @@ typedef struct pktpool {
 	pktpool_cbextn_info_t cb_haddr;	/**< PCIe SPLITRX related */
 	pktpool_rxurb_cbinfo_t dmarxurb;	/**< dma rx urb related */
 
+	uint32 pktpool_flags; /* different packet pool flags */
+	void *freelist_tail; /* free list tail, used only in specific rxlfrag pools */
+
 #ifdef BCMDBG_POOL
 	uint8 dbg_cbcnt;
 	pktpool_cbinfo_t dbg_cbs[PKTPOOL_CB_MAX];
@@ -162,6 +165,8 @@ typedef struct pktpool {
 	pktpool_dbg_t dbg_q[PKTPOOL_LEN_MAX + 1];
 #endif
 } pktpool_t;
+
+#define PKTPOOL_RXLFRAG_SORTED_INSERT	0x00000001u
 
 pktpool_t *get_pktpools_registry(int id);
 #define pktpool_get(pktp)	(pktpool_get_ext((pktp), (pktp)->type, NULL))

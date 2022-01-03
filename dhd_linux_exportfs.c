@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Linux-specific network interface
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1203,21 +1203,6 @@ static struct dhd_attr dhd_attr_cidinfo =
 	__ATTR(cid, 0660, show_cid_info, set_cid_info);
 #endif /* USE_CID_CHECK || USE_DIRECT_VID_TAG */
 
-#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
-int otpinfo_val = -1;
-
-static ssize_t
-show_otp_info(struct dhd_info *dev, char *buf)
-{
-	ssize_t ret = 0;
-	ret = snprintf(buf, PAGE_SIZE-1, "%d\n", otpinfo_val);
-	return ret;
-}
-
-static struct dhd_attr dhd_attr_otpinfo =
-	__ATTR(otp, 0660, show_otp_info, NULL);
-#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
-
 #if defined(GEN_SOFTAP_INFO_FILE)
 char softapinfostr[SOFTAP_INFO_BUF_SZ];
 static ssize_t
@@ -1742,6 +1727,37 @@ static struct dhd_attr dhd_attr_l1ss_enab =
 __ATTR(l1ss_enab, 0660, show_l1ss_enab, dhd_set_l1ss_enab);
 #endif /* PCIE_FULL_DONGLE */
 
+#ifdef RPM_FAST_TRIGGER
+static ssize_t
+dhd_show_fast_rpm_thresh(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long val;
+
+	val = dhd_fast_runtimepm_ms;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n", val);
+	return ret;
+}
+
+static ssize_t
+dhd_set_fast_rpm_thresh(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long val;
+
+	val = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &val);
+	/* Ensure fast RPM threashold is lesser than regular RPM threshold */
+	if (val == 0 || val >= dhd_runtimepm_ms) {
+		 return -EINVAL;
+	}
+	dhd_fast_runtimepm_ms = val;
+	return count;
+}
+static struct dhd_attr dhd_attr_fast_rpm_thresh =
+__ATTR(fast_rpm_thresh, 0660, dhd_show_fast_rpm_thresh, dhd_set_fast_rpm_thresh);
+#endif /* RPM_FAST_TRIGGER */
+
 #if defined(CUSTOM_CONTROL_HE_ENAB)
 static ssize_t
 show_control_he_enab(struct dhd_info *dev, char *buf)
@@ -2228,9 +2244,9 @@ static struct attribute *default_file_attrs[] = {
 	&dhd_attr_aspm_enab.attr,
 	&dhd_attr_l1ss_enab.attr,
 #endif /* PCIE_FULL_DONGLE */
-#if defined(CONFIG_WIFI_BROADCOM_COB) && defined(BCM4389_CHIP_DEF)
-	&dhd_attr_otpinfo.attr,
-#endif /* CONFIG_WIFI_BROADCOM_COB && BCM4389_CHIP_DEF */
+#ifdef RPM_FAST_TRIGGER
+	&dhd_attr_fast_rpm_thresh.attr,
+#endif /* RPM_FAST_TRIGGER */
 	&dhd_attr_sig_path.attr,
 	NULL
 };

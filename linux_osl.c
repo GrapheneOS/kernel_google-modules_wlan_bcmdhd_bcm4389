@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -155,12 +155,14 @@ static int16 linuxbcmerrormap[] =
 	-EINVAL,		/* BCME_ROAM */
 	-EOPNOTSUPP,		/* BCME_NO_SIG_FILE */
 	-EOPNOTSUPP,		/* BCME_RESP_PENDING */
+	-EINVAL,		/* BCME_ACTIVE */
+	-EINVAL,		/* BCME_IN_PROGRESS */
 
 /* When an new error code is added to bcmutils.h, add os
  * specific error translation here as well
  */
 /* check if BCME_LAST changed since the last time this function was updated */
-#if BCME_LAST != BCME_RESP_PENDING
+#if BCME_LAST != BCME_IN_PROGRESS
 #error "You need to add a OS error translation in the linuxbcmerrormap \
 	for new error code defined in bcmutils.h"
 #endif
@@ -271,6 +273,7 @@ osl_error(int bcmerror)
 	/* Array bounds covered by ASSERT in osl_attach */
 	return linuxbcmerrormap[-bcmerror];
 }
+
 #ifdef SHARED_OSL_CMN
 osl_t *
 osl_attach(void *pdev, uint bustype, bool pkttag, void **osl_cmn)
@@ -288,7 +291,7 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 	if (!(osh = kmalloc(sizeof(osl_t), flags)))
 		return osh;
 
-	ASSERT(osh);
+	ASSERT_NULL(osh);
 
 	bzero(osh, sizeof(osl_t));
 
@@ -471,7 +474,8 @@ osl_pci_read_config(osl_t *osh, uint offset, uint size)
 	uint val = 0;
 	uint retry = PCI_CFG_RETRY;	 /* PR15065: faulty cardbus controller bug */
 
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
 	/* only 4byte access supported */
 	ASSERT(size == 4);
@@ -496,7 +500,8 @@ osl_pci_write_config(osl_t *osh, uint offset, uint size, uint val)
 {
 	uint retry = PCI_CFG_RETRY;	 /* PR15065: faulty cardbus controller bug */
 
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
 	/* only 4byte access supported */
 	ASSERT(size == 4);
@@ -525,7 +530,9 @@ osl_pci_write_config(osl_t *osh, uint offset, uint size, uint val)
 uint
 osl_pci_bus(osl_t *osh)
 {
-	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC)
+	ASSERT_NULL(osh->pdev);
 
 #if defined(__ARM_ARCH_7A__)
 	return pci_domain_nr(((struct pci_dev *)osh->pdev)->bus);
@@ -538,7 +545,9 @@ osl_pci_bus(osl_t *osh)
 uint
 osl_pci_slot(osl_t *osh)
 {
-	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
+	ASSERT_NULL(osh->pdev);
 
 #if defined(__ARM_ARCH_7A__)
 	return PCI_SLOT(((struct pci_dev *)osh->pdev)->devfn) + 1;
@@ -551,7 +560,9 @@ osl_pci_slot(osl_t *osh)
 uint
 osl_pcie_domain(osl_t *osh)
 {
-	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
+	ASSERT_NULL(osh->pdev);
 
 	return pci_domain_nr(((struct pci_dev *)osh->pdev)->bus);
 }
@@ -560,7 +571,9 @@ osl_pcie_domain(osl_t *osh)
 uint
 osl_pcie_bus(osl_t *osh)
 {
-	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
+	ASSERT_NULL(osh->pdev);
 
 	return ((struct pci_dev *)osh->pdev)->bus->number;
 }
@@ -569,7 +582,9 @@ osl_pcie_bus(osl_t *osh)
 struct pci_dev *
 osl_pci_device(osl_t *osh)
 {
-	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
+	ASSERT_NULL(osh->pdev);
 
 	return osh->pdev;
 }
@@ -754,7 +769,8 @@ osl_vmfree(osl_t *osh, void *addr, uint size)
 uint
 osl_check_memleak(osl_t *osh)
 {
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 	if (atomic_read(&osh->cmn->refcount) == 1)
 		return (atomic_read(&osh->cmn->malloced));
 	else
@@ -764,14 +780,16 @@ osl_check_memleak(osl_t *osh)
 uint
 osl_malloced(osl_t *osh)
 {
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 	return (atomic_read(&osh->cmn->malloced));
 }
 
 uint
 osl_malloc_failed(osl_t *osh)
 {
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 	return (osh->failed);
 }
 
@@ -1014,7 +1032,8 @@ osl_debug_memdump(osl_t *osh, struct bcmstrbuf *b)
 	bcm_mem_link_t *p;
 	unsigned long flags = 0;
 
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
 	OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
 
@@ -1091,7 +1110,8 @@ osl_dma_alloc_consistent(osl_t *osh, uint size, uint16 align_bits, uint *alloced
 {
 	void *va;
 	uint16 align = (1 << align_bits);
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
 	if (!ISALIGNED(DMA_CONSISTENT_ALIGN, align))
 		size += align;
@@ -1133,7 +1153,8 @@ osl_dma_free_consistent(osl_t *osh, void *va, uint size, dmaaddr_t pa)
 #ifdef BCMDMA64OSL
 	dma_addr_t paddr;
 #endif /* BCMDMA64OSL */
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
 #if (defined(__ARM_ARCH_7A__) && !defined(DHD_USE_COHERENT_MEM_FOR_RING))
 	kfree(va);
@@ -1165,19 +1186,16 @@ dmaaddr_t
 BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p,
 	hnddma_seg_map_t *dmah)
 {
-	int dir;
 	dmaaddr_t ret_addr;
 	dma_addr_t map_addr;
 	int ret;
 
 	DMA_LOCK(osh);
 
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
-	/* For Rx buffers, keep direction as bidirectional to handle packet fetch cases */
-	dir = (direction == DMA_RX)? DMA_RXTX: direction;
-
-	map_addr = pci_map_single(osh->pdev, va, size, dir);
+	map_addr = pci_map_single(osh->pdev, va, size, direction);
 
 	ret = pci_dma_mapping_error(osh->pdev, map_addr);
 
@@ -1202,12 +1220,12 @@ BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p
 void
 BCMFASTPATH(osl_dma_unmap)(osl_t *osh, dmaaddr_t pa, uint size, int direction)
 {
-	int dir;
 #ifdef BCMDMA64OSL
 	dma_addr_t paddr;
 #endif /* BCMDMA64OSL */
 
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
+	ASSERT_NULL(osh);
+	ASSERT(osh->magic == OS_HANDLE_MAGIC);
 
 	DMA_LOCK(osh);
 
@@ -1215,14 +1233,11 @@ BCMFASTPATH(osl_dma_unmap)(osl_t *osh, dmaaddr_t pa, uint size, int direction)
 	osl_dma_map_logging(osh, osh->dhd_unmap_log, pa, size);
 #endif /* DHD_MAP_LOGGING */
 
-	/* For Rx buffers, keep direction as bidirectional to handle packet fetch cases */
-	dir = (direction == DMA_RX)? DMA_RXTX: direction;
-
 #ifdef BCMDMA64OSL
 	PHYSADDRTOULONG(pa, paddr);
-	pci_unmap_single(osh->pdev, paddr, size, dir);
+	pci_unmap_single(osh->pdev, paddr, size, direction);
 #else /* BCMDMA64OSL */
-	pci_unmap_single(osh->pdev, (uint32)pa, size, dir);
+	pci_unmap_single(osh->pdev, (uint32)pa, size, direction);
 #endif /* BCMDMA64OSL */
 
 	DMA_UNLOCK(osh);
@@ -1941,6 +1956,7 @@ osl_spin_lock_init(osl_t *osh)
 		spin_lock_init(lock);
 	return ((void *)lock);
 }
+
 void
 osl_spin_lock_deinit(osl_t *osh, void *lock)
 {

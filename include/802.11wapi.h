@@ -1,8 +1,7 @@
 /*
- * IE/TLV (de)fragmentation declarations/definitions for
- * Broadcom 802.11abgn Networking Device Driver
+ * WAPI specific types and constants relating to 802.11
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,13 +19,22 @@
  *
  *
  * <<Broadcom-WL-IPTag/Dual:>>
- *
  */
 
-#ifndef __FRAG_H__
-#define __FRAG_H__
+#ifndef _802_11wapi_h_
+#define _802_11wapi_h_
 
-int bcm_tlv_dot11_frag_tot_len(const void *buf, uint buf_len,
-	uint8 id, bool id_ext, uint *ie_len);
+#ifdef BCMWAPI_WAI
+#define WAPI_IE_MIN_LEN		20	/* WAPI IE min length */
+#define WAPI_VERSION		1	/* WAPI version */
+#define WAPI_VERSION_LEN	2	/* WAPI version length */
+#define WAPI_OUI		"\x00\x14\x72"	/* WAPI OUI */
+#define WAPI_OUI_LEN		DOT11_OUI_LEN	/* WAPI OUI length */
+#endif /* BCMWAPI_WAI */
 
-#endif /* __FRAG_H__ */
+#ifdef BCMWAPI_WPI
+#define SMS4_KEY_LEN		16
+#define SMS4_WPI_CBC_MAC_LEN	16
+#endif
+
+#endif /* _802_11wapi_h_ */

@@ -1,7 +1,7 @@
 /*
  * Linux DHD Bus Module for PCIE
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -156,7 +156,7 @@ typedef struct _dhd_ds_trace_t {
 
 #define PCIE_FASTLPO_ENABLED(buscorerev) \
 	((buscorerev == 66) || (buscorerev == 67) || (buscorerev == 68) || \
-	(buscorerev == 70) || (buscorerev == 72))
+	(buscorerev == 70) || (buscorerev == 72) || (buscorerev == 76))
 
 /*
  * HW JIRA - CRWLPCIEGEN2-672
@@ -544,7 +544,8 @@ typedef struct dhd_bus {
 #ifdef BCMSLTGT
 	int xtalfreq;		/* Xtal frequency used for htclkratio calculation */
 	uint32 ilp_tick;	/* ILP ticks per second read from pmutimer */
-	uint32 xtal_ratio;	/* xtal ticks per 4 ILP ticks read from pmu_xtalfreq */
+	uint32 alp_to_ilp_ratio;	/* ALP ticks per ILP ticks read from pmu_xtalfreq */
+	uint32 xtal_to_alp_ratio;	/* xtal to ALP ratio which can change from chip to chip */
 #endif /* BCMSLTGT */
 	uint16 hp2p_txcpl_max_items;
 	uint16 hp2p_rxcpl_max_items;
@@ -836,9 +837,8 @@ extern int dhdpcie_send_mb_data(dhd_bus_t *bus, uint32 h2d_mb_data);
 #ifdef DHD_WAKE_STATUS
 int bcmpcie_get_total_wake(struct dhd_bus *bus);
 int bcmpcie_set_get_wake(struct dhd_bus *bus, int flag);
-#if defined(EWP_EDL)
-int bcmpcie_get_edl_wake(struct dhd_bus *bus);
-#endif /* EWP_EDL */
+int bcmpcie_get_wake(struct dhd_bus *bus);
+int bcmpcie_set_get_wake_pkt_dump(struct dhd_bus *bus, int wake_pkt_dump);
 #endif /* DHD_WAKE_STATUS */
 #ifdef DHD_MMIO_TRACE
 extern void dhd_dump_bus_mmio_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf);
@@ -947,4 +947,7 @@ extern void dhd_deinit_dongle_ds_lock(dhd_bus_t *bus);
 
 extern bool dhd_check_htput_chip(dhd_bus_t *bus);
 
+#if defined(DEVICE_TX_STUCK_DETECT) && defined(ASSOC_CHECK_SR)
+void dhd_assoc_check_sr(dhd_pub_t *dhd, bool state);
+#endif /* DEVICE_TX_STUCK_DETECT && ASSOC_CHECK_SR */
 #endif /* dhd_pcie_h */

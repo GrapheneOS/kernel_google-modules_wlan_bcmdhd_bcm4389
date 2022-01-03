@@ -5,7 +5,7 @@
  * IEEE Std 802.1X-2001
  * IEEE 802.1X RADIUS Usage Guidelines
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -237,15 +237,26 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8 data[BCM_FLEX_ARRAY];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_encap_data_t;
 
-#define EAPOL_WPA2_ENCAP_DATA_HDR_LEN 	6
+#define EAPOL_WPA2_ENCAP_DATA_HDR_LEN		6u
 
-#define WPA2_KEY_DATA_SUBTYPE_GTK	1
-#define WPA2_KEY_DATA_SUBTYPE_STAKEY	2
-#define WPA2_KEY_DATA_SUBTYPE_MAC	3
-#define WPA2_KEY_DATA_SUBTYPE_PMKID	4
-#define WPA2_KEY_DATA_SUBTYPE_IGTK	9
-#define WPA2_KEY_DATA_SUBTYPE_OCI	13
-#define WPA2_KEY_DATA_SUBTYPE_BIGTK	14
+#define WPA2_KEY_DATA_SUBTYPE_GTK		1
+#define WPA2_KEY_DATA_SUBTYPE_STAKEY		2
+#define WPA2_KEY_DATA_SUBTYPE_MAC		3
+#define WPA2_KEY_DATA_SUBTYPE_PMKID		4
+#define WPA2_KEY_DATA_SUBTYPE_IGTK		9
+#define WPA2_KEY_DATA_SUBTYPE_OCI		13
+#define WPA2_KEY_DATA_SUBTYPE_BIGTK		14
+#define WPA2_KEY_DATA_SUBTYPE_MLO_GTK		16
+#define WPA2_KEY_DATA_SUBTYPE_MLO_IGTK		17
+#define WPA2_KEY_DATA_SUBTYPE_MLO_BIGTK		18
+#define WPA2_KEY_DATA_SUBTYPE_MLO_LINK_KDE	19
+
+#define WPA2_GTK_INDEX_MASK			0x03
+#define WPA2_GTK_INDEX_SHIFT			0x00
+#define WPA2_GTK_TRANSMIT			0x04
+#define WPA2_MLO_GTK_LINK_ID_MASK		0xF0u
+#define WPA2_MLO_GTK_LINK_ID_SHIFT		0x4u
+#define EAPOL_WPA2_KEY_GTK_ENCAP_HDR_LEN	2u
 
 /* GTK encapsulation */
 typedef BWL_PRE_PACKED_STRUCT struct {
@@ -254,12 +265,14 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8	gtk[EAPOL_WPA_MAX_KEY_SIZE];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_key_gtk_encap_t;
 
-#define EAPOL_WPA2_KEY_GTK_ENCAP_HDR_LEN 	2
+/* MLO GTK encapsulation */
+typedef BWL_PRE_PACKED_STRUCT struct {
+	uint8	flags;			/* KeyID [0-1], Tx [2], rsvd [3], link_id [4-7] */
+	uint8	PN[6];			/* Packet number */
+	uint8	gtk[EAPOL_WPA_MAX_KEY_SIZE];
+} BWL_POST_PACKED_STRUCT eapol_wpa2_key_mlo_gtk_encap_t;
 
-#define WPA2_GTK_INDEX_MASK	0x03
-#define WPA2_GTK_INDEX_SHIFT	0x00
-
-#define WPA2_GTK_TRANSMIT	0x04
+#define EAPOL_WPA2_KEY_IGTK_ENCAP_HDR_LEN	8u
 
 /* IGTK encapsulation */
 #define EAPOL_RSN_IPN_SIZE	6u
@@ -269,17 +282,43 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8	key[EAPOL_WPA_MAX_KEY_SIZE];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_key_igtk_encap_t;
 
-#define EAPOL_WPA2_KEY_IGTK_ENCAP_HDR_LEN	8u
+/* MLO IGTK encapsulation */
+typedef BWL_PRE_PACKED_STRUCT struct {
+	uint16	key_id;
+	uint8	ipn[EAPOL_RSN_IPN_SIZE];
+	uint8	link_id;		/* rsvd [0-3], link_id [4-7] */
+	uint8	key[EAPOL_WPA_MAX_KEY_SIZE];
+} BWL_POST_PACKED_STRUCT eapol_wpa2_key_mlo_igtk_encap_t;
 
 /* BIGTK encapsulation */
 #define EAPOL_RSN_BIPN_SIZE	6u
 typedef BWL_PRE_PACKED_STRUCT struct {
-	uint16  key_id;
-	uint8   bipn[EAPOL_RSN_BIPN_SIZE];
-	uint8   key[EAPOL_WPA_MAX_KEY_SIZE];
+	uint16	key_id;
+	uint8	bipn[EAPOL_RSN_BIPN_SIZE];
+	uint8	key[EAPOL_WPA_MAX_KEY_SIZE];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_key_bigtk_encap_t;
 
+/* MLO BIGTK encapsulation */
+#define EAPOL_RSN_MLO_BIPN_SIZE	6u
+typedef BWL_PRE_PACKED_STRUCT struct {
+	uint16	key_id;
+	uint8	bipn[EAPOL_RSN_MLO_BIPN_SIZE];
+	uint8	link_id;		/* rsvd [0-3], link_id [4-7] */
+	uint8	key[EAPOL_WPA_MAX_KEY_SIZE];
+} BWL_POST_PACKED_STRUCT eapol_wpa2_key_mlo_bigtk_encap_t;
+
 #define EAPOL_WPA2_KEY_BIGTK_ENCAP_HDR_LEN	8u
+
+#define EAPOL_WPA2_LINK_INFO_LINK_ID_MASK	0xF
+#define EAPOL_WPA2_LINK_INFO_LINK_ID_SHIFT	4
+#define EAPOL_WPA2_LINK_INFO_RSNXE_PRESENT	0x10
+
+/* MLO KDE encapsulation */
+typedef BWL_PRE_PACKED_STRUCT struct {
+	uint8	link_info;		/* link_id [0-3], Rxneinfo [4], rsvd [5-7] */
+	uint8	mac[ETHER_ADDR_LEN];
+	uint8	data[BCM_FLEX_ARRAY];
+} BWL_POST_PACKED_STRUCT eapol_wpa2_key_mlo_link_encap_t;
 
 /* STAKey encapsulation */
 typedef BWL_PRE_PACKED_STRUCT struct {

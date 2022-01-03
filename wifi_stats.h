@@ -2,7 +2,7 @@
  * Common stats definitions for clients of dongle
  * ports
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -30,6 +30,10 @@
 
 #include <ethernet.h>
 #include <802.11.h>
+
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif /* CONFIG_COMPAT */
 
 typedef int32 wifi_radio;
 typedef int32 wifi_channel;
@@ -204,6 +208,28 @@ typedef struct {
 	uint32 on_time_hs20;
 	uint32 num_channels;
 } wifi_radio_stat_h;
+
+typedef struct {
+	wifi_radio radio;
+	uint32 on_time;
+	uint32 tx_time;
+	uint32 num_tx_levels;
+	uint32 *tx_time_per_levels;
+	uint32 rx_time;
+	uint32 on_time_scan;
+	uint32 on_time_nbd;
+	uint32 on_time_gscan;
+	uint32 on_time_roam_scan;
+	uint32 on_time_pno_scan;
+	uint32 on_time_hs20;
+	uint32 num_channels;
+} wifi_radio_stat_h_v2;
+
+/* radio statistics */
+typedef struct {
+	wifi_radio_stat_h_v2 radio_stats;
+	wifi_channel_stat channels[];  // channel statistics
+} wifi_radio_stat;
 
 /* per rate statistics */
 typedef struct {

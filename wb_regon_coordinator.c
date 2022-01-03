@@ -1,7 +1,7 @@
 /*
  * DHD BT WiFi Coex RegON Coordinator
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -226,6 +226,7 @@ static __poll_t wbrc_bt_dev_poll(struct file *filep, poll_table *wait)
 
 	return mask;
 }
+
 int wbrc_reset_wait_on_condition(wait_queue_head_t *reset_waitq, uint *var, uint condition);
 
 static int wbrc_bt_dev_open(struct inode *inodep, struct file *filep)
@@ -417,6 +418,7 @@ int wbrc_wlan_on_started(void)
 
 	return 0;
 }
+
 /* WBRC_LOCK should be held from caller */
 int wbrc_bt_reset_ack(struct wbrc_pvt_data *wbrc_data)
 {

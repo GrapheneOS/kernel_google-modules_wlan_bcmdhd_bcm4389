@@ -1,7 +1,7 @@
 /*
  * Wifi Virtual Interface implementaion
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -115,7 +115,6 @@
 #define DNGL_FUNC(func, parameters)
 #else
 #define DNGL_FUNC(func, parameters) func parameters
-#define COEX_DHCP
 
 #endif /* defined(BCMDONGLEHOST) */
 
@@ -383,6 +382,7 @@ wl_cfg80211_is_policy_config_allowed(struct bcm_cfg80211 *cfg)
 	return ret;
 }
 #endif /* WL_IFACE_MGMT */
+
 #ifdef WL_NANP2P
 int
 wl_cfg80211_set_iface_conc_disc(struct net_device *ndev,
@@ -418,6 +418,7 @@ wl_cfg80211_get_iface_conc_disc(struct net_device *ndev)
 	return cfg->conc_disc;
 }
 #endif /* WL_NANP2P */
+
 #ifdef WL_IFACE_MGMT
 int
 wl_cfg80211_set_iface_policy(struct net_device *ndev,
@@ -644,6 +645,7 @@ wl_cfg80211_disc_if_mgmt(struct bcm_cfg80211 *cfg,
 				* as for AP and associated ifaces, both are same
 				*/
 			}
+			/* falls through */
 			case WL_IF_POLICY_DEFAULT: {
 				 if (sec_wl_if_type == WL_IF_TYPE_AP) {
 					WL_INFORM_MEM(("AP is active, cant support new iface\n"));
@@ -656,11 +658,11 @@ wl_cfg80211_disc_if_mgmt(struct bcm_cfg80211 *cfg,
 						* Fall through
 						*/
 					} else {
-                                                /* clear associated group interfaces */
-                                                WL_INFORM_MEM(("remove P2P group,"
-                                                        " to support new iface\n"));
-                                                ret = wl_cfg80211_delete_iface(cfg,
-                                                        sec_wl_if_type);
+						/* clear associated group interfaces */
+						WL_INFORM_MEM(("remove P2P group,"
+							" to support new iface\n"));
+						ret = wl_cfg80211_delete_iface(cfg,
+							sec_wl_if_type);
 					}
 				} else if (sec_wl_if_type == WL_IF_TYPE_NAN) {
 					ret = wl_cfg80211_delete_iface(cfg, sec_wl_if_type);
@@ -1601,6 +1603,14 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 		dev->ifindex, chspec, channel_type,
 		CHSPEC_CHANNEL(chspec), chan->center_freq));
 
+#ifdef WL_DUAL_STA
+	/* In case of Dual STA if both STAs are connected, do not allow softAP bringup */
+	if (wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_STA) >= 2) {
+		WL_ERR(("Dual STA case, softAP bringup not supported\n"));
+		return -ENOTSUPP;
+	}
+#endif /* WL_DUAL_STA */
+
 		if (IS_P2P_GO(dev->ieee80211_ptr) && (CHSPEC_IS6G(chspec))) {
 			WL_ERR(("P2P GO not allowed on 6G\n"));
 			return -ENOTSUPP;
@@ -1613,6 +1623,13 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	}
 #endif /* WL_SOFTAP_6G */
 
+#ifdef WL_UNII4_CHAN
+	if (CHSPEC_IS5G(chspec) &&
+		IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec))) {
+		WL_ERR(("AP not allowed on UNII-4 chanspec 0x%x\n", chspec));
+		return -ENOTSUPP;
+	}
+#endif /* WL_UNII4_CHAN */
 	/* Check whether AP is already operational */
 	wl_get_ap_chanspecs(cfg, &ap_oper_data);
 	if (ap_oper_data.count >= MAX_AP_IFACES) {
@@ -1657,13 +1674,13 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	/* Some customer platform used limited number of channels
 	 * for SoftAP interface on STA/SoftAP concurrent mode.
 	 * - 2.4GHz Channel: CH1 - CH13
-	 * - 5GHz Channel: CH149 (it depends on the country code)
+	 * - 5GHz Channel: CH 149, 153, 157, 161 (it depends on the country code)
 	 * If the Android framework sent invaild channel configuration
 	 * to DHD, driver should change the channel which is suitable for
 	 * STA/SoftAP concurrent mode.
 	 * - Set operating channel to CH1 (default 2.4GHz channel for
 	 *   restricted APSTA mode) if STA interface was associated to
-	 *   5GHz APs except for CH149.
+	 *   5GHz APs except for CH149, 153, 157, 161.
 	 * - Otherwise, set the channel to the same channel as existing AP.
 	 */
 	if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP &&
@@ -1675,11 +1692,13 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 			/* Do not try SCC in 5GHz if channel is not CH149 */
 			chspec = (
 #ifdef WL_6G_BAND
-				CHSPEC_IS6G(*sta_chanspec) ||
+				(CHSPEC_IS6G(*sta_chanspec) &&
+				 (!CHSPEC_IS_6G_PSC(*sta_chanspec) ||
+				  (wf_chspec_primary20_chspec(*sta_chanspec) !=
+				   wf_chspec_primary20_chspec(chspec)))) ||
 #endif /* WL_6G_BAND */
 				(CHSPEC_IS5G(*sta_chanspec) &&
-				wf_chspec_primary20_chan(*sta_chanspec) !=
-				DEFAULT_5G_SOFTAP_CHANNEL)) ?
+				!IS_5G_APCS_CHANNEL(wf_chspec_primary20_chan(*sta_chanspec)))) ?
 				DEFAULT_2G_SOFTAP_CHANSPEC: *sta_chanspec;
 			WL_ERR(("target chanspec will be changed to %x\n", chspec));
 			if (CHSPEC_IS2G(chspec)) {
@@ -1708,6 +1727,14 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	if (CHSPEC_IS5G(chspec) && (bw == WL_CHANSPEC_BW_160)) {
 		bw = WL_CHANSPEC_BW_80;
 	}
+
+#ifdef WL_UNII4_CHAN
+	/* Handle 165/20 channel as special case to not upgrade the bw */
+	if (IS_5G_UNII4_165_CHANNEL(chspec)) {
+		bw = WL_CHANSPEC_BW_20;
+	}
+#endif /* WL_UNII4_CHAN */
+
 #ifdef WL_CELLULAR_CHAN_AVOID
 	if (!CHSPEC_IS6G(chspec)) {
 		wl_cellavoid_sync_lock(cfg);
@@ -1896,7 +1923,7 @@ wl_validate_fils_ind_ie(struct net_device *dev, const bcm_tlv_t *filsindie, s32 
 		err = BCME_NOMEM;
 		goto exit;
 	}
-	iov_buf->version = WL_FILS_IOV_VERSION;
+	iov_buf->version = WL_FILS_IOV_VERSION_1_1;
 	iov_buf->id = WL_FILS_CMD_ADD_IND_IE;
 	iov_buf->len = sizeof(bcm_xtlv_t) + filsindie->len - 1;
 	pxtlv = (bcm_xtlv_t*)&iov_buf->data[0];
@@ -3186,6 +3213,15 @@ wl_cfg80211_bcn_bringup_ap(
 		}
 #endif /* MFP */
 
+		/* sync up host macaddr */
+		err = wldev_iovar_setbuf(dev, "cur_etheraddr",
+			dev->dev_addr, ETH_ALEN, cfg->ioctl_buf, WLC_IOCTL_SMLEN,
+			&cfg->ioctl_buf_sync);
+		if (err) {
+			WL_ERR(("sync macaddr for softap error\n"));
+			goto exit;
+		}
+
 		bzero(&join_params, sizeof(join_params));
 		/* join parameters starts with ssid */
 		join_params_size = sizeof(join_params.ssid);
@@ -3661,6 +3697,7 @@ wl_cfg80211_start_ap(
 				WL_ERR(("set ap role failed!\n"));
 				return BCME_ERROR;
 			}
+
 		}
 		dev_role = NL80211_IFTYPE_AP;
 #ifdef BCMDONGLEHOST
@@ -3851,6 +3888,8 @@ wl_cfg80211_stop_ap(
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST */
+	u8 null_mac[ETH_ALEN];
+
 	WL_DBG(("Enter \n"));
 
 	 /* wl_cfg80211_start_ap() schedules cfg->ap_work
@@ -3859,7 +3898,6 @@ wl_cfg80211_stop_ap(
 	  * immediately after wl_cfg80211_start_ap().
 	  * In this case we should cancel the work.
 	  */
-
 	cancel_delayed_work_sync(&cfg->ap_work);
 
 #if defined(BCMDONGLEHOST)
@@ -3875,6 +3913,17 @@ wl_cfg80211_stop_ap(
 	if (dev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP) {
 		dev_role = NL80211_IFTYPE_AP;
 		WL_DBG(("stopping AP operation\n"));
+
+		/* Clear macaddress to prevent any macaddress conflict with interface
+		 * like p2p discovery which can run as soon as softap is brought down
+		 */
+		(void)memset_s(null_mac, sizeof(null_mac),  0, sizeof(null_mac));
+		err = wldev_iovar_setbuf(dev, "cur_etheraddr",
+			null_mac, ETH_ALEN, cfg->ioctl_buf, WLC_IOCTL_SMLEN,
+			&cfg->ioctl_buf_sync);
+		if (err) {
+			WL_ERR(("softap mac_addr set failed\n"));
+		}
 	} else if (dev->ieee80211_ptr->iftype == NL80211_IFTYPE_P2P_GO) {
 		dev_role = NL80211_IFTYPE_P2P_GO;
 		WL_DBG(("stopping P2P GO operation\n"));
@@ -4007,6 +4056,7 @@ exit:
 		if (wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) == 0) {
 			dhd->op_mode &= ~DHD_FLAG_HOSTAP_MODE;
 		}
+
 	}
 #endif /* BCMDONGLEHOST */
 	return err;
@@ -5600,7 +5650,7 @@ int wl_set_ap_beacon_rate(struct net_device *dev, int val, char *ifname)
 {
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 	dhd_pub_t *dhdp;
-	wl_rateset_args_t rs;
+	wl_rateset_args_v1_t rs;
 	int error = BCME_ERROR, i;
 	struct net_device *ndev = NULL;
 
@@ -5618,9 +5668,9 @@ int wl_set_ap_beacon_rate(struct net_device *dev, int val, char *ifname)
 		return BCME_NOTAP;
 	}
 
-	bzero(&rs, sizeof(wl_rateset_args_t));
+	bzero(&rs, sizeof(wl_rateset_args_v1_t));
 	error = wldev_iovar_getbuf(ndev, "rateset", NULL, 0,
-		&rs, sizeof(wl_rateset_args_t), NULL);
+		&rs, sizeof(wl_rateset_args_v1_t), NULL);
 	if (error < 0) {
 		WL_ERR(("get rateset failed = %d\n", error));
 		return error;
@@ -5658,7 +5708,7 @@ wl_get_ap_basic_rate(struct net_device *dev, char* command, char *ifname, int to
 {
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 	dhd_pub_t *dhdp;
-	wl_rateset_args_t rs;
+	wl_rateset_args_v1_t rs;
 	int error = BCME_ERROR;
 	int i, bytes_written = 0;
 	struct net_device *ndev = NULL;
@@ -5677,9 +5727,9 @@ wl_get_ap_basic_rate(struct net_device *dev, char* command, char *ifname, int to
 		return BCME_NOTAP;
 	}
 
-	bzero(&rs, sizeof(wl_rateset_args_t));
+	bzero(&rs, sizeof(wl_rateset_args_v1_t));
 	error = wldev_iovar_getbuf(ndev, "rateset", NULL, 0,
-		&rs, sizeof(wl_rateset_args_t), NULL);
+		&rs, sizeof(wl_rateset_args_v1_t), NULL);
 	if (error < 0) {
 		WL_ERR(("get rateset failed = %d\n", error));
 		return error;
@@ -6351,6 +6401,7 @@ int wl_set_softap_elna_bypass(struct net_device *dev, char *ifname, int enable)
 fail:
 	return err;
 }
+
 int wl_get_softap_elna_bypass(struct net_device *dev, char *ifname, void *param)
 {
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
@@ -6817,13 +6868,12 @@ void
 wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_roam_conf_t state)
 {
-
-	WL_DBG_MEM(("Enter. state:%d stas:%d\n", state, cfg->stas_associated));
-
 	if (!cfg || !dev) {
 		WL_ERR(("invalid args\n"));
 		return;
 	}
+
+	WL_DBG_MEM(("Enter. state:%d stas:%d\n", state, cfg->stas_associated));
 
 	if (!IS_STA_IFACE(dev->ieee80211_ptr)) {
 		WL_ERR(("non-sta iface. ignore.\n"));
@@ -7005,3 +7055,93 @@ wl_cfgvif_get_iftype_count(struct bcm_cfg80211 *cfg, wl_iftype_t iftype)
 	}
 	return count;
 }
+
+#ifdef CUSTOM_SOFTAP_SET_ANT
+int
+wl_set_softap_antenna(struct net_device *dev, char *ifname, int set_chain)
+{
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	struct net_device *ifdev = NULL;
+	char iobuf[WLC_IOCTL_SMLEN];
+	int err = BCME_OK;
+	int iftype = 0;
+	s32 val = 1;
+
+	memset(iobuf, 0, WLC_IOCTL_SMLEN);
+
+	/* Check the interface type */
+	ifdev = wl_get_netdev_by_name(cfg, ifname);
+	if (ifdev == NULL) {
+		WL_ERR(("%s: Could not find net_device for ifname:%s\n",
+			__FUNCTION__, ifname));
+		err = BCME_BADARG;
+		goto fail;
+	}
+
+	iftype = ifdev->ieee80211_ptr->iftype;
+	if (iftype == NL80211_IFTYPE_AP) {
+		err = wldev_ioctl_set(dev, WLC_DOWN, &val, sizeof(s32));
+		if (err) {
+			WL_ERR(("WLC_DOWN error %d\n", err));
+			goto fail;
+		} else {
+			err = wldev_iovar_setint(ifdev, "txchain", set_chain);
+			if (unlikely(err)) {
+				WL_ERR(("%s: Failed to set txchain[%d], err=%d\n",
+					__FUNCTION__, set_chain, err));
+			}
+			err = wldev_iovar_setint(ifdev, "rxchain", set_chain);
+			if (unlikely(err)) {
+				WL_ERR(("%s: Failed to set rxchain[%d], err=%d\n",
+					__FUNCTION__, set_chain, err));
+			}
+			err = wldev_ioctl_set(dev, WLC_UP, &val, sizeof(s32));
+			if (err < 0) {
+				WL_ERR(("WLC_UP error %d\n", err));
+			}
+		}
+	} else {
+		WL_ERR(("%s: Chain set should control in SoftAP mode only\n",
+			__FUNCTION__));
+		err = BCME_BADARG;
+	}
+fail:
+	return err;
+}
+
+int
+wl_get_softap_antenna(struct net_device *dev, char *ifname, void *param)
+{
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	uint32 *cur_rxchain = (uint32*)param;
+	struct net_device *ifdev = NULL;
+	char iobuf[WLC_IOCTL_SMLEN];
+	int err = BCME_OK;
+	int iftype = 0;
+
+	memset(iobuf, 0, WLC_IOCTL_SMLEN);
+
+	/* Check the interface type */
+	ifdev = wl_get_netdev_by_name(cfg, ifname);
+	if (ifdev == NULL) {
+		WL_ERR(("%s: Could not find net_device for ifname:%s\n", __FUNCTION__, ifname));
+		err = BCME_BADARG;
+		goto fail;
+	}
+
+	iftype = ifdev->ieee80211_ptr->iftype;
+	if (iftype == NL80211_IFTYPE_AP) {
+		err = wldev_iovar_getint(ifdev, "rxchain", cur_rxchain);
+		if (unlikely(err)) {
+			WL_ERR(("%s: Failed to get rxchain, err=%d\n",
+				__FUNCTION__, err));
+		}
+	} else {
+		WL_ERR(("%s: rxchain should control in SoftAP mode only\n",
+			__FUNCTION__));
+		err = BCME_BADARG;
+	}
+fail:
+	return err;
+}
+#endif /* CUSTOM_SOFTAP_SET_ANT */

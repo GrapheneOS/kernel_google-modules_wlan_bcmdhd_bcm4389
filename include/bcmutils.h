@@ -1,7 +1,7 @@
 /*
  * Misc useful os-independent macros and functions.
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -145,7 +145,33 @@ extern int bcm_ether_atoe(const char *p, struct ether_addr *ea);
 
 #define SPINWAIT_TRAP(exp, us) SPINWAIT(exp, us)
 
+#elif defined(PHY_REG_TRACE_FRAMEWORK)
+#include <phy_utils_log_api.h>
+#define SPINWAIT(exp, us) { \
+	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \
+	phy_utils_log_spinwait_start_api(); \
+	while (((exp) != 0) && (uint)(countdown >= SPINWAIT_POLL_PERIOD)) { \
+		OSL_DELAY(SPINWAIT_POLL_PERIOD); \
+		countdown -= SPINWAIT_POLL_PERIOD; \
+	} \
+	phy_utils_log_spinwait_end_api(us, countdown); \
+}
+
+#define SPINWAIT_TRAP(exp, us) { \
+	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \
+	phy_utils_log_spinwait_start_api(); \
+	while (((exp) != 0) && (uint)(countdown >= SPINWAIT_POLL_PERIOD)) { \
+		OSL_DELAY(SPINWAIT_POLL_PERIOD); \
+		countdown -= SPINWAIT_POLL_PERIOD; \
+	} \
+	phy_utils_log_spinwait_end_api(us, countdown); \
+	if ((exp)) { \
+		OSL_SYS_HALT(); \
+	} \
+}
+
 #else
+
 #define SPINWAIT(exp, us) { \
 	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \
 	while (((exp) != 0) && (uint)(countdown >= SPINWAIT_POLL_PERIOD)) { \
@@ -153,6 +179,12 @@ extern int bcm_ether_atoe(const char *p, struct ether_addr *ea);
 		countdown -= SPINWAIT_POLL_PERIOD; \
 	} \
 }
+
+/* No TRAP in bootloader */
+#if defined(BCM_BOOTLOADER)
+#define SPINWAIT_TRAP(x, y)	SPINWAIT(x, y)
+
+#else /* !BCM_BOOTLOADER */
 
 #define SPINWAIT_TRAP(exp, us) { \
 	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \
@@ -164,6 +196,8 @@ extern int bcm_ether_atoe(const char *p, struct ether_addr *ea);
 		OSL_SYS_HALT(); \
 	} \
 }
+#endif /* BCM_BOOTLOADER */
+
 #endif /* BCMFUZZ */
 
 /* forward definition of ether_addr structure used by some function prototypes */
@@ -902,19 +936,25 @@ DECLARE_MAP_API(8, 2, 3, 3u, 0x00FFu) /* setbit8() and getbit8() */
  * If you want to use this macro to the logic,
  * USE MACF instead
  */
-#if !defined(SIMPLE_MAC_PRINT)
-#define MACDBG "%02x:%02x:%02x:%02x:%02x:%02x"
-#define MAC2STRDBG(ea)	((const uint8*)(ea))[0], \
+#define MACDBG_FULL		"%02x:%02x:%02x:%02x:%02x:%02x"
+#define MAC2STRDBG_FULL(ea)	((const uint8*)(ea))[0], \
 			((const uint8*)(ea))[1], \
 			((const uint8*)(ea))[2], \
 			((const uint8*)(ea))[3], \
 			((const uint8*)(ea))[4], \
 			((const uint8*)(ea))[5]
-#else
-#define MACDBG				"%02x:xx:xx:xx:x%x:%02x"
-#define MAC2STRDBG(ea)	((const uint8*)(ea))[0], \
+
+#define MACDBG_SIMPLE		"%02x:xx:xx:xx:x%x:%02x"
+#define MAC2STRDBG_SIMPLE(ea)	((const uint8*)(ea))[0], \
 			(((const uint8*)(ea))[4] & 0xf), \
 			((const uint8*)(ea))[5]
+
+#if !defined(SIMPLE_MAC_PRINT)
+#define MACDBG MACDBG_FULL
+#define MAC2STRDBG MAC2STRDBG_FULL
+#else
+#define MACDBG MACDBG_SIMPLE
+#define MAC2STRDBG MAC2STRDBG_SIMPLE
 #endif /* SIMPLE_MAC_PRINT */
 
 #define MACOUIDBG "%02x:%x:%02x"
@@ -1000,6 +1040,8 @@ extern char *bcm_brev_str(uint32 brev, char *buf);
 extern void printbig(char *buf);
 extern void prhex(const char *msg, const uchar *buf, uint len);
 extern void prhexstr(const char *prefix, const uint8 *buf, uint len, bool newline);
+/* print the buffer in hex string format with the most significant byte first */
+extern void prhexstr_msb(const char *prefix, const uint8 *buf, uint len, bool newline);
 
 /* bcmerror */
 extern const char *bcmerrorstr(int bcmerror);
@@ -1034,6 +1076,10 @@ extern void bcm_binit(struct bcmstrbuf *b, char *buf, uint size);
 #define bcm_breset(b) do {bcm_binit(b, (b)->origbuf, (b)->origsize);} while (0)
 extern void bcm_bprhex(struct bcmstrbuf *b, const char *msg, bool newline,
 	const uint8 *buf, uint len);
+/* print the buffer in hex string format with the most significant byte first */
+extern void bcm_bprhex_msb(struct bcmstrbuf *b, const char *msg, bool newline,
+	const uint8 *buf, uint len);
+extern int bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...);
 
 extern void bcm_inc_bytes(uchar *num, int num_bytes, uint8 amount);
 extern int bcm_cmp_bytes(const uchar *arg1, const uchar *arg2, uint8 nbytes);
@@ -1043,8 +1089,6 @@ typedef  uint32 (*bcmutl_rdreg_rtn)(void *arg0, uint arg1, uint32 offset);
 extern uint bcmdumpfields(bcmutl_rdreg_rtn func_ptr, void *arg0, uint arg1, struct fielddesc *str,
                           char *buf, uint32 bufsize);
 extern uint bcm_bitcount(const uint8 *bitmap, uint bytelength);
-
-extern int bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...);
 
 /* power conversion */
 extern uint16 bcm_qdbm_to_mw(uint8 qdbm);
@@ -1114,7 +1158,8 @@ bool replace_nvram_variable(char *varbuf, unsigned int buflen, const char *varia
 #define BCM_OBJECT_FEATURE_2     (1 << 2)
 /* object feature: clear flag bits field set with this flag */
 #define BCM_OBJECT_FEATURE_CLEAR (1 << 31)
-#if defined(BCM_OBJECT_TRACE) && !defined(BINCMP)
+#if defined(BCM_OBJECT_TRACE)
+#if !defined(BINCMP)
 #define bcm_pkt_validate_chk(obj, func)	do { \
 	void * pkttag; \
 	bcm_object_trace_chk(obj, 0, 0, \
@@ -1124,6 +1169,18 @@ bool replace_nvram_variable(char *varbuf, unsigned int buflen, const char *varia
 			func, __LINE__); \
 	} \
 } while (0)
+#else  /* BINCMP */
+/* Suppress line numbers in binary-comparison builds. Otherwise identical to above. */
+#define bcm_pkt_validate_chk(obj, func)	do { \
+	void * pkttag; \
+	bcm_object_trace_chk(obj, 0, 0, \
+		func, 1); \
+	if ((pkttag = PKTTAG(obj))) { \
+		bcm_object_trace_chk(obj, 1, DHD_PKTTAG_SN(pkttag), \
+			func, 1); \
+	} \
+} while (0)
+#endif /* !BINCMP */
 extern void bcm_object_trace_opr(void *obj, uint32 opt, const char *caller, int line);
 extern void bcm_object_trace_upd(void *obj, void *obj_new);
 extern void bcm_object_trace_chk(void *obj, uint32 chksn, uint32 sn,
@@ -1141,7 +1198,7 @@ extern void bcm_object_trace_deinit(void);
 #define bcm_object_feature_get(a, b, c)
 #define bcm_object_trace_init()
 #define bcm_object_trace_deinit()
-#endif /* BCM_OBJECT_TRACE && !BINCMP */
+#endif /* BCM_OBJECT_TRACE */
 
 /* Public domain bit twiddling hacks/utilities: Sean Eron Anderson */
 
@@ -1362,6 +1419,7 @@ dll_init(dll_t *node_p)
 	node_p->next_p = node_p;
 	node_p->prev_p = node_p;
 }
+
 /* dll macros returing a pointer to dll_t */
 
 static INLINE_ALWAYS dll_t *

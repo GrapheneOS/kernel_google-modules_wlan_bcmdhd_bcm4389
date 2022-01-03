@@ -1,7 +1,7 @@
 /*
  * Platform Dependent file for usage of Preallocted Memory
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -112,7 +112,7 @@
 		((WLAN_MAX_PKTID_IOCTL_ITEMS+1) * WLAN_DHD_PKTID_IOCTL_MAP_ITEM_SIZE))
 
 #define DHD_LOG_DUMP_BUF_SIZE	(1024 * 1024 * 4)
-#define DHD_LOG_DUMP_BUF_EX_SIZE	(1024 * 1024 * 2)
+#define DHD_LOG_DUMP_BUF_EX_SIZE	(1024 * 8)
 
 #define DHD_PKTLOG_DUMP_BUF_SIZE	(64 * 1024)
 

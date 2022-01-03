@@ -1,7 +1,7 @@
 /*
  * OS Abstraction Layer
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -161,28 +161,8 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 #endif
 
 #ifndef OSL_OBFUSCATE_BUF
-#if defined(_RTE_)
-#define OSL_OBFUSCATE_BUF(x) osl_obfuscate_ptr(x)
-#else
 #define OSL_OBFUSCATE_BUF(x) (x)
-#endif	/* _RTE_ */
 #endif	/* OSL_OBFUSCATE_BUF */
-
-#ifndef OSL_GET_HCAPISTIMESYNC
-#if defined(_RTE_)
-#define OSL_GET_HCAPISTIMESYNC() osl_get_hcapistimesync()
-#else
-#define OSL_GET_HCAPISTIMESYNC()
-#endif	/* _RTE_ */
-#endif	/*  OSL_GET_HCAPISTIMESYNC */
-
-#ifndef OSL_GET_HCAPISPKTTXS
-#if defined(_RTE_)
-#define OSL_GET_HCAPISPKTTXS() osl_get_hcapispkttxs()
-#else
-#define OSL_GET_HCAPISPKTTXS()
-#endif	/* _RTE_ */
-#endif	/*  OSL_GET_HCAPISPKTTXS */
 
 #if !defined(PKTC_DONGLE)
 #define	PKTCGETATTR(skb)	(0)
@@ -236,7 +216,6 @@ do { \
 #define PKTSETPROFILEIDX(p, idx)	BCM_REFERENCE(idx)
 #endif
 
-#ifndef _RTE_
 /* Lbuf with fraglist */
 #ifndef PKTFRAGPKTID
 #define PKTFRAGPKTID(osh, lb)		(0)
@@ -411,7 +390,6 @@ do { \
 #ifndef PKTSETUDR
 #define PKTRESETUDR(osh, lb)			BCM_REFERENCE(osh)
 #endif
-#endif	/* _RTE_ */
 
 #if !defined(__linux__)
 #define PKTLIST_INIT(x)			BCM_REFERENCE(x)
@@ -493,4 +471,34 @@ do { \
 #define PKTSETQCALLER(lb, queue, caller_addr)
 #define PKTSETQCALLER_LIST(head, npkts, queue, caller_addr)
 #endif /* DBG_PKTLEAK */
+
+/* Memory breakup capturing macros */
+#ifdef BCMDBG_MEM_BREAKUP
+#define MB_START(var) \
+		uint mb_memuse_before_##var = MALLOCED(NULL)
+
+#define MB_END(var, fmt, ...) \
+		do { \
+			uint mb_memuse_##var = MALLOCED(NULL) - mb_memuse_before_##var; \
+			if (mb_memuse_##var) { \
+				printf("[MB] " fmt, ##__VA_ARGS__); \
+				printf(" %d\n", mb_memuse_##var); \
+			} \
+		} while (0)
+#else
+#define MB_START(var)
+#define MB_END(var, fmt, ...)
+#endif /* BCMDBG_MEM_BREAKUP */
+
+/* ASSERT NULL check should not be enabled for ROM build */
+#if defined(BCMROMBUILD) && defined(ENABLE_ASSERT_NULL)
+#error "Do not enable ENABLE_ASSERT_NULL for ROM builds..."
+#endif
+
+#ifdef ENABLE_ASSERT_NULL
+#define ASSERT_NULL(expr) ASSERT(expr)
+#else
+#define ASSERT_NULL(expr) // do nothing
+#endif /* ENABLE_ASSERT_NULL */
+
 #endif	/* _osl_h_ */

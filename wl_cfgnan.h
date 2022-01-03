@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -134,6 +134,7 @@
 #define NAN_SRF_MAX_MAC			(NAN_BLOOM_LENGTH_DEFAULT / ETHER_ADDR_LEN)
 #define NAN_MAX_PMK_LEN			32u
 #define NAN_ERROR_STR_LEN		255u
+#define NAN_MAX_SCID_BUF_LEN		1024u
 
 /* NAN related Capabilities */
 #define MAX_CONCURRENT_NAN_CLUSTERS		1u
@@ -481,6 +482,7 @@ typedef struct nan_datapath_cmd_data {
 	uint8 num_ndp_instances;
 	uint8 duration;
 	char ndp_iface[IFNAMSIZ+1];
+	nan_str_data_t scid;        /* security context information */
 } nan_datapath_cmd_data_t;
 
 typedef struct nan_rssi_cmd_data {
@@ -677,7 +679,12 @@ typedef struct wl_nan_iov {
 
 #ifdef WL_NAN_DISC_CACHE
 
-#define NAN_MAX_CACHE_DISC_RESULT 16
+#ifndef CUSTOM_NAN_MAX_CACHE_DISC_RESULT
+#define NAN_MAX_CACHE_DISC_RESULT 40
+#else
+#define NAN_MAX_CACHE_DISC_RESULT CUSTOM_NAN_MAX_CACHE_DISC_RESULT
+#endif /* CUSTOM_NAN_MAX_CACHE_DISC_RESULT */
+
 typedef struct {
 	bool valid;
 	wl_nan_instance_id_t pub_id;

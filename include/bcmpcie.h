@@ -3,7 +3,7 @@
  * Software-specific definitions shared between device and host side
  * Explains the shared area between host and dongle
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -157,9 +157,12 @@ typedef struct {
 #define PCIE_SHARED2_LLW2		0x02000000u	/* GCR based LLW2 */
 #define PCIE_SHARED2_RX_CMPL_PRIO_VALID	0x04000000u	/* Prio is valid in Rx Cmpl */
 #define PCIE_SHARED2_LPM_SUPPORT	0x08000000u	/* LPM mode support */
+#define PCIE_SHARED2_METADATA_RING	0x10000000u	/* Metadata Ring support */
 
 #define PCIE_SHARED2_D2H_D11_TX_STATUS	0x40000000
 #define PCIE_SHARED2_H2D_D11_TX_STATUS	0x80000000
+
+#define PCIE_SHARED3_CFG_TRAP_SUPPORT   0x00000001 /* special trap sig supported in config space */
 
 #define PCIE_SHARED_D2H_MAGIC		0xFEDCBA09
 #define PCIE_SHARED_H2D_MAGIC		0x12345678
@@ -202,9 +205,10 @@ typedef uint16			pcie_hwa_db_index_t;	/* 16 bit HWA index (IPC Rev 7) */
 #define BCMPCIE_D2H_RING_TYPE_AC_RX_COMPLETE		0x5
 #define BCMPCIE_D2H_RING_TYPE_BTLOG_CPL			0x6
 #define BCMPCIE_D2H_RING_TYPE_EDL                       0x7
-#define BCMPCIE_D2H_RING_TYPE_HPP_TX_CPL		0x8
-#define BCMPCIE_D2H_RING_TYPE_HPP_RX_CPL		0x9
-#define BCMPCIE_D2H_RING_TYPE_MESH_RX_CPL		0xA
+#define BCMPCIE_D2H_RING_TYPE_HPP_TX_CPL                0x8
+#define BCMPCIE_D2H_RING_TYPE_HPP_RX_CPL                0x9
+#define BCMPCIE_D2H_RING_TYPE_MESH_RX_CPL               0xA
+#define BCMPCIE_D2H_RING_TYPE_MDATA_CPL                 0xB
 
 /**
  * H2D and D2H, WR and RD index, are maintained in the following arrays:

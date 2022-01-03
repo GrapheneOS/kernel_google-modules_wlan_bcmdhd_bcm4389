@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -138,6 +138,31 @@ static int pktpool_deregister(pktpool_t * poolptr);
 
 /** add declaration */
 static void pktpool_avail_notify(pktpool_t *pktp);
+
+#ifdef DONGLEBUILD
+#define PKTPOOL_RXLFRAG(pktp) ((pktp)->type == lbuf_rxfrag)
+#else
+#define PKTPOOL_RXLFRAG(pktp) FALSE
+#endif
+
+#define RXLRAG_POOL_FREELIST_TAIL(pktp)	((pktp)->freelist_tail)
+#ifdef RXLFRAGPOOL_SORT_RXFRAG_DBG
+static const char BCMPOST_TRAP_RODATA(pktpool_deq_print_1)[] =
+        "\n%d removing buffer from the rxlfrag pool\n";
+static const char BCMPOST_TRAP_RODATA(pktpool_enq_print_1)[] =
+        "\n%d adding non rxfrag buffer to the rxlfrag pool, %p, %p\n";
+static const char BCMPOST_TRAP_RODATA(pktpool_enq_print_2)[] =
+        "\n%d adding rxfrag buffer to the rxlfrag pool, %p, %p\n";
+uint32 g_rxlfrag_rxfrag_queued = 0;
+uint32 g_rxlfrag_non_rxfrag_queued = 0;
+#define RXLFRAG_SORT_DBG_PRINT(args)	do { printf args;} while (0)
+#define INCR_RXLFRAG_QUEUE_RXFRAG()	do { g_rxlfrag_rxfrag_queued++; } while (0)
+#define INCR_RXLFRAG_QUEUE_NONRXFRAG()	do { g_rxlfrag_non_rxfrag_queued++; } while (0)
+#else
+#define RXLFRAG_SORT_DBG_PRINT(args) do { } while (0)
+#define INCR_RXLFRAG_QUEUE_RXFRAG() do { } while (0)
+#define INCR_RXLFRAG_QUEUE_NONRXFRAG() do { } while (0)
+#endif /* RXLFRAGPOOL_SORT_RXFRAG_DBG */
 
 /** accessor functions required when ROMming this file, forced into RAM */
 
@@ -351,6 +376,12 @@ pktpool_init(osl_t *osh,
 
 		PKTSETFREELIST(p, pktp->freelist); /* insert p at head of free list */
 		pktp->freelist = p;
+		if (PKTPOOL_RXLFRAG(pktp) && (pktp->pktpool_flags & PKTPOOL_RXLFRAG_SORTED_INSERT))
+		{
+			if (RXLRAG_POOL_FREELIST_TAIL(pktp) == NULL) {
+				RXLRAG_POOL_FREELIST_TAIL(pktp) = pktp->freelist;
+			}
+		}
 
 		pktp->avail++;
 
@@ -675,6 +706,14 @@ BCMPOSTTRAPFASTPATH(pktpool_deq)(pktpool_t *pktp)
 
 	p = pktp->freelist;  /* dequeue packet from head of pktpool free list */
 	pktp->freelist = PKTFREELIST(p); /* free list points to next packet */
+	/* rxlfrag list is ordered list rxfrag packets at head followed by non rxfrag packets */
+	/* rxfrag is packet which already has associated host buffer */
+	if (PKTPOOL_RXLFRAG(pktp) && (pktp->pktpool_flags & PKTPOOL_RXLFRAG_SORTED_INSERT)) {
+		RXLFRAG_SORT_DBG_PRINT((pktpool_deq_print_1, pktp->avail));
+		if (pktp->freelist == NULL) {
+			RXLRAG_POOL_FREELIST_TAIL(pktp) = NULL;
+		}
+	}
 
 #if defined(DONGLEBUILD) && defined(SRMEM)
 	if (SRMEM_ENAB()) {
@@ -696,8 +735,39 @@ BCMPOSTTRAPFASTPATH(pktpool_enq)(pktpool_t *pktp, void *p)
 	ASSERT_FP(p != NULL);
 
 	PKTSETQCALLER(p, pktp, CALL_SITE);
-	PKTSETFREELIST(p, pktp->freelist); /* insert at head of pktpool free list */
-	pktp->freelist = p; /* free list points to newly inserted packet */
+
+	if (PKTPOOL_RXLFRAG(pktp) && (pktp->pktpool_flags & PKTPOOL_RXLFRAG_SORTED_INSERT)) {
+		/* rxfrag pkt becomes head of freelist, non rxfrag becomes tail of the freelist */
+		/* rxfrag is packet which already has associated host buffer */
+		if (PKTISRXFRAG(OSH_NULL, p)) {
+			INCR_RXLFRAG_QUEUE_RXFRAG();
+			RXLFRAG_SORT_DBG_PRINT((pktpool_enq_print_2, pktp->avail,
+				pktp->freelist, RXLRAG_POOL_FREELIST_TAIL(pktp)));
+			PKTSETFREELIST(p, pktp->freelist); /* insert at head of pktpool free list */
+			if (RXLRAG_POOL_FREELIST_TAIL(pktp) == NULL) {
+				RXLRAG_POOL_FREELIST_TAIL(pktp) = p;
+			}
+			pktp->freelist = p; /* free list points to newly inserted packet */
+		} else {
+			INCR_RXLFRAG_QUEUE_NONRXFRAG();
+			RXLFRAG_SORT_DBG_PRINT((pktpool_enq_print_1, pktp->avail,
+				pktp->freelist, RXLRAG_POOL_FREELIST_TAIL(pktp)));
+			if (pktp->freelist == NULL) {
+				pktp->freelist = p;
+				RXLRAG_POOL_FREELIST_TAIL(pktp) = p;
+			}
+			else {
+				/* this pkt becomes tail */
+				PKTSETFREELIST(RXLRAG_POOL_FREELIST_TAIL(pktp), p);
+				RXLRAG_POOL_FREELIST_TAIL(pktp) = p;
+				PKTSETFREELIST(p, NULL);
+			}
+		}
+	}
+	else {
+		PKTSETFREELIST(p, pktp->freelist); /* insert at head of pktpool free list */
+		pktp->freelist = p; /* free list points to newly inserted packet */
+	}
 
 #if defined(DONGLEBUILD) && defined(SRMEM)
 	if (SRMEM_ENAB()) {
@@ -1371,6 +1441,9 @@ void
 BCMFASTPATH(pktpool_nfree)(pktpool_t *pktp, void *head, void *tail, uint count)
 {
 	void *_head = head;
+	uint count_orig = count;
+
+	BCM_REFERENCE(count_orig);
 
 #ifdef URB
 	if (URB_ENAB() && count && PKT_IS_RX_PKT(OSH_NULL, head)) {
@@ -1405,6 +1478,7 @@ BCMFASTPATH(pktpool_nfree)(pktpool_t *pktp, void *head, void *tail, uint count)
 			}
 		}
 
+		PKTSETQCALLER_LIST(PKTLINK(head), (count_orig - 1), pktp->freelist, CALL_SITE);
 		PKTSETFREELIST(tail, pktp->freelist);
 		pktp->freelist = PKTLINK(head);
 		PKTSETLINK(head, NULL);
@@ -1546,10 +1620,10 @@ BCMRAMFN(pktpool_setmaxlen)(pktpool_t *pktp, uint16 maxlen)
 }
 
 void
-BCMPOSTTRAPFN(pktpool_emptycb_disable)(pktpool_t *pktp, bool disable)
+BCMPOSTTRAPFASTPATH(pktpool_emptycb_disable)(pktpool_t *pktp, bool disable)
 {
 	bool notify = FALSE;
-	ASSERT(pktp);
+	ASSERT_FP(pktp);
 
 	/**
 	 * To more efficiently use the cpu cycles, callbacks can be temporarily disabled.
@@ -1716,7 +1790,7 @@ hnd_pktpool_init(osl_t *osh)
 		err = BCME_NOMEM;
 		goto error;
 	}
-#endif
+#endif /* defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED) */
 
 #if defined(BCMRXDATAPOOL) && !defined(BCMRXDATAPOOL_DISABLE)
 	pktpool_shared_rxdata = MALLOCZ(osh, sizeof(pktpool_t));
@@ -1999,6 +2073,7 @@ hnd_pktpool_fill(pktpool_t *pktpool, bool minimal)
 void
 hnd_pktpool_refill(bool minimal)
 {
+	MB_START(hnd_pktpool_refill);
 	if (POOL_ENAB(pktpool_shared)) {
 #if defined(SRMEM)
 		if (SRMEM_ENAB()) {
@@ -2051,6 +2126,7 @@ hnd_pktpool_refill(bool minimal)
 		hnd_resv_pool_enable(resv_pool_info);
 	}
 #endif /* BCMRESVFRAGPOOL */
+	MB_END(hnd_pktpool_refill, "hnd_pktpool_refill");
 }
 
 #ifdef POOL_HEAP_RECONFIG

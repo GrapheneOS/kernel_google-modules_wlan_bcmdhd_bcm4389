@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Linux-specific network interface
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -696,7 +696,7 @@ uint64 dhd_lb_mem_usage(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	}
 
 	dhdp->rxpath_mem = rx_path_memory_usage;
-	bcm_bprintf(strbuf, "\n rxbufpost_alloc_sz: %d rx_post_active: %d rx_cmpl_active: %d "
+	bcm_bprintf(strbuf, "\nrxbufpost_alloc_sz: %d rx_post_active: %d rx_cmpl_active: %d "
 		"emerge_queue_len: %d pend_queue_len: %d napi_queue_len: %d"
 		" process_queue_len: %d\n",
 		rxbufpost_alloc_sz, rx_post_active, rx_cmpl_active,
@@ -724,6 +724,7 @@ void dhd_lb_stats_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		return;
 	}
 
+	bcm_bprintf(strbuf, "\nLoad Balancing/NAPI stats:\n==========================\n");
 	bcm_bprintf(strbuf, "\ncpu_online_cnt:\n");
 	dhd_lb_stats_dump_cpu_array(strbuf, dhd->cpu_online_cnt);
 
@@ -747,6 +748,13 @@ void dhd_lb_stats_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	dhd_lb_stats_dump_histo(dhdp, strbuf, dhd->napi_rx_hist);
 	bcm_bprintf(strbuf, "\nNAPI poll latency stats ie from napi schedule to napi execution\n");
 	dhd_lb_stats_dump_napi_latency(dhdp, strbuf, dhd->napi_latency);
+
+	bcm_bprintf(strbuf, "\nlb_rxp_stop_thr_hitcnt: %llu lb_rxp_strt_thr_hitcnt: %llu"
+		" rx_dma_stall_hc_ignore_cnt: %llu\n",
+		dhdp->lb_rxp_stop_thr_hitcnt, dhdp->lb_rxp_strt_thr_hitcnt,
+		dhdp->rx_dma_stall_hc_ignore_cnt);
+	bcm_bprintf(strbuf, "\nlb_rxp_napi_sched_cnt: %llu lb_rxp_napi_omplete_cnt: %llu\n",
+		dhdp->lb_rxp_napi_sched_cnt, dhdp->lb_rxp_napi_complete_cnt);
 #endif /* DHD_LB_RXP */
 
 #ifdef DHD_LB_TXP
@@ -756,6 +764,7 @@ void dhd_lb_stats_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, "\ntx_start_percpu_run_cnt:\n");
 	dhd_lb_stats_dump_cpu_array(strbuf, dhd->tx_start_percpu_run_cnt);
 #endif /* DHD_LB_TXP */
+	bcm_bprintf(strbuf, "\n");
 }
 
 void dhd_lb_stats_update_napi_latency(uint64 *bin, uint32 latency)

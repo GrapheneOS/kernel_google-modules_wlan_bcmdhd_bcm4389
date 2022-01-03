@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), common DHD core.
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -352,7 +352,7 @@ enum {
 	IOV_BCMERROR,
 	IOV_WDTICK,
 	IOV_DUMP,
-	IOV_CLEARCOUNTS,
+	IOV_RESET_COUNTS,
 	IOV_LOGDUMP,
 	IOV_LOGCAL,
 	IOV_LOGSTAMP,
@@ -496,6 +496,7 @@ enum {
 #ifdef DHD_LOGLEVEL
 	IOV_LOGLEVEL,
 #endif /* DHD_LOGLEVEL */
+	IOV_COUNTERS,
 	IOV_LAST
 };
 
@@ -518,7 +519,7 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"dump",	IOV_DUMP,		0,	0, IOVT_BUFFER,	DHD_IOCTL_MAXLEN_32K},
 	{"cons",	IOV_CONS,		0,	0, IOVT_BUFFER,	0},
 	{"dconpoll",	IOV_DCONSOLE_POLL,	0,	0, IOVT_UINT32,	0},
-	{"clearcounts", IOV_CLEARCOUNTS,	0,	0, IOVT_VOID,	0},
+	{"reset_cnts", 	IOV_RESET_COUNTS,	0,	0, IOVT_VOID,	0},
 #ifdef BCMPERFSTATS
 	{"logdump", IOV_LOGDUMP,		0,	0, IOVT_BUFFER,	DHD_IOCTL_MAXLEN},
 	{"logcal",	IOV_LOGCAL,		0,	0, IOVT_UINT32,	0},
@@ -671,6 +672,7 @@ const bcm_iovar_t dhd_iovars[] = {
 #ifdef DHD_LOGLEVEL
 	{"loglevel", IOV_LOGLEVEL, (0), 0, IOVT_BUFFER, sizeof(dhd_loglevel_data_t)},
 #endif /* DHD_LOGLEVEL */
+	{"counters",	IOV_COUNTERS, 0, 0, IOVT_BUFFER, DHD_IOCTL_MAXLEN_32K},
 	/* --- add new iovars *ABOVE* this line --- */
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -1536,18 +1538,77 @@ dhd_common_socram_dump(dhd_pub_t *dhdp)
 #endif /* BCMDBUS */
 }
 
-int
-dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
+static void
+dhd_dump_txrx_stats(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 {
-	struct bcmstrbuf b;
-	struct bcmstrbuf *strbuf = &b;
+	/* TX Stats -- add any Tx counters in this section only */
+	bcm_bprintf(strbuf, "\nTX stats:\n=========\n");
+	bcm_bprintf(strbuf, "tx_packets %lu tx_bytes %lu tx_dropped %lu"
+		" tx_multicast %lu tx_errors %lu\n",
+		dhdp->tx_packets, dhdp->tx_bytes, dhdp->tx_dropped,
+		dhdp->tx_multicast, dhdp->tx_errors);
+	bcm_bprintf(strbuf, "tx_ctlpkts %lu tx_ctlerrs %lu\n",
+	            dhdp->tx_ctlpkts, dhdp->tx_ctlerrs);
+	bcm_bprintf(strbuf, "tx_realloc %lu tx_pktgetfail %lu tx_big_packets %lu\n",
+	            dhdp->tx_realloc, dhdp->tx_pktgetfail, dhdp->tx_big_packets);
+	/* ----------------------------------------------------- */
+
+	/* RX Stats -- add any Rx counters in this section only */
+	bcm_bprintf(strbuf, "\nRX stats:\n=========\n");
+	bcm_bprintf(strbuf, "rx_packets %lu rx_bytes %lu rx_forward"
+		" %lu rx_multicast %lu rx_errors %lu \n",
+		dhdp->rx_packets, dhdp->rx_bytes, dhdp->rx_forward,
+		dhdp->rx_multicast, dhdp->rx_errors);
+	bcm_bprintf(strbuf, "rx_ctlpkts %lu rx_ctlerrs %lu rx_dropped %lu\n",
+	            dhdp->rx_ctlpkts, dhdp->rx_ctlerrs, dhdp->rx_dropped);
+	bcm_bprintf(strbuf, "rx_readahead_cnt %lu rx_pktgetfail %lu rx_pktgetpool_fail %lu\n",
+	            dhdp->rx_readahead_cnt, dhdp->rx_pktgetfail, dhdp->rx_pktgetpool_fail);
+	bcm_bprintf(strbuf, "\n");
+	/* ----------------------------------------------------- */
+}
+
 #ifdef DHD_MEM_STATS
+static void
+dhd_dump_memstats(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
+{
 	uint64 malloc_mem = 0;
 	uint64 total_txpath_mem = 0;
 	uint64 txpath_bkpq_len = 0;
 	uint64 txpath_bkpq_mem = 0;
 	uint64 total_dhd_mem = 0;
+
+	malloc_mem = MALLOCED(dhdp->osh);
+
+	txpath_bkpq_len = dhd_active_tx_flowring_bkpq_len(dhdp);
+	/*
+	 * Instead of traversing the entire queue to find the skbs length,
+	 * considering MAX_MTU_SZ as lenth of each skb.
+	 */
+	txpath_bkpq_mem = (txpath_bkpq_len* MAX_MTU_SZ);
+	total_txpath_mem = dhdp->txpath_mem + txpath_bkpq_mem;
+
+	bcm_bprintf(strbuf, "\nDHD malloc memory_usage: %llubytes %lluKB\n",
+		malloc_mem, (malloc_mem / 1024));
+
+	bcm_bprintf(strbuf, "\nDHD tx-bkpq len: %llu memory_usage: %llubytes %lluKB\n",
+		txpath_bkpq_len, txpath_bkpq_mem, (txpath_bkpq_mem / 1024));
+	bcm_bprintf(strbuf, "DHD tx-path memory_usage: %llubytes %lluKB\n",
+		total_txpath_mem, (total_txpath_mem / 1024));
+
+	total_dhd_mem = malloc_mem + total_txpath_mem;
+#if defined(DHD_LB_STATS)
+	total_dhd_mem += dhd_lb_mem_usage(dhdp, strbuf);
+#endif /* DHD_LB_STATS */
+	bcm_bprintf(strbuf, "\nDHD Total memory_usage: %llubytes %lluKB \n",
+		total_dhd_mem, (total_dhd_mem / 1024));
+}
 #endif /* DHD_MEM_STATS */
+
+int
+dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
+{
+	struct bcmstrbuf b;
+	struct bcmstrbuf *strbuf = &b;
 
 	if (!dhdp || !dhdp->prot || !buf) {
 		return BCME_ERROR;
@@ -1569,31 +1630,8 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 	            dhdp->iswl, dhdp->drv_version, MAC2STRDBG(&dhdp->mac));
 	bcm_bprintf(strbuf, "pub.bcmerror %d tickcnt %u\n", dhdp->bcmerror, dhdp->tickcnt);
 
-	bcm_bprintf(strbuf, "dongle stats:\n");
-	bcm_bprintf(strbuf, "tx_packets %lu tx_bytes %lu tx_errors %lu tx_dropped %lu\n",
-	            dhdp->dstats.tx_packets, dhdp->dstats.tx_bytes,
-	            dhdp->dstats.tx_errors, dhdp->dstats.tx_dropped);
-	bcm_bprintf(strbuf, "rx_packets %lu rx_bytes %lu rx_errors %lu rx_dropped %lu\n",
-	            dhdp->dstats.rx_packets, dhdp->dstats.rx_bytes,
-	            dhdp->dstats.rx_errors, dhdp->dstats.rx_dropped);
-	bcm_bprintf(strbuf, "multicast %lu\n", dhdp->dstats.multicast);
+	dhd_dump_txrx_stats(dhdp, strbuf);
 
-	bcm_bprintf(strbuf, "bus stats:\n");
-	bcm_bprintf(strbuf, "tx_packets %lu  tx_dropped %lu tx_multicast %lu tx_errors %lu\n",
-	            dhdp->tx_packets, dhdp->tx_dropped, dhdp->tx_multicast, dhdp->tx_errors);
-	bcm_bprintf(strbuf, "tx_ctlpkts %lu tx_ctlerrs %lu\n",
-	            dhdp->tx_ctlpkts, dhdp->tx_ctlerrs);
-	bcm_bprintf(strbuf, "rx_packets %lu rx_forward %lu rx_multicast %lu rx_errors %lu \n",
-	            dhdp->rx_packets, dhdp->rx_forward, dhdp->rx_multicast, dhdp->rx_errors);
-	bcm_bprintf(strbuf, "rx_ctlpkts %lu rx_ctlerrs %lu rx_dropped %lu\n",
-	            dhdp->rx_ctlpkts, dhdp->rx_ctlerrs, dhdp->rx_dropped);
-	bcm_bprintf(strbuf, "rx_readahead_cnt %lu tx_realloc %lu\n",
-	            dhdp->rx_readahead_cnt, dhdp->tx_realloc);
-	bcm_bprintf(strbuf, "tx_pktgetfail %lu rx_pktgetfail %lu rx_pktgetpool_fail %lu\n",
-	            dhdp->tx_pktgetfail, dhdp->rx_pktgetfail, dhdp->rx_pktgetpool_fail);
-	bcm_bprintf(strbuf, "tx_big_packets %lu\n",
-	            dhdp->tx_big_packets);
-	bcm_bprintf(strbuf, "\n");
 #ifdef DMAMAP_STATS
 	/* Add DMA MAP info */
 	bcm_bprintf(strbuf, "DMA MAP stats: \n");
@@ -1631,40 +1669,8 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 #endif /* DHD_LB_STATS */
 
 #ifdef DHD_MEM_STATS
-
-	malloc_mem = MALLOCED(dhdp->osh);
-
-	txpath_bkpq_len = dhd_active_tx_flowring_bkpq_len(dhdp);
-	/*
-	 * Instead of traversing the entire queue to find the skbs length,
-	 * considering MAX_MTU_SZ as lenth of each skb.
-	 */
-	txpath_bkpq_mem = (txpath_bkpq_len* MAX_MTU_SZ);
-	total_txpath_mem = dhdp->txpath_mem + txpath_bkpq_mem;
-
-	bcm_bprintf(strbuf, "\nDHD malloc memory_usage: %llubytes %lluKB\n",
-		malloc_mem, (malloc_mem / 1024));
-
-	bcm_bprintf(strbuf, "\nDHD tx-bkpq len: %llu memory_usage: %llubytes %lluKB\n",
-		txpath_bkpq_len, txpath_bkpq_mem, (txpath_bkpq_mem / 1024));
-	bcm_bprintf(strbuf, "DHD tx-path memory_usage: %llubytes %lluKB\n",
-		total_txpath_mem, (total_txpath_mem / 1024));
-
-	total_dhd_mem = malloc_mem + total_txpath_mem;
-#if defined(DHD_LB_STATS)
-	total_dhd_mem += dhd_lb_mem_usage(dhdp, strbuf);
-#endif /* DHD_LB_STATS */
-	bcm_bprintf(strbuf, "\nDHD Totoal memory_usage: %llubytes %lluKB \n",
-		total_dhd_mem, (total_dhd_mem / 1024));
+	dhd_dump_memstats(dhdp, strbuf);
 #endif /* DHD_MEM_STATS */
-#if defined(DHD_LB_STATS)
-	bcm_bprintf(strbuf, "\nlb_rxp_stop_thr_hitcnt: %llu lb_rxp_strt_thr_hitcnt: %llu"
-		" rx_dma_stall_hc_ignore_cnt: %llu\n",
-		dhdp->lb_rxp_stop_thr_hitcnt, dhdp->lb_rxp_strt_thr_hitcnt,
-		dhdp->rx_dma_stall_hc_ignore_cnt);
-	bcm_bprintf(strbuf, "\nlb_rxp_napi_sched_cnt: %llu lb_rxp_napi_complete_cnt: %llu\n",
-		dhdp->lb_rxp_napi_sched_cnt, dhdp->lb_rxp_napi_complete_cnt);
-#endif /* DHD_LB_STATS */
 
 #if defined(DHD_MQ) && defined(DHD_MQ_STATS)
 	dhd_mqstats_dump(dhdp, strbuf);
@@ -1679,6 +1685,36 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 
 	DHD_ERROR(("%s bufsize: %d free: %d\n", __FUNCTION__, buflen, strbuf->size));
 	/* return remaining buffer length */
+	return (!strbuf->size ? BCME_BUFTOOSHORT : strbuf->size);
+}
+
+int
+dhd_counters(dhd_pub_t *dhdp, char *buf, int buflen)
+{
+	struct bcmstrbuf bcmbuf;
+	struct bcmstrbuf *strbuf = &bcmbuf;
+
+	if (!dhdp || !dhdp->prot || !buf) {
+		return BCME_ERROR;
+	}
+
+	bcm_binit(strbuf, buf, buflen);
+
+	dhd_dump_txrx_stats(dhdp, strbuf);
+
+	dhd_prot_counters(dhdp, strbuf, TRUE, TRUE);
+#ifdef BCMPCIE
+	dhd_bus_dump_flowring(dhdp, strbuf);
+#endif
+
+#if defined(DHD_LB_STATS)
+	dhd_lb_stats_dump(dhdp, strbuf);
+#endif /* DHD_LB_STATS */
+
+#ifdef DHD_MEM_STATS
+	dhd_dump_memstats(dhdp, strbuf);
+#endif /* DHD_MEM_STATS */
+
 	return (!strbuf->size ? BCME_BUFTOOSHORT : strbuf->size);
 }
 
@@ -1811,7 +1847,7 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 	dhd_iov_li_t *iov_li;
 #endif /* DUMP_IOCTL_IOV_LIST */
 #ifdef REPORT_FATAL_TIMEOUTS
-	wl_escan_params_t *eparams;
+	wl_escan_params_v1_t *eparams;
 	uint8 *buf_ptr = (uint8 *)buf;
 	uint16 action = 0;
 #endif /* REPORT_FATAL_TIMEOUTS */
@@ -1977,7 +2013,7 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 		if ((ioc->cmd == WLC_SET_VAR &&
 				buf != NULL &&
 				strcmp("escan", buf) == 0)) {
-			eparams = (wl_escan_params_t *) (buf_ptr + strlen("escan") + 1);
+			eparams = (wl_escan_params_v1_t *) (buf_ptr + strlen("escan") + 1);
 			action = dtoh16(eparams->action);
 			if (action == WL_SCAN_ACTION_START) {
 				++dhd_pub->esync_id;
@@ -2558,8 +2594,10 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 
 #endif /* BCMDBUS */
 
-	case IOV_SVAL(IOV_CLEARCOUNTS):
+	case IOV_SVAL(IOV_RESET_COUNTS):
 		dhd_pub->tx_packets = dhd_pub->rx_packets = 0;
+		dhd_pub->tx_multicast = dhd_pub->rx_multicast = 0;
+		dhd_pub->tx_bytes = dhd_pub->rx_bytes = 0;
 		dhd_pub->tx_errors = dhd_pub->rx_errors = 0;
 		dhd_pub->tx_ctlpkts = dhd_pub->rx_ctlpkts = 0;
 		dhd_pub->tx_ctlerrs = dhd_pub->rx_ctlerrs = 0;
@@ -3734,6 +3772,13 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		break;
 	}
 
+	case IOV_GVAL(IOV_COUNTERS):
+		if (dhd_counters(dhd_pub, arg, len) <= 0)
+			bcmerror = BCME_ERROR;
+		else
+			bcmerror = BCME_OK;
+		break;
+
 	default:
 		bcmerror = BCME_UNSUPPORTED;
 		break;
@@ -4672,6 +4717,9 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 	case WLC_E_PFN_SCAN_NONE:
 	case WLC_E_PFN_SCAN_ALLGONE:
 	case WLC_E_PFN_GSCAN_FULL_RESULT:
+#ifdef WL_SCHED_SCAN
+	case WLC_E_PFN_PARTIAL_RESULT:
+#endif /* WL_SCHED_SCAN */
 	case WLC_E_PFN_SSID_EXT:
 		DHD_EVENT(("PNOEVENT: %s\n", event_name));
 		break;
@@ -4724,12 +4772,6 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 	case WLC_E_P2PO_DEL_DEVICE:
 		DHD_EVENT(("MACEVENT: %s, MAC %s\n", event_name, eabuf));
 		break;
-
-#ifdef BT_WIFI_HANDOBER
-	case WLC_E_BT_WIFI_HANDOVER_REQ:
-		DHD_EVENT(("MACEVENT: %s, MAC %s\n", event_name, eabuf));
-		break;
-#endif
 
 	case WLC_E_CCA_CHAN_QUAL:
 		/* I would like to check here that datalen >= sizeof(cca_chan_qual_event_t)
@@ -5024,6 +5066,19 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		DHD_EVENT(("MACEVENT: %s: Country code changed to %s\n", event_name,
 			(char*)event_data));
 		break;
+	case WLC_E_SCAN:
+		{
+			const char *scan_state;
+			if (reason == WL_SCAN_START) {
+				scan_state = "WL_SCAN_START";
+			} else if (reason == WL_SCAN_END) {
+				scan_state = "WL_SCAN_END";
+			} else {
+				scan_state = "Unknown";
+			}
+			DHD_EVENT(("MACEVENT: %s: scan state %s\n", event_name, scan_state));
+			break;
+		}
 	default:
 		DHD_INFO(("MACEVENT: %s %d, MAC %s, status %d, reason %d, auth %d\n",
 		       event_name, event_type, eabuf, (int)status, (int)reason,
@@ -5327,6 +5382,26 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 			   break;
 		   }
 		   break;
+		}
+	case DNGL_E_SPMI_RESET_IND:
+		{
+			bcm_dngl_spmi_reset_ind_v1_t *spmi_reset_ind_v1_ptr =
+				(bcm_dngl_spmi_reset_ind_v1_t *)p;
+			uint16 ver = ltoh32(spmi_reset_ind_v1_ptr->version);
+			switch (ver) {
+			case DNGL_E_SPMI_RESET_IND_VERSION_1:
+			{
+				uint16 num_resets = ltoh32(spmi_reset_ind_v1_ptr->num_resets);
+				uint16 slave_idx = ltoh32(spmi_reset_ind_v1_ptr->slave_idx);
+				DHD_EVENT(("DNGL_E_SPMI_RESET_IND resets=%u SPMI core=%u\n",
+					num_resets, slave_idx));
+				break;
+			}
+			default:
+				DHD_ERROR(("DNGL_E_SPMI_RESET_IND: unknown version\n"));
+				break;
+			}
+			break;
 		}
 	   default:
 		DHD_ERROR(("%s:Unknown DNGL Event Type:%d\n", __FUNCTION__, type));
@@ -6920,7 +6995,7 @@ dhd_iscan_get_partial_result(void *dhdp, uint *scan_count)
 {
 	wl_iscan_results_t *list_buf;
 	wl_iscan_results_t list;
-	wl_scan_results_t *results;
+	wl_scan_results_v109_t *results;
 	iscan_buf_t *iscan_cur;
 	int status = -1;
 	dhd_pub_t *dhd = dhd_bus_pub(dhdp);
@@ -7133,8 +7208,8 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 {
 	char				buf[32] = {0};
 	const char			*str;
-	wl_mkeep_alive_pkt_t	mkeep_alive_pkt = {0, 0, 0, 0, 0, {0}};
-	wl_mkeep_alive_pkt_t	*mkeep_alive_pktp;
+	wl_mkeep_alive_pkt_v1_t	mkeep_alive_pkt = {0, 0, 0, 0, 0, {0}};
+	wl_mkeep_alive_pkt_v1_t	*mkeep_alive_pktp;
 	int					buf_len;
 	int					str_len;
 	int res					= -1;
@@ -7147,10 +7222,10 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 	str = "mkeep_alive";
 	str_len = strlen(str);
 	strlcpy(buf, str, sizeof(buf));
-	mkeep_alive_pktp = (wl_mkeep_alive_pkt_t *) (buf + str_len + 1);
+	mkeep_alive_pktp = (wl_mkeep_alive_pkt_v1_t *) (buf + str_len + 1);
 	mkeep_alive_pkt.period_msec = CUSTOM_KEEP_ALIVE_SETTING;
 	buf_len = str_len + 1;
-	mkeep_alive_pkt.version = htod16(WL_MKEEP_ALIVE_VERSION);
+	mkeep_alive_pkt.version = htod16(WL_MKEEP_ALIVE_VERSION_1);
 	mkeep_alive_pkt.length = htod16(WL_MKEEP_ALIVE_FIXED_LEN);
 	/* Setup keep alive zero for null packet generation */
 	mkeep_alive_pkt.keep_alive_id = 0;
@@ -11348,9 +11423,6 @@ dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
 		case HANG_REASON_DS_SKIP_TIMEOUT:
 			type_str = "DS_SKIP_TIMEOUT";
 			break;
-		case HANG_REASON_SLEEP_FAILURE:
-			type_str = "SLEEP_FAILURE";
-			break;
 		default:
 			type_str = "Unknown_type";
 			break;
@@ -11359,3 +11431,74 @@ dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
 	strlcpy(buf, type_str, buf_len);
 }
 #endif /* DHD_COREDUMP */
+#ifdef DHD_CUSTOM_CONFIG_RTS_IN_SUSPEND
+int dhd_config_rts_in_suspend(dhd_pub_t *dhdp, bool suspend)
+{
+	int ret = BCME_OK;
+	uint return_to_sleep_time = 0;
+
+	int buf_len;
+	bcm_iov_buf_t *iov_buf = NULL;
+	wl_adps_suspend_v1_t *data = NULL;
+
+	if (!dhdp || dhdp->up == 0) {
+		return ret;
+	}
+
+	/* if it's not associated, skip to set */
+	if (!dhd_is_associated(dhdp, 0, NULL)) {
+		return ret;
+	}
+
+	if (suspend) {
+		return_to_sleep_time = CUSTOM_RETRUN_TO_SLEEP_TIME_SUSPEND;
+	}
+	else {
+		return_to_sleep_time = CUSTOM_RETRUN_TO_SLEEP_TIME_DEFAULT;
+	}
+
+	ret = dhd_iovar(dhdp, 0, "pm2_sleep_ret", (char *)&return_to_sleep_time,
+			sizeof(return_to_sleep_time), NULL, 0, TRUE);
+
+	if (ret < 0) {
+		DHD_ERROR(("%s set pm2_sleep_ret failed %d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	buf_len = OFFSETOF(bcm_iov_buf_t, data) + sizeof(*data);
+	iov_buf = MALLOCZ(dhdp->osh, buf_len);
+	if (iov_buf == NULL) {
+		DHD_ERROR(("%s - failed to alloc %d bytes for iov_buf\n",
+			__FUNCTION__, buf_len));
+		ret = BCME_NOMEM;
+		goto exit;
+	}
+
+	iov_buf->version = WL_ADPS_IOV_VER;
+	iov_buf->len = sizeof(*data);
+	iov_buf->id = WL_ADPS_IOV_SUSPEND;
+
+	data = (wl_adps_suspend_v1_t *)iov_buf->data;
+	data->version = ADPS_SUB_IOV_VERSION_1;
+	data->length = sizeof(*data);
+	data->suspend = suspend;
+
+	ret = dhd_iovar(dhdp, 0, "adps", (char *)iov_buf, buf_len,
+		NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s - fail to set adps suspend %d (%d)\n",
+				__FUNCTION__, suspend, ret));
+		goto exit;
+	}
+
+exit:
+	if (ret == BCME_OK) {
+		DHD_ERROR(("%s - Success to set RTS [%d] and ADPS suspend [%d].\n",
+				__FUNCTION__, return_to_sleep_time, suspend));
+	}
+	if (iov_buf) {
+		MFREE(dhdp->osh, iov_buf, buf_len);
+	}
+	return ret;
+}
+#endif /* DHD_CUSTOM_CONFIG_RTS_IN_SUSPEND */

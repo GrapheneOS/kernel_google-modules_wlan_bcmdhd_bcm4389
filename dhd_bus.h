@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2021, Broadcom.
+ * Copyright (C) 2022, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -104,6 +104,7 @@ extern int dhd_bus_iovar_op(dhd_pub_t *dhdp, const char *name,
 
 /* Add bus dump output to a buffer */
 extern void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
+extern void dhd_bus_dump_flowring(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
 
 /* Clear any bus counters */
 extern void dhd_bus_clearcounts(dhd_pub_t *dhdp);
@@ -325,6 +326,10 @@ extern void dhd_bus_rx_bt_log(struct dhd_bus *bus, void* pkt);
 #ifdef DHD_WAKE_STATUS
 extern wake_counts_t* dhd_bus_get_wakecount(dhd_pub_t *dhd);
 extern int dhd_bus_get_bus_wake(dhd_pub_t * dhd);
+extern int dhd_bus_set_get_bus_wake(dhd_pub_t * dhd, int set);
+#if defined(BCMPCIE)
+extern int dhd_bus_set_get_bus_wake_pkt_dump(dhd_pub_t *dhd, int wake_pkt_dump);
+#endif /* BCMPCIE */
 #endif /* DHD_WAKE_STATUS */
 
 #ifdef BT_OVER_SDIO
