@@ -1914,14 +1914,16 @@ typedef struct dhd_pktid_log {
 
 typedef void * dhd_pktid_log_handle_t; /* opaque handle to pktid log */
 
-#define	MAX_PKTID_LOG				(2048)
+#define	MAX_PKTID_LOG				(2048u)
 /*
  * index timestamp pktaddr(pa) pktid size
- * index(4) + timestamp (<= 12) + pa (<=12) + pktid (4) + size(4) + space x 4 + 2 (lf)
- * ex)    1 22531185990 0x91fc38010 1017 8192
+ * index(5) + timestamp (<= 20) + dummy(4) + pa (<=11) + pktid (10) + size(7) +
+ * pkttype(7) + space(6) + null/lf(2)
+ * ex) 1367          78348654722      0xabbe69040       3317    1920       1
  */
-#define PKTID_LOG_STR_SZ			48u
-#define MAX_PKTID_LOG_BUF_SZ			MAX_PKTID_LOG * PKTID_LOG_STR_SZ
+#define PKTID_LOG_STR_SZ			72u
+#define MAX_PKTID_LOG_BUF_SZ			MAX_PKTID_LOG * PKTID_LOG_STR_SZ + \
+	strlen(PKTID_LOG_DUMP_FMT)
 #define DHD_PKTID_LOG_ITEM_SZ			(sizeof(dhd_pktid_log_item_t))
 #define DHD_PKTID_LOG_SZ(items)			(uint32)((sizeof(dhd_pktid_log_t)) + \
 					((DHD_PKTID_LOG_ITEM_SZ) * (items)))
@@ -2065,6 +2067,10 @@ dhd_write_pktid_log_dump(dhd_pub_t *dhdp, const void *user_buf,
 	}
 
 	buf = (char *)VMALLOCZ(dhdp->osh, MAX_PKTID_LOG_BUF_SZ);
+	if (!buf) {
+		DHD_ERROR(("%s: buf alloc fails!\n", __FUNCTION__));
+		return BCME_NOMEM;
+	}
 	remain_len = buflen = MAX_PKTID_LOG_BUF_SZ;
 
 	dhd_init_sec_hdr(&sec_hdr);
@@ -2102,9 +2108,10 @@ dhd_write_pktid_log_dump(dhd_pub_t *dhdp, const void *user_buf,
 		addr = PHYSADDRLO(log_buf->map[i].pa);
 #endif /* BCMDMA64OSL */
 		remain_len -= scnprintf(&buf[buflen - remain_len], remain_len,
-				"%4u %12llu 0x%llx %4u %4u\n",
-				i, log_buf->map[i].ts_nsec, addr,
-				log_buf->map[i].pktid, log_buf->map[i].size);
+			"%5u %20llu %4s 0x%llx %10u %7u %7u\n",
+			i, log_buf->map[i].ts_nsec, " ", addr,
+			log_buf->map[i].pktid, log_buf->map[i].size,
+			log_buf->map[i].pkttype);
 	}
 	remain_len -= scnprintf(&buf[buflen - remain_len], remain_len, "\n");
 

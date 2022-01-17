@@ -136,7 +136,8 @@
 #define COOKIE_LOG_HDR "\n-------------------- Cookie List ----------------------------\n"
 #define DHD_PKTID_MAP_LOG_HDR "\n---------------- PKTID MAP log -----------------------\n"
 #define DHD_PKTID_UNMAP_LOG_HDR "\n------------------ PKTID UNMAP log -----------------------\n"
-#define PKTID_LOG_DUMP_FMT "\nIndex(Current=%d) Timestamp Pktaddr(PA) Pktid Size\n"
+#define PKTID_LOG_DUMP_FMT \
+	"\nIndex \t\tTimestamp \tPktaddr(PA) \tPktid \tSize \tPkttype\n(Current=%d)\n"
 
 /* 0: DLD_BUF_TYPE_GENERAL, 1: DLD_BUF_TYPE_PRESERVE
 * 2: DLD_BUF_TYPE_SPECIAL

@@ -3378,14 +3378,21 @@ void dhd_debug_dump_get_section_len(dhd_pub_t *dhdp, uint32 sec_len[])
 #ifdef EWP_RTT_LOGGING
 	sec_len[LOG_DUMP_SECTION_RTT] = dhd_get_rtt_len(NULL, dhdp);
 #endif /* EWP_RTT_LOGGING */
+#ifdef DHD_MAP_PKTID_LOGGING
+	sec_len[LOG_DUMP_SECTION_PKTID_MAP_LOG] =
+		dhd_get_pktid_map_logging_len(NULL, dhdp, TRUE);
+	sec_len[LOG_DUMP_SECTION_PKTID_UNMAP_LOG] =
+		dhd_get_pktid_map_logging_len(NULL, dhdp, FALSE);
+#endif /* DHD_MAP_PKTID_LOGGING */
 
 	DHD_ERROR(("%s: TS:%d ECNTRS:%d DHD_DUMP:%d ETRAP:%d"
-		" HCK:%d CKI:%d FLOW:%d STATUS:%d RTT:%d\n",
+		" HCK:%d CKI:%d FLOW:%d STATUS:%d RTT:%d PKTID_MAP:%d PKTID_UNMAP:%d\n",
 		__func__, sec_len[LOG_DUMP_SECTION_TIMESTAMP], sec_len[LOG_DUMP_SECTION_ECNTRS],
 		sec_len[LOG_DUMP_SECTION_DHD_DUMP], sec_len[LOG_DUMP_SECTION_EXT_TRAP],
 		sec_len[LOG_DUMP_SECTION_HEALTH_CHK], sec_len[LOG_DUMP_SECTION_COOKIE],
 		sec_len[LOG_DUMP_SECTION_RING], sec_len[LOG_DUMP_SECTION_STATUS],
-		sec_len[LOG_DUMP_SECTION_RTT]));
+		sec_len[LOG_DUMP_SECTION_RTT], sec_len[LOG_DUMP_SECTION_PKTID_MAP_LOG],
+		sec_len[LOG_DUMP_SECTION_PKTID_UNMAP_LOG]));
 	return;
 }
 
@@ -3433,6 +3440,9 @@ int dhd_debug_dump_to_ring(dhd_pub_t *dhdp)
 		return ret;
 	}
 
+#ifdef DHD_MAP_PKTID_LOGGING
+	dhd_pktid_logging_dump(dhdp);
+#endif /* DHD_MAP_PKTID_LOGGING */
 	dhd_debug_dump_get_section_len(dhdp, sec_len);
 
 	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_TIMESTAMP);
@@ -3459,6 +3469,18 @@ int dhd_debug_dump_to_ring(dhd_pub_t *dhdp)
 		DHD_ERROR(("Error section: RTT_LOG\n"));
 	}
 #endif /* EWP_RTT_LOGGING */
+#ifdef DHD_MAP_PKTID_LOGGING
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_PKTID_MAP_LOG);
+	if (dhd_print_pktid_map_log_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_PKTID_MAP_LOG], &ring_num, TRUE)) {
+		DHD_ERROR(("Error section: PKTID_MAP_LOG\n"));
+	}
+	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_PKTID_UNMAP_LOG);
+	if (dhd_print_pktid_map_log_data(NULL, dhdp, NULL, NULL,
+		sec_len[LOG_DUMP_SECTION_PKTID_UNMAP_LOG], &ring_num, FALSE)) {
+		DHD_ERROR(("Error section: PKTID_UNMAP_LOG\n"));
+	}
+#endif /* DHD_MAP_PKTID_LOGGING */
 	ring_num = dhd_debug_dump_get_ring_num(LOG_DUMP_SECTION_DHD_DUMP);
 	if (dhd_print_dump_data(NULL, dhdp, NULL, NULL,
 		sec_len[LOG_DUMP_SECTION_DHD_DUMP], &ring_num)) {
