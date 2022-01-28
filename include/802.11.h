@@ -4996,16 +4996,6 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm_lmr {
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_ftm_lmr dot11_ftm_lmr_t;
 
-/* to be obsoleted */
-BWL_PRE_PACKED_STRUCT struct dot11_ftm_ranging_ndpa {
-	uint16			fc;		/* frame control */
-	uint16			durid;		/* duration/ID */
-	struct ether_addr	ra;		/* receiver address */
-	struct ether_addr	ta;		/* transmitter address */
-	uint8                   dialog_token; /* sounding dialog token */
-} BWL_POST_PACKED_STRUCT;
-typedef struct dot11_ftm_ranging_ndpa dot11_ftm_ranging_ndpa_t;
-
 BWL_PRE_PACKED_STRUCT struct dot11_ranging_ndpa {
 	uint8	dialog_token;	/* sounding dialog token */
 	uint8	sta_info[];	/* STA infos */
@@ -5018,6 +5008,9 @@ typedef struct dot11_ranging_ndpa dot11_ranging_ndpa_t;
 #define DOT11_NDPA_TYPE_RANGING		0x01u
 #define DOT11_NDPA_TYPE_HE		0x02u
 #define DOT11_NPDA_TOKEN_SHIFT		2u
+
+/* NDPA STA info size */
+#define DOT11_NDPA_STA_INFO_SIZE	4u
 
 #define DOT11_RANGING_TF_CMN_INFO_FIXED_SIZE 8u
 BWL_PRE_PACKED_STRUCT struct dot11_ranging_trigger {
@@ -5216,6 +5209,15 @@ BWL_PRE_PACKED_STRUCT struct dot11_ftm_sltf_params {
 typedef struct dot11_ftm_sltf_params dot11_ftm_sltf_params_t;
 #define DOT11_FTM_SLTF_PARAMS_LEN \
 	(sizeof(dot11_ftm_sltf_params_t) - OFFSETOF(dot11_ftm_sltf_params_t, ext_id))
+
+BWL_PRE_PACKED_STRUCT struct dot11_ftm_ranging_ndpa {
+	uint16			fc;		/* frame control */
+	uint16			durid;		/* duration/ID */
+	struct ether_addr	ra;		/* receiver address */
+	struct ether_addr	ta;		/* transmitter address */
+	uint8                   dialog_token; /* sounding dialog token */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_ftm_ranging_ndpa dot11_ftm_ranging_ndpa_t;
 
 typedef struct dot11_ftm_sltf_subelmt dot11_ftm_sec_ltf_subie_params_t;
 #define DOT11_FTM_SLTF_PARAMS_SUB_IE_LEN (sizeof(dot11_ftm_sec_ltf_subie_params_t))

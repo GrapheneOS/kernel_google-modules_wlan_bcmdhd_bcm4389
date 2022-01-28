@@ -45,7 +45,8 @@ enum brcm_vendor_attr {
 	BRCM_ATTR_DRIVER_FEATURE_FLAGS	= 2,
 	BRCM_ATTR_DRIVER_RAND_MAC	= 3,
 	BRCM_ATTR_SAE_PWE		= 4,
-	BRCM_ATTR_DRIVER_MAX		= 5
+	BRCM_ATTR_TD_POLICY		= 5,
+	BRCM_ATTR_DRIVER_MAX		= 6
 };
 
 enum brcm_wlan_vendor_features {
@@ -297,6 +298,7 @@ enum andr_vendor_subcmd {
 	WIFI_SUBCMD_OTA_UPDATE,
 	WIFI_SUBCMD_USABLE_CHAN = ANDROID_NL80211_SUBCMD_USABLE_CHAN_RANGE_START,
 	WIFI_SUBCMD_TRIGGER_SSR = ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_START,
+	WIFI_SUBCMD_GET_RADIO_COMBO_MATRIX,
 	/* Add more sub commands here */
 	VENDOR_SUBCMD_MAX
 };
@@ -1026,6 +1028,58 @@ typedef enum {
 	ANDR_LSTAT_ATTRIBUTE_STATS_INFO	= 2,
 	ANDR_LSTAT_ATTRIBUTE_STATS_MAX	= 3
 } LINK_STAT_ATTRIBUTE;
+
+typedef enum {
+	/* WLAN MAC Operates in 2.4 GHz Band */
+	WLAN_MAC_2_4_BAND = 1 << 0,
+	/* WLAN MAC Operates in 5 GHz Band */
+	WLAN_MAC_5_0_BAND = 1 << 1,
+	/* WLAN MAC Operates in 6 GHz Band */
+	WLAN_MAC_6_0_BAND = 1 << 2,
+	/* WLAN MAC Operates in 60 GHz Band */
+	WLAN_MAC_60_0_BAND = 1 << 3
+} wlan_mac_band;
+
+typedef enum {
+	ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_INVALID     = 0,
+	ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MATRIX      = 1,
+	ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MAX
+} wifi_radio_combo_attributes;
+
+/* Antenna configuration */
+typedef enum {
+	WIFI_ANTENNA_INVALID    = 0,
+	WIFI_ANTENNA_1X1        = 1,
+	WIFI_ANTENNA_2X2        = 2,
+	WIFI_ANTENNA_3X3        = 3,
+	WIFI_ANTENNA_4X4        = 4
+} wifi_antenna_configuration;
+
+/* Wifi Radio configuration */
+typedef struct {
+	/* Operating band */
+	wlan_mac_band band;
+	/* Antenna configuration */
+	wifi_antenna_configuration antenna_cfg;
+} wifi_radio_configuration;
+
+/* WiFi Radio Combination  */
+typedef struct {
+	uint32 num_radio_combinations;
+	wifi_radio_configuration radio_configurations[];
+} wifi_radio_combination;
+
+/* WiFi Radio combinations matrix */
+typedef struct {
+	uint32 num_combinations;
+	/* Each row represents possible radio combinations */
+	wifi_radio_combination radio_combinations[];
+} wifi_radio_combination_matrix;
+
+#define MAX_RADIO_COMBO		5u
+#define MAX_RADIO_CONFIGS	2u
+#define MAX_RADIO_MATRIX_SIZE	(MAX_RADIO_COMBO * (sizeof(wifi_radio_combination) +\
+				(MAX_RADIO_CONFIGS * sizeof(wifi_radio_configuration))))
 
 /* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
 #define BRCM_VENDOR_SCMD_CAPA	"cap"

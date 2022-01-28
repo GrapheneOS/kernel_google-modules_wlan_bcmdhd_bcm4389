@@ -215,9 +215,14 @@ extern bool osl_is_flag_set(osl_t *osh, uint32 mask);
 	extern uint osl_check_memleak(osl_t *osh);
 #endif /* BCMDBG_MEM && !BINCMP */
 
+#define DMA_MALLOCZ(osh, size, dmable_size, dmah) osl_dma_mallocz((osh), (size), (dmable_size))
+#define DMA_MFREE(osh, addr, size, dmah) osl_dma_mfree((osh), (addr), (size))
+
 extern void *osl_malloc(osl_t *osh, uint size);
 extern void *osl_mallocz(osl_t *osh, uint size);
+extern void *osl_dma_mallocz(osl_t *osh, uint size, uint *dmable_size);
 extern void osl_mfree(osl_t *osh, void *addr, uint size);
+extern void osl_dma_mfree(osl_t *osh, void *addr, uint size);
 #define MALLOC_NODBG(osh, size)		osl_malloc((osh), (size))
 #define MALLOCZ_NODBG(osh, size)	osl_mallocz((osh), (size))
 #define MFREE_NODBG(osh, addr, size)	({osl_mfree((osh), ((void *)addr), (size));(addr) = NULL;})

@@ -958,4 +958,8 @@ uint8 wf_chspec_320_id2cch(chanspec_t chanspec);
 
 uint8 wf_chspec_240_id2cch(chanspec_t chanspec);
 
+#ifndef WL_BW320MHZ
+#define wf_chspec_center_channel(chspec) CHSPEC_CHANNEL(chspec)
+#endif /* !WL_BW320MHZ */
+
 #endif	/* _bcmwifi_channels_h_ */

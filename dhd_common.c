@@ -497,6 +497,9 @@ enum {
 	IOV_LOGLEVEL,
 #endif /* DHD_LOGLEVEL */
 	IOV_COUNTERS,
+#ifdef BCMPCIE
+	IOV_DUMP_FLOWRINGS,
+#endif
 	IOV_LAST
 };
 
@@ -673,6 +676,9 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"loglevel", IOV_LOGLEVEL, (0), 0, IOVT_BUFFER, sizeof(dhd_loglevel_data_t)},
 #endif /* DHD_LOGLEVEL */
 	{"counters",	IOV_COUNTERS, 0, 0, IOVT_BUFFER, DHD_IOCTL_MAXLEN_32K},
+#ifdef BCMPCIE
+	{"dump_flowrings", IOV_DUMP_FLOWRINGS, 0, 0, IOVT_BUFFER, DHD_IOCTL_MAXLEN_32K},
+#endif
 	/* --- add new iovars *ABOVE* this line --- */
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -1702,10 +1708,7 @@ dhd_counters(dhd_pub_t *dhdp, char *buf, int buflen)
 
 	dhd_dump_txrx_stats(dhdp, strbuf);
 
-	dhd_prot_counters(dhdp, strbuf, TRUE, TRUE);
-#ifdef BCMPCIE
-	dhd_bus_dump_flowring(dhdp, strbuf);
-#endif
+	dhd_bus_counters(dhdp, strbuf);
 
 #if defined(DHD_LB_STATS)
 	dhd_lb_stats_dump(dhdp, strbuf);
@@ -3778,7 +3781,14 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		else
 			bcmerror = BCME_OK;
 		break;
-
+#ifdef BCMPCIE
+	case IOV_GVAL(IOV_DUMP_FLOWRINGS):
+		if (dhd_dump_flowrings(dhd_pub, arg, len) <= 0)
+			bcmerror = BCME_ERROR;
+		else
+			bcmerror = BCME_OK;
+		break;
+#endif /* BCMPCIE */
 	default:
 		bcmerror = BCME_UNSUPPORTED;
 		break;
@@ -11423,6 +11433,9 @@ dhd_convert_hang_reason_to_str(uint32 reason, char *buf, size_t buf_len)
 		case HANG_REASON_DS_SKIP_TIMEOUT:
 			type_str = "DS_SKIP_TIMEOUT";
 			break;
+		case HANG_REASON_BT2WL_REG_RESET:
+			type_str = "BT2WL_REG_RESET";
+			break;
 		default:
 			type_str = "Unknown_type";
 			break;
@@ -11502,3 +11515,94 @@ exit:
 	return ret;
 }
 #endif /* DHD_CUSTOM_CONFIG_RTS_IN_SUSPEND */
+
+void
+dhd_histo_update(dhd_pub_t *dhd, uint64 *histo, uint32 value)
+{
+	uint64 *p;
+	uint64 *bin = histo;
+	uint32 bin_power = next_larger_power2(value);
+	if (histo == NULL) {
+		DHD_ERROR(("%s: histo is NULL\n", __FUNCTION__));
+		return;
+	}
+
+	switch (bin_power) {
+		case   1: p = bin + 0; break;
+		case   2: p = bin + 1; break;
+		case   4: p = bin + 2; break;
+		case   8: p = bin + 3; break;
+		case  16: p = bin + 4; break;
+		case  32: p = bin + 5; break;
+		case  64: p = bin + 6; break;
+		case 128: p = bin + 7; break;
+		case 256: p = bin + 8; break;
+		case 512: p = bin + 9; break;
+		case 1024: p = bin + 10; break;
+		case 2048: p = bin + 11; break;
+		case 4096: p = bin + 12; break;
+		case 8192: p = bin + 13; break;
+		default : p = bin + 13; break;
+	}
+	ASSERT((p - bin) < DHD_HISTOGRAM_ENTRIES);
+	*p = *p + 1;
+	return;
+}
+
+void
+dhd_histo_clear(dhd_pub_t *dhd, uint64 *histo)
+{
+
+	if (histo == NULL) {
+		return;
+	}
+
+	bzero(histo, DHD_HISTOGRAM_SIZE);
+}
+
+void
+dhd_histo_tag_dump(dhd_pub_t *dhd, struct bcmstrbuf *strbuf, char *tagname)
+{
+	uint32 i;
+
+	bcm_bprintf(strbuf, "%20s: ", tagname);
+	for (i = 0; i < DHD_HISTOGRAM_ENTRIES; i++) {
+		bcm_bprintf(strbuf, "%10llu ", 1ULL<<i);
+	}
+	bcm_bprintf(strbuf, "\n");
+}
+
+void
+dhd_histo_dump(dhd_pub_t *dhd, struct bcmstrbuf *strbuf, uint64 *histo, char *histoname)
+{
+	uint32 i;
+
+	if (histo == NULL) {
+		return;
+	}
+
+	bcm_bprintf(strbuf, "%20s: ", histoname);
+	for (i = 0; i < DHD_HISTOGRAM_ENTRIES; i++) {
+		bcm_bprintf(strbuf, "%10llu ", histo[i]);
+	}
+	bcm_bprintf(strbuf, "\n");
+}
+
+uint64 *
+dhd_histo_init(dhd_pub_t *dhd)
+{
+	uint64 *histo;
+	histo = (uint64 *)MALLOCZ(dhd->osh, DHD_HISTOGRAM_SIZE);
+	if (histo == NULL) {
+		DHD_ERROR(("%s: unable to alloc histo\n", __FUNCTION__));
+	}
+	return histo;
+}
+
+void
+dhd_histo_deinit(dhd_pub_t *dhd, uint64 *histo)
+{
+	if (histo) {
+		MFREE(dhd->osh, histo, DHD_HISTOGRAM_SIZE);
+	}
+}

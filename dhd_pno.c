@@ -4010,7 +4010,7 @@ void *
 dhd_process_full_gscan_result(dhd_pub_t *dhd, const void *data, uint32 len, int *size)
 {
 	wl_bss_info_v109_t *bi = NULL;
-	wl_gscan_result_t *gscan_result;
+	wl_gscan_result_v2_t *gscan_result;
 	wifi_gscan_full_result_t *result = NULL;
 	u32 bi_length = 0;
 	uint8 channel;
@@ -4021,7 +4021,7 @@ dhd_process_full_gscan_result(dhd_pub_t *dhd, const void *data, uint32 len, int 
 
 	*size = 0;
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
-	gscan_result = (wl_gscan_result_t *)data;
+	gscan_result = (wl_gscan_result_v2_t *)data;
 	GCC_DIAGNOSTIC_POP();
 	if (!gscan_result) {
 		DHD_ERROR(("Invalid gscan result (NULL pointer)\n"));
@@ -4040,7 +4040,8 @@ dhd_process_full_gscan_result(dhd_pub_t *dhd, const void *data, uint32 len, int 
 	bi = &gscan_result->bss_info[0].info;
 	bi_length = dtoh32(bi->length);
 	if (bi_length != (dtoh32(gscan_result->buflen) -
-	       WL_GSCAN_RESULTS_FIXED_SIZE - WL_GSCAN_INFO_FIXED_FIELD_SIZE)) {
+	       OFFSETOF(wl_gscan_result_v2_t, bss_info) -
+	       OFFSETOF(wl_gscan_bss_info_v2_t, info))) {
 		DHD_ERROR(("Invalid bss_info length %d: ignoring\n", bi_length));
 		goto exit;
 	}

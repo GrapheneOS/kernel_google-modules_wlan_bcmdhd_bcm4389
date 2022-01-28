@@ -36,6 +36,11 @@
 #include <net/genetlink.h>
 #endif
 
+#if !defined(WL_MBO_IOV_VERSION)
+/* MBO IOV API version */
+#define WL_MBO_IOV_VERSION WL_MBO_IOV_VERSION_1_1
+#endif
+
 typedef struct _android_wifi_priv_cmd {
     char *buf;
     int used_len;

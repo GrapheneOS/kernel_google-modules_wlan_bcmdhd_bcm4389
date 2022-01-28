@@ -804,6 +804,19 @@ extern void dhd_dbgfs_init(dhd_pub_t *dhdp);
 extern void dhd_dbgfs_remove(void);
 #endif
 
+#ifdef BCMPCIE
+/* Tx/Rx/Ctrl cpl/post bounds */
+extern uint dhd_tx_cpl_bound;
+extern uint dhd_rx_cpl_post_bound;
+extern uint dhd_tx_post_bound;
+extern uint dhd_ctrl_cpl_post_bound;
+
+module_param(dhd_tx_cpl_bound, uint, 0);
+module_param(dhd_rx_cpl_post_bound, uint, 0);
+module_param(dhd_tx_post_bound, uint, 0);
+module_param(dhd_ctrl_cpl_post_bound, uint, 0);
+#endif /* BCMPCIE */
+
 /* Enable TX status metadta report: 0=disable 1=enable 2=debug */
 static uint pcie_txs_metadata_enable = 0;
 module_param(pcie_txs_metadata_enable, int, 0);
@@ -5937,7 +5950,8 @@ int dhd_ioctl_process(dhd_pub_t *pub, int ifidx, dhd_ioctl_t *ioc, void *data_bu
 				}
 				buflen = ioc->len;
 			} else if (!bcmstricmp((char *)data_buf, "dump") ||
-				!bcmstricmp((char *)data_buf, "counters")) {
+				!bcmstricmp((char *)data_buf, "counters") ||
+				!bcmstricmp((char *)data_buf, "dump_flowrings")) {
 				buflen = MIN(ioc->len, DHD_IOCTL_MAXLEN_32K);
 			} else {
 				/* This is a DHD IOVAR, truncate buflen to DHD_IOCTL_MAXLEN */
@@ -7123,6 +7137,11 @@ dhd_open(struct net_device *net)
 
 exit:
 	mutex_unlock(&dhd->pub.ndev_op_sync);
+
+	if (dhd_query_bus_erros(&dhd->pub)) {
+		ret = BCME_ERROR;
+	}
+
 	if (ret) {
 		if (ret != BCME_NOMEM) {
 			dhd_force_collect_init_fail_dumps(&dhd->pub);
@@ -18130,6 +18149,13 @@ dhd_os_check_wakelock_all(dhd_pub_t *pub)
 		DHD_ERROR(("%s wakelock c-%d wl-%d wd-%d rx-%d "
 			"ctl-%d intr-%d scan-%d evt-%d, pm-%d, txfl-%d nan-%d\n",
 			__FUNCTION__, c, l1, l2, l3, l4, l5, l6, l7, l8, l9, l10));
+#ifdef RPM_FAST_TRIGGER
+		if (pub->rpm_fast_trigger && l4) {
+			DHD_ERROR(("%s : reset rpm_fast_trigger becasue of wl_ctrlwake activated\n",
+					__FUNCTION__));
+			pub->rpm_fast_trigger = FALSE;
+		}
+#endif /* RPM_FAST_TRIGGER */
 		return 1;
 	}
 #elif defined(BCMSDIO)
@@ -23311,6 +23337,21 @@ dhd_net_del_flowrings_sta(dhd_pub_t *dhd, struct net_device *ndev)
 #endif /* DHD_PCIE_RUNTIMEPM */
 	dhd_flow_rings_delete(dhd, ifp->idx);
 }
+#if defined(WBRC) && defined(WBRC_BT2WL_RESET)
+void
+dhd_wbrc_wl_trap(void)
+{
+	dhd_pub_t *dhdp = g_dhd_pub;
+
+	dhdpcie_db7_trap(dhdp->bus);
+	/* set that dongle trap has occured to stop other contests from firing IOVARS */
+	dhdp->dongle_trap_occured = TRUE;
+	/* Set chip big hammer */
+	dhdp->do_chip_bighammer = TRUE;
+	dhdp->hang_reason = HANG_REASON_BT2WL_REG_RESET;
+	dhd_os_send_hang_message(dhdp);
+}
+#endif /* WBRC && WBRC_BT2WL_RESET */
 #endif /* PCIE_FULL_DONGLE */
 
 static void

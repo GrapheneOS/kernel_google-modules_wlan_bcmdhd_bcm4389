@@ -351,6 +351,10 @@ typedef struct dhd_info {
 	struct kobject dhd_lb_kobj;
 	bool dhd_lb_candidacy_override;
 #endif /* DHD_LB */
+
+	/* DPC bounds sysfs */
+	struct kobject dhd_dpc_bounds_kobj;
+
 #if defined(DNGL_AXI_ERROR_LOGGING) && defined(DHD_USE_WQ_FOR_DNGL_AXI_ERROR)
 	struct work_struct	  axi_error_dispatcher_work;
 #endif /* DNGL_AXI_ERROR_LOGGING && DHD_USE_WQ_FOR_DNGL_AXI_ERROR */

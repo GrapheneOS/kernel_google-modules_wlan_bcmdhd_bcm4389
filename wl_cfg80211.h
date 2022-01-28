@@ -44,6 +44,11 @@
 #endif
 #endif /* BCMDONGLEHOST */
 
+#if !defined(WL_FILS_IOV_VERSION)
+/* WL FILS IOV API version */
+#define WL_FILS_IOV_VERSION WL_FILS_IOV_VERSION_1_1
+#endif /* WL_FILS_IOV_VERSION */
+
 #define WL_CFG_DRV_LOCK(lock, flags)	(flags) = osl_spin_lock(lock)
 #define WL_CFG_DRV_UNLOCK(lock, flags)	osl_spin_unlock((lock), (flags))
 
@@ -834,6 +839,14 @@ do {									\
 #else
 #define IS_RADAR_CHAN(flags) (flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_NO_IR))
 #endif
+
+/* Join pref defines */
+#define JOIN_PREF_RSSI_SIZE		4	/* RSSI pref header size in bytes */
+#define JOIN_PREF_WPA_HDR_SIZE		4	/* WPA pref header size in bytes */
+#define JOIN_PREF_WPA_TUPLE_SIZE	12	/* Tuple size in bytes */
+#define JOIN_PREF_MAX_WPA_TUPLES	16	/* Max no of tuples */
+#define JOIN_PREF_MAX_BUF_SIZE		(JOIN_PREF_RSSI_SIZE + JOIN_PREF_WPA_HDR_SIZE +	\
+				           (JOIN_PREF_WPA_TUPLE_SIZE * JOIN_PREF_MAX_WPA_TUPLES))
 
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
 	4 && __GNUC_MINOR__ >= 6))
@@ -1791,6 +1804,8 @@ typedef struct wlcfg_assoc_info {
 	s32 bssidx;
 	u32 chan_cnt;
 	chanspec_t chanspecs[MAX_ROAM_CHANNEL];
+	bool auto_wpa_enabled;	/* auto_wpa enabled for multi AKM */
+	bool seamless_psk;	/* Multi-AKMs needing seamless PSK */
 } wlcfg_assoc_info_t;
 
 #define MAX_NUM_OF_ASSOCIATED_DEV       64
@@ -2186,6 +2201,8 @@ struct bcm_cfg80211 {
 #endif /* CONFIG_SILTENT_ROAM */
 	uint32 roam_allowed_band;	/* roam allow band in order to purne roam candidate */
 	uint8 num_radios;		/* number of active radios */
+	uint32 ap_bw_limit;
+	uint32 ap_bw_chspec;
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for

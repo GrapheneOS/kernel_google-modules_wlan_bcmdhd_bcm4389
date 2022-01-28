@@ -83,17 +83,6 @@ typedef enum {
 	WIFI_USABLE_CHANNEL_FILTER_CONCURRENCY  = 1 << 1
 } wifi_usable_channel_filter;
 
-typedef enum {
-	/* WLAN MAC Operates in 2.4 GHz Band */
-	WLAN_MAC_2_4_BAND = 1 << 0,
-	/* WLAN MAC Operates in 5 GHz Band */
-	WLAN_MAC_5_0_BAND = 1 << 1,
-	/* WLAN MAC Operates in 6 GHz Band */
-	WLAN_MAC_6_0_BAND = 1 << 2,
-	/* WLAN MAC Operates in 60 GHz Band */
-	WLAN_MAC_60_0_BAND = 1 << 3
-} wlan_mac_band;
-
 #define WIFI_CAPABILITY_QOS          0x00000001     /* set for QOS association */
 #define WIFI_CAPABILITY_PROTECTED    0x00000002     /* set for protected association (802.11
 						     * beacon frame control protected bit set)

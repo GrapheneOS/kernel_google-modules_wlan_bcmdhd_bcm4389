@@ -233,7 +233,9 @@ typedef int bcmerror_t;
 
 /* FTM error codes [-1024, -2047] */
 enum {
-	WL_FTM_E_LAST			= -1077,
+	WL_FTM_E_LAST			= -1079,
+	WL_FTM_E_OUTSIDE_RSTA_AW	= -1079,
+	WL_FTM_E_NO_STA_INFO		= -1078,
 	WL_FTM_E_SAC_MISMATCH		= -1077,
 	WL_FTM_E_TOKEN_MISMATCH		= -1076,
 	WL_FTM_E_IE_NOTFOUND		= -1075,

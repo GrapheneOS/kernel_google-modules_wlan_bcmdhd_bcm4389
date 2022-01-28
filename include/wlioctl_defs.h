@@ -670,8 +670,8 @@ typedef uint32 ratespec_t;
 
 #define WLC_SAMPLECOLLECT_MAXLEN   10240u   /* Max Sample Collect buffer for two cores */
 
-#define WLC_IOCTL_NANRESP_MAXLEN    4096u   /* "max" length nan ioctl resp buffer */
-#define WLC_IOCTL_NANRESP_MEDLEN     800u   /* "med" length nan ioctl resp buffer */
+#define WLC_IOCTL_NANRESP_MAXLEN    4096u		/* "max" length nan ioctl resp buffer */
+#define WLC_IOCTL_NANRESP_MEDLEN    WLC_IOCTL_MEDLEN	/* "med" length nan ioctl resp buffer */
 
 /* common ioctl definitions */
 #define WLC_GET_MAGIC				0
@@ -1462,13 +1462,10 @@ typedef uint32 ratespec_t;
 #define WL_FBT_VAL		0x00800000
 #define WL_RRM_VAL		0x00800000	/* reuse */
 #define WL_MQ_VAL		0x01000000
-/* This level is currently used in Phoenix2 only */
-#define WL_SRSCAN_VAL		0x02000000
+#define WL_RANDMAC_VAL		0x02000000
 #define WL_WNM_VAL		0x04000000
 /* re-using WL_WNM_VAL for MBO */
 #define WL_MBO_VAL		0x04000000
-/* re-using WL_SRSCAN_VAL */
-#define WL_RANDMAC_VAL		0x02000000
 
 #define WL_NET_DETECT_VAL	0x20000000
 #define WL_OCE_VAL		0x20000000 /* reuse */

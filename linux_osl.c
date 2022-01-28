@@ -659,6 +659,46 @@ osl_mallocz(osl_t *osh, uint size)
 	return ptr;
 }
 
+#if defined(L1_CACHE_BYTES)
+#define DMA_PAD (L1_CACHE_BYTES)
+#else
+#define DMA_PAD (128u)
+#endif
+void *
+osl_dma_mallocz(osl_t *osh, uint size, uint *dmable_size)
+{
+	void *addr = NULL;
+	gfp_t flags = 0;
+	uint16 align = 0;
+	uint32 dmapad = 0;
+
+	if (osh)
+		ASSERT(osh->magic == OS_HANDLE_MAGIC);
+	if (!size || !dmable_size)
+		return NULL;
+
+	*dmable_size = size;
+	align = *dmable_size % DMA_PAD;
+	dmapad = align ? (DMA_PAD - align) : 0;
+	*dmable_size += dmapad;
+
+	flags = CAN_SLEEP() ? GFP_KERNEL: GFP_ATOMIC;
+	flags |= GFP_DMA;
+	addr = kmalloc(*dmable_size, flags);
+	if (addr != NULL) {
+		bzero(addr, *dmable_size);
+		if (osh && osh->cmn) {
+			atomic_add(*dmable_size, &osh->cmn->malloced);
+		}
+	} else {
+		if (osh) {
+			osh->failed++;
+		}
+	}
+
+	return addr;
+}
+
 void
 osl_mfree(osl_t *osh, void *addr, uint size)
 {
@@ -698,6 +738,23 @@ osl_mfree(osl_t *osh, void *addr, uint size)
 		atomic_sub(size, &osh->cmn->malloced);
 	}
 	kfree(addr);
+}
+
+void
+osl_dma_mfree(osl_t *osh, void *addr, uint size)
+{
+	if (addr == NULL) {
+		return;
+	}
+
+	if (osh && osh->cmn) {
+		ASSERT(osh->magic == OS_HANDLE_MAGIC);
+		ASSERT(size <= osl_malloced(osh));
+		atomic_sub(size, &osh->cmn->malloced);
+	}
+
+	kfree(addr);
+	addr = NULL;
 }
 
 #ifdef BCMDBG_MEM

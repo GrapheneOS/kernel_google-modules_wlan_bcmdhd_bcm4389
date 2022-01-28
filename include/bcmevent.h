@@ -573,6 +573,7 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_SUP_MSG1_PMKID_MISMATCH	22	/* MSG1 PMKID not matched to PMKSA cache list */
 #define WLC_E_SUP_GTK_UPDATE		23	/* GTK update */
 #define WLC_E_SUP_KDK_UPDATE_FAIL	24	/* KDK update failure */
+#define WLC_E_SUP_MSG3_NO_MLO_GTK	25	/* encapsulated MLO GTK missing from msg 3 */
 
 /* event msg for WLC_E_SUP_PTK_UPDATE */
 typedef struct wlc_sup_ptk_update {
@@ -1672,6 +1673,9 @@ typedef struct wl_mlo_link_info_event_v1 {
 /* ===== C2C event definitions ===== */
 #define C2C_EVENT_BUFFER_SIZE		1024u
 #define IS_C2C_EVT_ON(param, evt)	((param) & (1u << (evt)))
+#define C2C_ALLOWED_EVENT_MASK		(1u << WL_C2C_EVT_ESIG_START | \
+		(1u << WL_C2C_EVT_ESIG_END) | (1u << WL_C2C_EVT_ESIG_PRE_EXPIRY) | \
+		(1u << WL_C2C_EVT_CACHE_ADD) | (1u << WL_C2C_EVT_CACHE_DEL))
 
 /* WLC_E_C2C subevent ID */
 typedef enum wl_c2c_events {

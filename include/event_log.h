@@ -39,7 +39,7 @@
 /* We make sure that the block size will fit in a single packet
  *  (allowing for a bit of overhead on each packet
  */
-#if defined(BCMPCIEDEV)
+#if defined(BCMPCIEDEV) && defined(BCMPCIEDEV_ENABLED)
 #define EVENT_LOG_MAX_BLOCK_SIZE	1648
 #else
 #define EVENT_LOG_MAX_BLOCK_SIZE	1400

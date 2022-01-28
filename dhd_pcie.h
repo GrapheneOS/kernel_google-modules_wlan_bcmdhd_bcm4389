@@ -459,6 +459,16 @@ typedef struct dhd_bus {
 	uint64 last_resume_start_time;
 	uint64 last_resume_end_time;
 	uint64 last_non_ours_irq_time;
+	uint64 dpc_time_usec;
+	uint64  *dpc_time_histo;
+	uint64 ctrl_cpl_post_time_usec;
+	uint64  *ctrl_cpl_post_time_histo;
+	uint64 tx_post_time_usec;
+	uint64  *tx_post_time_histo;
+	uint64 tx_cpl_time_usec;
+	uint64  *tx_cpl_time_histo;
+	uint64 rx_cpl_post_time_usec;
+	uint64  *rx_cpl_post_time_histo;
 	bool  hwa_enabled;
 	bool  idma_enabled;
 	bool  ifrm_enabled;

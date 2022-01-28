@@ -547,7 +547,7 @@ wl_cfg80211_add_iw_ie(struct bcm_cfg80211 *cfg, struct net_device *ndev, s32 bss
 	s32 err = BCME_OK;
 	s32 buf_len;
 	ie_setbuf_t *ie_setbuf;
-	ie_getbuf_t ie_getbufp;
+	ie_getbuf_t ie_getbufp = {0, 0};
 	char getbuf[WLC_IOCTL_SMLEN];
 
 	if (ie_id != DOT11_MNG_INTERWORKING_ID) {
@@ -1292,6 +1292,14 @@ wl_cfgscan_notify_pfn_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgd
 	}
 
 	wiphy = cfg->sched_scan_req->wiphy;
+	/* If new sched scan triggered, wiphy set as NULL.
+	* In this case, drop this event to avoid kernel state schew up
+	*/
+	if (!wiphy) {
+		WL_INFORM_MEM(("wiphy of sched_scan_req is NULL.\n"));
+		goto exit;
+	}
+
 	if (status == WLC_E_STATUS_SUCCESS) {
 		WL_INFORM_MEM(("[%s] Report sched scan done.\n", dev->name));
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))

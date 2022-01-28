@@ -507,7 +507,7 @@ enum dhd_op_flags {
  * This also needs to be increased if NVRAM files size increases
  */
 #define MAX_NVRAMBUF_SIZE	(32 * 1024) /* max nvram buf size */
-#define MAX_CLM_BUF_SIZE	(48 * 1024) /* max clm blob size */
+#define MAX_CLM_BUF_SIZE	(64 * 1024) /* max clm blob size */
 #define MAX_TXCAP_BUF_SIZE	(16 * 1024) /* max txcap blob size */
 #ifdef DHD_DEBUG
 #define DHD_JOIN_MAX_TIME_DEFAULT 10000 /* ms: Max time out for joining AP */
@@ -679,7 +679,8 @@ enum dhd_hang_reason {
 	HANG_REASON_PCIE_CTO_DETECT			= 0x8809,
 	HANG_REASON_SLEEP_FAILURE			= 0x880A,
 	HANG_REASON_DS_SKIP_TIMEOUT			= 0x880B,
-	HANG_REASON_MAX					= 0x880C
+	HANG_REASON_BT2WL_REG_RESET			= 0x880C,
+	HANG_REASON_MAX					= 0x880D
 };
 
 #define WLC_E_DEAUTH_MAX_REASON 0x0FFF
@@ -4344,6 +4345,18 @@ typedef wlc_sroam_info_v1_t wlc_sroam_info_t;
 #else
 #define FILE_NAME_HAL_TAG	"_hal" /* The tag name concatenated by HAL */
 #endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
+
+void dhd_bus_counters(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf);
+
+#define DHD_HISTOGRAM_ENTRIES	(14u)
+#define DHD_HISTOGRAM_SIZE	(sizeof(uint64) * DHD_HISTOGRAM_ENTRIES)
+
+void dhd_histo_update(dhd_pub_t *dhd, uint64 *histo, uint32 value);
+void dhd_histo_clear(dhd_pub_t *dhd, uint64 *histo);
+void dhd_histo_tag_dump(dhd_pub_t *dhd, struct bcmstrbuf *strbuf, char *tagname);
+void dhd_histo_dump(dhd_pub_t *dhd, struct bcmstrbuf *strbuf, uint64 *histo, char *histoname);
+uint64 *dhd_histo_init(dhd_pub_t *dhd);
+void dhd_histo_deinit(dhd_pub_t *dhd, uint64 *histo);
 
 /* Given a number 'n' returns 'm' that is next larger power of 2 after n */
 static inline uint32 next_larger_power2(uint32 num)

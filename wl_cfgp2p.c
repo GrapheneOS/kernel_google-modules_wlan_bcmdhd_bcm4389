@@ -1894,7 +1894,6 @@ wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 	timeout = wait_for_completion_timeout(&cfg->send_af_done,
 		msecs_to_jiffies(af_params->dwell_time + WL_AF_TX_EXTRA_TIME_MAX));
-
 	if (timeout == 0) {
 		CFGP2P_DBG(("action frame dwell timeout completed\n"));
 		/* Call actframe_abort to cleanup FW state, when

@@ -1118,6 +1118,15 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 		priority = PRIO_8021D_NC;
 		rc = PKTPRIO_DSCP;
 #endif /* EAPOL_PKT_PRIO || DHD_LOSSLESS_ROAMING */
+#if defined(PRIORITIZE_ARP)
+	} else if (eh->ether_type == hton16(ETHER_TYPE_ARP)) {
+		/* Certain Host stacks attempt disconnection on continous ARP timeouts. In
+		 * congested scenarios with traffic, ARP packets may not get chance
+		 * for transmission leading to disconnection. so prioritize it.
+		 */
+		priority = PRIO_8021D_NC;
+		rc = PKTPRIO_DSCP;
+#endif /* PRIORITIZE_ARP */
 #if defined(WLTDLS)
 	} else if (eh->ether_type == hton16(ETHER_TYPE_89_0D)) {
 		/* Bump up the priority for TDLS frames */

@@ -389,8 +389,10 @@ enum {
 #ifdef DHD_PCIE_RUNTIMEPM
 	IOV_IDLETIME,
 #endif /* DHD_PCIE_RUNTIMEPM */
-	IOV_RXBOUND,
-	IOV_TXBOUND,
+	IOV_RX_CPL_POST_BOUND,
+	IOV_TX_CPL_BOUND,
+	IOV_CTRL_CPL_POST_BOUND,
+	IOV_TX_POST_BOUND,
 	IOV_HANGREPORT,
 	IOV_H2D_MAILBOXDATA,
 	IOV_INFORINGS,
@@ -501,8 +503,10 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 #ifdef DHD_PCIE_RUNTIMEPM
 	{"idletime",    IOV_IDLETIME,   0,	0, IOVT_INT32,     0 },
 #endif /* DHD_PCIE_RUNTIMEPM */
-	{"rxbound",     IOV_RXBOUND,    0, 0,	IOVT_UINT32,    0 },
-	{"txbound",     IOV_TXBOUND,    0, 0,	IOVT_UINT32,    0 },
+	{"rx_cpl_post_bound",     IOV_RX_CPL_POST_BOUND,    0, 0,	IOVT_UINT32,    0 },
+	{"tx_cpl_bound",     IOV_TX_CPL_BOUND,    0, 0,	IOVT_UINT32,    0 },
+	{"ctrl_cpl_post_bound",     IOV_CTRL_CPL_POST_BOUND,    0, 0,	IOVT_UINT32,    0 },
+	{"tx_post_bound",     IOV_TX_POST_BOUND,    0, 0,	IOVT_UINT32,    0 },
 	{"fw_hang_report", IOV_HANGREPORT,	0, 0,	IOVT_BOOL,	0 },
 	{"h2d_mb_data",     IOV_H2D_MAILBOXDATA,    0, 0,      IOVT_UINT32,    0 },
 	{"inforings",   IOV_INFORINGS,    0, 0,      IOVT_UINT32,    0 },
@@ -590,18 +594,8 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 #define MAX_READ_TIMEOUT	2 * 1000 * 1000
 #endif
 
-#ifndef DHD_RXBOUND
-#define DHD_RXBOUND		64
-#endif
-#ifndef DHD_TXBOUND
-#define DHD_TXBOUND		64
-#endif
-
 #define DHD_INFORING_BOUND	32
 #define DHD_BTLOGRING_BOUND	32
-
-uint dhd_rxbound = DHD_RXBOUND;
-uint dhd_txbound = DHD_TXBOUND;
 
 #if defined(DEBUGGER) || defined(DHD_DSCOPE)
 /** the GDB debugger layer will call back into this (bus) layer to read/write dongle memory */
@@ -2842,6 +2836,72 @@ dhd_deinit_backplane_access_lock(dhd_bus_t *bus)
 	}
 }
 
+void
+dhd_init_dpc_histos(dhd_pub_t *dhd)
+{
+	dhd_bus_t *bus = dhd->bus;
+	if (!bus->dpc_time_histo) {
+		bus->dpc_time_histo = dhd_histo_init(dhd);
+	}
+	if (!bus->ctrl_cpl_post_time_histo) {
+		bus->ctrl_cpl_post_time_histo = dhd_histo_init(dhd);
+	}
+	if (!bus->tx_post_time_histo) {
+		bus->tx_post_time_histo = dhd_histo_init(dhd);
+	}
+	if (!bus->tx_cpl_time_histo) {
+		bus->tx_cpl_time_histo = dhd_histo_init(dhd);
+	}
+	if (!bus->rx_cpl_post_time_histo) {
+		bus->rx_cpl_post_time_histo = dhd_histo_init(dhd);
+	}
+}
+
+void
+dhd_deinit_dpc_histos(dhd_pub_t *dhd)
+{
+	dhd_bus_t *bus = dhd->bus;
+	if (bus->dpc_time_histo) {
+		dhd_histo_deinit(dhd, bus->dpc_time_histo);
+	}
+	if (bus->ctrl_cpl_post_time_histo) {
+		dhd_histo_deinit(dhd, bus->ctrl_cpl_post_time_histo);
+	}
+	if (bus->tx_post_time_histo) {
+		dhd_histo_deinit(dhd, bus->tx_post_time_histo);
+	}
+	if (bus->tx_cpl_time_histo) {
+		dhd_histo_deinit(dhd, bus->tx_cpl_time_histo);
+	}
+	if (bus->rx_cpl_post_time_histo) {
+		dhd_histo_deinit(dhd, bus->rx_cpl_post_time_histo);
+	}
+}
+
+void
+dhd_dump_dpc_histos(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
+{
+	dhd_bus_t *bus = dhd->bus;
+	bcm_bprintf(strbuf, "==== DPC Histograms in Usec ====\n");
+	dhd_histo_tag_dump(dhd, strbuf, "usec/histo");
+	dhd_histo_dump(dhd, strbuf, bus->dpc_time_histo, "dpc");
+	dhd_histo_dump(dhd, strbuf, bus->ctrl_cpl_post_time_histo, "ctrl_cpl_post");
+	dhd_histo_dump(dhd, strbuf, bus->tx_post_time_histo, "tx_post");
+	dhd_histo_dump(dhd, strbuf, bus->tx_cpl_time_histo, "tx_cpl");
+	dhd_histo_dump(dhd, strbuf, bus->rx_cpl_post_time_histo, "rx_cpl_post");
+	bcm_bprintf(strbuf, "================================\n");
+}
+
+void
+dhd_clear_dpc_histos(dhd_pub_t *dhd)
+{
+	dhd_bus_t *bus = dhd->bus;
+	dhd_histo_clear(dhd, bus->dpc_time_histo);
+	dhd_histo_clear(dhd, bus->ctrl_cpl_post_time_histo);
+	dhd_histo_clear(dhd, bus->tx_post_time_histo);
+	dhd_histo_clear(dhd, bus->tx_cpl_time_histo);
+	dhd_histo_clear(dhd, bus->rx_cpl_post_time_histo);
+}
 /** Detach and free everything */
 void
 dhdpcie_bus_release(dhd_bus_t *bus)
@@ -2875,6 +2935,8 @@ dhdpcie_bus_release(dhd_bus_t *bus)
 				dhdpcie_bus_intr_disable(bus);
 				dhdpcie_free_irq(bus);
 			}
+			dhd_deinit_dpc_histos(bus->dhd);
+
 			dhd_deinit_bus_lp_state_lock(bus);
 			dhd_deinit_bar1_switch_lock(bus);
 			dhd_deinit_backplane_access_lock(bus);
@@ -5634,7 +5696,8 @@ extern bool agg_h2d_db_enab;
  * to the (non flow controlled) flow ring.
  */
 int
-BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool txs)
+BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool txs,
+	uint32 bound, bool *is_qempty)
 /** XXX function name could be more descriptive, eg use 'tx' and 'flow ring' in name */
 {
 	flow_ring_node_t *flow_ring_node;
@@ -5642,6 +5705,7 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 #ifdef DHD_LOSSLESS_ROAMING
 	dhd_pub_t *dhdp = bus->dhd;
 #endif /* DHD_LOSSLESS_ROAMING */
+	uint32 cnt = 0;
 
 	DHD_INFO(("%s: flow_id is %d\n", __FUNCTION__, flow_id));
 
@@ -5714,6 +5778,7 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 #endif /* DHDTCPACK_SUPPRESS */
 			/* Attempt to transfer packet over flow ring */
 			/* XXX: ifidx is wrong */
+			++cnt;
 			ret = dhd_prot_txdata(bus->dhd, txp, flow_ring_node->flow_info.ifindex);
 			if (ret != BCME_OK) { /* may not have resources in flow ring */
 				DHD_INFO(("%s: Reinserrt %d\n", __FUNCTION__, ret));
@@ -5729,6 +5794,9 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 				dhd_flow_queue_reinsert(bus->dhd, queue, txp);
 				DHD_FLOWRING_UNLOCK(flow_ring_node->lock, flags);
 
+				if (is_qempty) {
+					*is_qempty = FALSE;
+				}
 				/* If we are able to requeue back, return success */
 				return BCME_OK;
 			}
@@ -5740,6 +5808,11 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 				__FUNCTION__, bus->dhd->txpath_mem, PKTLEN(bus->dhd->osh, txp)));
 			DHD_MEM_STATS_UNLOCK(bus->dhd->mem_stats_lock, flags);
 #endif /* DHD_MEM_STATS */
+
+			/* check bound and break if exceeded */
+			if (bound && cnt >= bound) {
+				break;
+			}
 		}
 
 		{
@@ -5754,6 +5827,10 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 		}
 
 		DHD_FLOWRING_UNLOCK(flow_ring_node->lock, flags);
+
+		if (is_qempty) {
+			*is_qempty = queue->len > 0 ? FALSE : TRUE;
+		}
 	}
 
 	return ret;
@@ -5880,7 +5957,7 @@ BCMFASTPATH(dhd_bus_txdata)(struct dhd_bus *bus, void *txp, uint8 ifidx)
 		}
 		return BCME_OK;
 	}
-	ret = dhd_bus_schedule_queue(bus, flowid, FALSE); /* from queue to flowring */
+	ret = dhd_bus_schedule_queue(bus, flowid, FALSE, 0, NULL); /* from queue to flowring */
 
 	/* If we have anything pending, try to push into q */
 	if (txp_pend) {
@@ -6650,6 +6727,8 @@ dhd_bus_clearcounts(dhd_pub_t *dhdp)
 {
 	dhd_prot_clearcounts(dhdp);
 	dhdp->rx_pktgetpool_fail = 0;
+
+	dhd_clear_dpc_histos(dhdp);
 }
 
 /**
@@ -8475,15 +8554,6 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		break;
 #endif /* DHD_PCIE_RUNTIMEPM */
 
-	case IOV_GVAL(IOV_TXBOUND):
-		int_val = (int32)dhd_txbound;
-		bcopy(&int_val, arg, val_size);
-		break;
-
-	case IOV_SVAL(IOV_TXBOUND):
-		dhd_txbound = (uint)int_val;
-		break;
-
 	case IOV_SVAL(IOV_H2D_MAILBOXDATA):
 		dhdpcie_send_mb_data(bus, (uint)int_val);
 		break;
@@ -8678,13 +8748,57 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		bcopy(&int_val, arg, val_size);
 		break;
 
-	case IOV_GVAL(IOV_RXBOUND):
-		int_val = (int32)dhd_rxbound;
+	case IOV_GVAL(IOV_TX_CPL_BOUND):
+		int_val = (int32)dhd_prot_get_tx_cpl_bound(bus->dhd);
 		bcopy(&int_val, arg, val_size);
 		break;
-
-	case IOV_SVAL(IOV_RXBOUND):
-		dhd_rxbound = (uint)int_val;
+	case IOV_SVAL(IOV_TX_CPL_BOUND):
+		if (int_val <= 0) {
+			bcmerror = BCME_BADARG;
+			DHD_ERROR(("%s: invalid tx_cpl_bound value %d !\n",
+				__FUNCTION__, int_val));
+		} else {
+			dhd_prot_set_tx_cpl_bound(bus->dhd, (uint)int_val);
+		}
+		break;
+	case IOV_GVAL(IOV_RX_CPL_POST_BOUND):
+		int_val = (int32)dhd_prot_get_rx_cpl_post_bound(bus->dhd);
+		bcopy(&int_val, arg, val_size);
+		break;
+	case IOV_SVAL(IOV_RX_CPL_POST_BOUND):
+		if (int_val <= 0) {
+			bcmerror = BCME_BADARG;
+			DHD_ERROR(("%s: invalid rx_cpl_post_bound value %d !\n",
+				__FUNCTION__, int_val));
+		} else {
+			dhd_prot_set_rx_cpl_post_bound(bus->dhd, (uint)int_val);
+		}
+		break;
+	case IOV_GVAL(IOV_CTRL_CPL_POST_BOUND):
+		int_val = (int32)dhd_prot_get_ctrl_cpl_post_bound(bus->dhd);
+		bcopy(&int_val, arg, val_size);
+		break;
+	case IOV_SVAL(IOV_CTRL_CPL_POST_BOUND):
+		if (int_val <= 0) {
+			bcmerror = BCME_BADARG;
+			DHD_ERROR(("%s: invalid ctrl_cpl_post_bound value %d !\n",
+				__FUNCTION__, int_val));
+		} else {
+			dhd_prot_set_ctrl_cpl_post_bound(bus->dhd, (uint)int_val);
+		}
+		break;
+	case IOV_GVAL(IOV_TX_POST_BOUND):
+		int_val = (int32)dhd_prot_get_tx_post_bound(bus->dhd);
+		bcopy(&int_val, arg, val_size);
+		break;
+	case IOV_SVAL(IOV_TX_POST_BOUND):
+		if (int_val <= 0) {
+			bcmerror = BCME_BADARG;
+			DHD_ERROR(("%s: invalid tx_post_bound value %d !\n",
+				__FUNCTION__, int_val));
+		} else {
+			dhd_prot_set_tx_post_bound(bus->dhd, (uint)int_val);
+		}
 		break;
 
 	case IOV_GVAL(IOV_TRAPDATA):
@@ -11376,6 +11490,16 @@ void dhd_bus_dump_flowring(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, "\n");
 }
 
+void
+dhd_bus_counters(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
+{
+	dhd_prot_counters(dhdp, strbuf, TRUE, TRUE);
+
+	dhd_bus_dump_flowring(dhdp, strbuf);
+
+	dhd_dump_dpc_histos(dhdp, strbuf);
+}
+
 /** Add bus dump output to a buffer */
 void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 {
@@ -11480,6 +11604,8 @@ void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	}
 #endif /* BCMDBG */
 
+	dhd_dump_dpc_histos(dhdp, strbuf);
+
 	bcm_bprintf(strbuf, "D3 inform cnt %d\n", dhdp->bus->d3_inform_cnt);
 	bcm_bprintf(strbuf, "D0 inform cnt %d\n", dhdp->bus->d0_inform_cnt);
 	bcm_bprintf(strbuf, "D0 inform in use cnt %d\n", dhdp->bus->d0_inform_in_use_cnt);
@@ -11515,6 +11641,21 @@ void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		dhdp->db7_trap.debug_max_db7_trap_time,
 		dhdp->db7_trap.debug_max_db7_send_time,
 		dhdp->db7_trap.debug_db7_timing_error_cnt);
+}
+
+int
+dhd_dump_flowrings(dhd_pub_t *dhdp, char *buf, int buflen)
+{
+	struct bcmstrbuf b;
+	struct bcmstrbuf *strbuf = &b;
+
+	if (!dhdp || !dhdp->prot || !buf) {
+		return BCME_ERROR;
+	}
+
+	bcm_binit(strbuf, buf, buflen);
+	dhd_bus_dump_flowring(dhdp, strbuf);
+	return (!strbuf->size ? BCME_BUFTOOSHORT : strbuf->size);
 }
 
 static void
@@ -11899,7 +12040,7 @@ dhd_log_dump_axi_error(uint8 *axi_err)
  * Brings transmit packets on all flow rings closer to the dongle, by moving (a subset) from their
  * flow queue to their flow ring.
  */
-static void
+static bool
 dhd_update_txflowrings(dhd_pub_t *dhd)
 {
 	unsigned long flags;
@@ -11907,9 +12048,10 @@ dhd_update_txflowrings(dhd_pub_t *dhd)
 	flow_ring_node_t *flow_ring_node;
 	struct dhd_bus *bus = dhd->bus;
 	int count = 0;
+	bool more = FALSE;
 
 	if (dhd_query_bus_erros(dhd)) {
-		return;
+		return more;
 	}
 
 	/* Hold flowring_list_lock to ensure no race condition while accessing the List */
@@ -11918,6 +12060,7 @@ dhd_update_txflowrings(dhd_pub_t *dhd)
 		(!dhd_is_device_removed(dhd) && !dll_end(&bus->flowring_active_list, item));
 		item = next, count++) {
 		if (dhd->hang_was_sent) {
+			more = FALSE;
 			break;
 		}
 
@@ -11925,6 +12068,7 @@ dhd_update_txflowrings(dhd_pub_t *dhd)
 			DHD_ERROR(("%s : overflow max flowrings\n", __FUNCTION__));
 			dhd->hang_reason = HANG_REASON_UNKNOWN;
 			dhd_os_send_hang_message(dhd);
+			more = FALSE;
 			break;
 		}
 
@@ -11937,9 +12081,12 @@ dhd_update_txflowrings(dhd_pub_t *dhd)
 		/* Ensure that the flowring node has valid contents */
 		ASSERT(flow_ring_node->prot_info != NULL);
 
-		dhd_prot_update_txflowring(dhd, flow_ring_node->flowid, flow_ring_node->prot_info);
+		more = dhd_prot_update_txflowring(dhd, flow_ring_node->flowid,
+			flow_ring_node->prot_info);
 	}
 	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
+
+	return more;
 }
 
 /** Mailbox ringbell Function */
@@ -12522,6 +12669,7 @@ BCMFASTPATH(dhd_bus_dpc)(struct dhd_bus *bus)
 	if (!resched) {
 		bus->intstatus = 0;
 		bus->dpc_exit_time = OSL_LOCALTIME_NS();
+		bus->dpc_time_usec = (bus->dpc_exit_time - bus->dpc_entry_time) / NSEC_PER_USEC;
 		if (!dhd_query_bus_erros(bus->dhd)) {
 			/* Due to irq mismatch WARNING in linux, currently keeping it disabled and
 			 * using dongle intmask to control INTR enable/disable
@@ -12537,7 +12685,9 @@ BCMFASTPATH(dhd_bus_dpc)(struct dhd_bus *bus)
 		}
 	} else {
 		bus->resched_dpc_time = OSL_LOCALTIME_NS();
+		bus->dpc_time_usec = (bus->resched_dpc_time - bus->dpc_entry_time) / NSEC_PER_USEC;
 	}
+	dhd_histo_update(bus->dhd, bus->dpc_time_histo, (uint32)bus->dpc_time_usec);
 
 	bus->dpc_sched = resched;
 #ifdef DHD_FLOW_RING_STATUS_TRACE
@@ -13121,6 +13271,7 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 	uint32 txcpl_items = 0;
 	uint32 rxcpl_items = 0;
 	uint32 evtlog_items = 0;
+	uint64 read_frames_entry_time = OSL_LOCALTIME_NS();
 
 	/* First check if there a FW trap */
 	if ((bus->api.fw_rev >= PCIE_SHARED_VERSION_6) &&
@@ -13144,8 +13295,13 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 	dhd_prot_save_dmaidx(bus->dhd);
 #endif /* DHD_DMA_INDICES_SEQNUM */
 	/* There may be frames in both ctrl buf and data buf; check ctrl buf first */
-	dhd_prot_process_ctrlbuf(bus->dhd, &ctrlcpl_items);
+	more |= dhd_prot_process_ctrlbuf(bus->dhd, &ctrlcpl_items);
 	bus->last_process_ctrlbuf_time = OSL_LOCALTIME_NS();
+
+	bus->ctrl_cpl_post_time_usec =
+		(bus->last_process_ctrlbuf_time - read_frames_entry_time) / NSEC_PER_USEC;
+	dhd_histo_update(bus->dhd, bus->ctrl_cpl_post_time_histo,
+		(uint32)bus->ctrl_cpl_post_time_usec);
 
 	/* Do not process rest of ring buf once bus enters low power state (D3_INFORM/D3_ACK) */
 	if (DHD_CHK_BUS_IN_LPS(bus)) {
@@ -13156,22 +13312,32 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 	}
 
 	/* update the flow ring cpls */
-	dhd_update_txflowrings(bus->dhd);
+	more |= dhd_update_txflowrings(bus->dhd);
 	bus->last_process_flowring_time = OSL_LOCALTIME_NS();
+
+	bus->tx_post_time_usec =
+		(bus->last_process_flowring_time - bus->last_process_ctrlbuf_time) / NSEC_PER_USEC;
+	dhd_histo_update(bus->dhd, bus->tx_post_time_histo, (uint32)bus->tx_post_time_usec);
 
 	/* With heavy TX traffic, we could get a lot of TxStatus
 	 * so add bound
 	 */
-	more |= dhd_prot_process_msgbuf_txcpl(bus->dhd, dhd_txbound, DHD_REGULAR_RING,
-			&txcpl_items);
+	more |= dhd_prot_process_msgbuf_txcpl(bus->dhd, DHD_REGULAR_RING, &txcpl_items);
 	bus->last_process_txcpl_time = OSL_LOCALTIME_NS();
+
+	bus->tx_cpl_time_usec =
+		(bus->last_process_txcpl_time - bus->last_process_flowring_time) / NSEC_PER_USEC;
+	dhd_histo_update(bus->dhd, bus->tx_cpl_time_histo, (uint32)bus->tx_cpl_time_usec);
 
 	/* With heavy RX traffic, this routine potentially could spend some time
 	 * processing RX frames without RX bound
 	 */
-	more |= dhd_prot_process_msgbuf_rxcpl(bus->dhd, dhd_rxbound, DHD_REGULAR_RING,
-			&rxcpl_items);
+	more |= dhd_prot_process_msgbuf_rxcpl(bus->dhd, DHD_REGULAR_RING, &rxcpl_items);
 	bus->last_process_rxcpl_time = OSL_LOCALTIME_NS();
+
+	bus->rx_cpl_post_time_usec =
+		(bus->last_process_rxcpl_time - bus->last_process_txcpl_time) / NSEC_PER_USEC;
+	dhd_histo_update(bus->dhd, bus->rx_cpl_post_time_histo, (uint32)bus->rx_cpl_post_time_usec);
 
 	/* Process info ring completion messages */
 #ifdef EWP_EDL
@@ -13994,6 +14160,8 @@ int dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 
 	dhd_bus_pcie_pwr_req_clear_reload_war(bus);
 
+	dhd_init_dpc_histos(bus->dhd);
+
 	if (MULTIBP_ENAB(bus->sih)) {
 		dhd_bus_pcie_pwr_req(bus);
 	}
@@ -14547,7 +14715,7 @@ dhd_bus_flow_ring_create_response(dhd_bus_t *bus, uint16 flowid, int32 status)
 	dll_prepend(&bus->flowring_active_list, &flow_ring_node->list);
 	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
 
-	dhd_bus_schedule_queue(bus, flowid, FALSE); /* from queue to flowring */
+	dhd_bus_schedule_queue(bus, flowid, FALSE, 0, NULL); /* from queue to flowring */
 
 	return;
 }
@@ -14790,7 +14958,7 @@ dhd_bus_flow_ring_resume_response(dhd_bus_t *bus, uint16 flowid, int32 status)
 
 	flow_ring_node->status = FLOW_RING_STATUS_OPEN;
 
-	dhd_bus_schedule_queue(bus, flowid, FALSE);
+	dhd_bus_schedule_queue(bus, flowid, FALSE, 0, NULL);
 	return;
 }
 

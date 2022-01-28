@@ -265,6 +265,7 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8	gtk[EAPOL_WPA_MAX_KEY_SIZE];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_key_gtk_encap_t;
 
+#define EAPOL_WPA2_KEY_MLO_GTK_ENCAP_HDR_LEN	7u
 /* MLO GTK encapsulation */
 typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8	flags;			/* KeyID [0-1], Tx [2], rsvd [3], link_id [4-7] */
@@ -282,6 +283,8 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8	key[EAPOL_WPA_MAX_KEY_SIZE];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_key_igtk_encap_t;
 
+#define EAPOL_WPA2_KEY_MLO_IGTK_ENCAP_HDR_LEN	9u
+
 /* MLO IGTK encapsulation */
 typedef BWL_PRE_PACKED_STRUCT struct {
 	uint16	key_id;
@@ -292,6 +295,8 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 
 /* BIGTK encapsulation */
 #define EAPOL_RSN_BIPN_SIZE	6u
+#define EAPOL_WPA2_KEY_BIGTK_ENCAP_HDR_LEN	8u
+
 typedef BWL_PRE_PACKED_STRUCT struct {
 	uint16	key_id;
 	uint8	bipn[EAPOL_RSN_BIPN_SIZE];
@@ -300,6 +305,8 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 
 /* MLO BIGTK encapsulation */
 #define EAPOL_RSN_MLO_BIPN_SIZE	6u
+#define EAPOL_WPA2_KEY_MLO_BIGTK_ENCAP_HDR_LEN	9u
+
 typedef BWL_PRE_PACKED_STRUCT struct {
 	uint16	key_id;
 	uint8	bipn[EAPOL_RSN_MLO_BIPN_SIZE];
@@ -307,11 +314,9 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8	key[EAPOL_WPA_MAX_KEY_SIZE];
 } BWL_POST_PACKED_STRUCT eapol_wpa2_key_mlo_bigtk_encap_t;
 
-#define EAPOL_WPA2_KEY_BIGTK_ENCAP_HDR_LEN	8u
-
-#define EAPOL_WPA2_LINK_INFO_LINK_ID_MASK	0xF
-#define EAPOL_WPA2_LINK_INFO_LINK_ID_SHIFT	4
-#define EAPOL_WPA2_LINK_INFO_RSNXE_PRESENT	0x10
+#define EAPOL_WPA2_LINK_INFO_LINKID_MASK	(0xFu)
+#define EAPOL_WPA2_LINK_INFO_RSNE_PRESENT	(0x1u << 4u)
+#define EAPOL_WPA2_LINK_INFO_RSNXE_PRESENT	(0x1u << 5u)
 
 /* MLO KDE encapsulation */
 typedef BWL_PRE_PACKED_STRUCT struct {

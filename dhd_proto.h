@@ -144,16 +144,22 @@ extern int dhd_process_pkt_reorder_info(dhd_pub_t *dhd, uchar *reorder_info_buf,
 	uint reorder_info_len, void **pkt, uint32 *free_buf_count);
 
 #ifdef BCMPCIE
-extern bool dhd_prot_process_msgbuf_txcpl(dhd_pub_t *dhd, uint bound, int ringtype,
-	uint32 *txcpl_items);
-extern bool dhd_prot_process_msgbuf_rxcpl(dhd_pub_t *dhd, uint bound, int ringtype,
-	uint32 *rxcpl_items);
+extern bool dhd_prot_process_msgbuf_txcpl(dhd_pub_t *dhd, int ringtype, uint32 *txcpl_items);
+extern bool dhd_prot_process_msgbuf_rxcpl(dhd_pub_t *dhd, int ringtype,	uint32 *rxcpl_items);
 extern bool dhd_prot_process_msgbuf_infocpl(dhd_pub_t *dhd, uint bound,
 	uint32 *evtlog_items);
+uint32 dhd_prot_get_tx_post_bound(dhd_pub_t *dhd);
+uint32 dhd_prot_get_ctrl_cpl_post_bound(dhd_pub_t *dhd);
+uint32 dhd_prot_get_tx_cpl_bound(dhd_pub_t *dhd);
+uint32 dhd_prot_get_rx_cpl_post_bound(dhd_pub_t *dhd);
+void dhd_prot_set_tx_cpl_bound(dhd_pub_t *dhd, uint32 val);
+void dhd_prot_set_rx_cpl_post_bound(dhd_pub_t *dhd, uint32 val);
+void dhd_prot_set_tx_post_bound(dhd_pub_t *dhd, uint32 val);
+void dhd_prot_set_ctrl_cpl_post_bound(dhd_pub_t *dhd, uint32 val);
 #ifdef BTLOG
 extern bool dhd_prot_process_msgbuf_btlogcpl(dhd_pub_t *dhd, uint bound);
 #endif	/* BTLOG */
-extern int dhd_prot_process_ctrlbuf(dhd_pub_t * dhd, uint32 *ctrlcpl_items);
+extern bool dhd_prot_process_ctrlbuf(dhd_pub_t * dhd, uint32 *ctrlcpl_items);
 extern int dhd_prot_process_trapbuf(dhd_pub_t * dhd);
 extern bool dhd_prot_dtohsplit(dhd_pub_t * dhd);
 extern int dhd_post_dummy_msg(dhd_pub_t *dhd);
@@ -182,7 +188,7 @@ extern uint32 dhd_prot_metadatalen_get(dhd_pub_t *dhd, bool rx);
 extern void dhd_prot_print_flow_ring(dhd_pub_t *dhd, void *msgbuf_flow_info, bool h2d,
 	struct bcmstrbuf *strbuf, const char * fmt);
 extern void dhd_prot_print_info(dhd_pub_t *dhd, struct bcmstrbuf *strbuf);
-extern void dhd_prot_update_txflowring(dhd_pub_t *dhdp, uint16 flow_id, void *msgring_info);
+extern bool dhd_prot_update_txflowring(dhd_pub_t *dhdp, uint16 flow_id, void *msgring_info);
 extern void dhd_prot_txdata_write_flush(dhd_pub_t *dhd, uint16 flow_id);
 extern uint32 dhd_prot_txp_threshold(dhd_pub_t *dhd, bool set, uint32 val);
 extern void dhd_prot_reset(dhd_pub_t *dhd);
@@ -198,6 +204,15 @@ extern int dhd_prot_init_btlog_rings(dhd_pub_t *dhd);
 #endif	/* BTLOG */
 extern int dhd_prot_init_md_rings(dhd_pub_t *dhd);
 extern int dhd_prot_check_tx_resource(dhd_pub_t *dhd);
+#else /* BCMPCIE */
+static INLINE uint32 dhd_prot_get_tx_post_bound(dhd_pub_t *dhd) { return 0; }
+static INLINE uint32 dhd_prot_get_ctrl_cpl_post_bound(dhd_pub_t *dhd) { return 0; }
+static INLINE uint32 dhd_prot_get_tx_cpl_bound(dhd_pub_t *dhd) { return 0; }
+static INLINE uint32 dhd_prot_get_rx_cpl_post_bound(dhd_pub_t *dhd) { return 0; }
+static INLINE void dhd_prot_set_tx_cpl_bound(dhd_pub_t *dhd, uint32 val) { }
+static INLINE void dhd_prot_set_rx_cpl_post_bound(dhd_pub_t *dhd, uint32 val) { }
+static INLINE void dhd_prot_set_tx_post_bound(dhd_pub_t *dhd, uint32 val) { }
+static INLINE void dhd_prot_set_ctrl_cpl_post_bound(dhd_pub_t *dhd, uint32 val) { }
 #endif /* BCMPCIE */
 
 #ifdef DHD_LB

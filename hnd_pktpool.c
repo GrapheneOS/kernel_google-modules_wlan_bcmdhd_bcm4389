@@ -116,6 +116,7 @@ int last_alloc_err = 0;	/* Error reported during last alloc failure */
 #endif /* BCMPKTIDMAP || BCMPKTIDMAP_MIN */
 
 #ifdef POOL_HEAP_RECONFIG
+static uint32 pktpool_add_fail_cnt = 0; /* Counter if pktpool_add fails */
 typedef struct pktpool_heap_cb_reg {
 	pktpool_heap_cb_t fn;
 	void *ctxt;
@@ -2311,6 +2312,7 @@ hnd_pktpool_heap_get_cb(uint8 handle, void *ctxt, void *pkt, uint pktsize)
 				 * free this buffer to heap
 				 */
 				PKTFREE(pktpool_osh, lb, pktsize);
+				pktpool_add_fail_cnt++;
 			}
 			ret = BCME_OK;
 		}

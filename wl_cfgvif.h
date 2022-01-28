@@ -249,4 +249,13 @@ extern uint32
 wl_update_configured_bw(uint32 bw);
 #endif /* SUPPORT_AP_INIT_BWCONF */
 extern uint32 wl_cfgvif_get_iftype_count(struct bcm_cfg80211 *cfg, wl_iftype_t iftype);
+extern s32 wl_update_akm_from_assoc_ie(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	u8 *assoc_ies, u32 assoc_ie_len);
+
+#if defined(LIMIT_AP_BW)
+uint32 wl_cfg80211_get_ap_bw_limit_bit(struct bcm_cfg80211 *cfg, uint32 band);
+chanspec_t wl_cfg80211_get_ap_bw_limited_chspec(struct bcm_cfg80211 *cfg,
+	uint32 band, chanspec_t candidate);
+int wl_cfg80211_set_softap_bw(struct bcm_cfg80211 *cfg, uint32 band, uint32 limit);
+#endif /* LIMIT_AP_BW */
 #endif /* _wl_cfgvif_h_ */

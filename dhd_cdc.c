@@ -534,6 +534,12 @@ dhd_prot_counters(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf,
 	return;
 }
 
+void
+dhd_bus_counters(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
+{
+	return;
+}
+
 /*	The FreeBSD PKTPUSH could change the packet buf pinter
 	so we need to make it changable
 */

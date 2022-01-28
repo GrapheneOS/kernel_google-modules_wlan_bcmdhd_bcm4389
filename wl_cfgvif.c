@@ -1517,6 +1517,16 @@ wl_get_bandwidth_cap(struct net_device *ndev, uint32 band, uint32 *bandwidth)
 		bw = WL_CHANSPEC_BW_20;
 	}
 
+#if defined(LIMIT_AP_BW)
+	if (band == WL_CHANSPEC_BAND_6G) {
+		struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
+		if (cfg->ap_bw_chspec != INVCHANSPEC &&
+			(wf_bw_chspec_to_mhz(cfg->ap_bw_chspec) < wf_bw_chspec_to_mhz(bw))) {
+			bw = cfg->ap_bw_chspec;
+		}
+	}
+#endif /* LIMIT_AP_BW */
+
 	*bandwidth = bw;
 
 	return err;
@@ -2372,38 +2382,8 @@ exit:
 	return 0;
 }
 
-#if defined(SUPPORT_SOFTAP_WPAWPA2_MIXED)
-static u32 wl_get_cipher_type(uint8 type)
-{
-	u32 ret = 0;
-	switch (type) {
-		case WPA_CIPHER_NONE:
-			ret = 0;
-			break;
-		case WPA_CIPHER_WEP_40:
-		case WPA_CIPHER_WEP_104:
-			ret = WEP_ENABLED;
-			break;
-		case WPA_CIPHER_TKIP:
-			ret = TKIP_ENABLED;
-			break;
-		case WPA_CIPHER_AES_CCM:
-			ret = AES_ENABLED;
-			break;
-
-#ifdef BCMWAPI_WPI
-		case WAPI_CIPHER_SMS4:
-			ret = SMS4_ENABLED;
-			break;
-#endif
-
-		default:
-			WL_ERR(("No Security Info\n"));
-	}
-	return ret;
-}
-
-static u32 wl_get_suite_auth_key_mgmt_type(uint8 type, const wpa_suite_mcast_t *mcast)
+static u32
+wl_get_suite_auth_key_mgmt_type(uint8 type, const wpa_suite_mcast_t *mcast)
 {
 	u32 ret = 0;
 	u32 is_wpa2 = 0;
@@ -2449,6 +2429,82 @@ static u32 wl_get_suite_auth_key_mgmt_type(uint8 type, const wpa_suite_mcast_t *
 		default:
 			WL_ERR(("No Key Mgmt Info\n"));
 		}
+	}
+	return ret;
+}
+
+s32
+wl_update_akm_from_assoc_ie(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	u8 *assoc_ies, u32 assoc_ie_len)
+{
+	const wpa_suite_mcast_t *mcast;
+	const wpa_suite_ucast_t *ucast;
+	const wpa_suite_auth_key_mgmt_t *mgmt;
+	struct parsed_ies parsed_assoc_ies;
+	const bcm_tlv_t *wpa2ie;
+	u16 suite_count;
+	struct wl_security *sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
+
+	WL_DBG(("Enter \n"));
+
+	/* Parse assoc IEs */
+	if (wl_cfg80211_parse_ies(assoc_ies, assoc_ie_len, &parsed_assoc_ies) < 0) {
+		WL_ERR(("Get Assoc IEs failed\n"));
+		return 0;
+	}
+
+	if (parsed_assoc_ies.wpa2_ie == NULL) {
+		WL_ERR(("wpa2_ie\n"));
+		return -EINVAL;
+	} else {
+		wpa2ie = parsed_assoc_ies.wpa2_ie;
+	}
+
+	/* Get the mcast cipher */
+	mcast = (const wpa_suite_mcast_t *)&wpa2ie->data[WPA2_VERSION_LEN];
+
+	/* Get the unicast cipher */
+	ucast = (const wpa_suite_ucast_t *)&mcast[1];
+	suite_count = ltoh16_ua(&ucast->count);
+
+	/* check and update the AKM and FW auth in DHD security profile */
+	mgmt = (const wpa_suite_auth_key_mgmt_t *)&ucast->list[suite_count];
+	sec->wpa_auth = ntoh32_ua(&mgmt->list[0]);
+	sec->fw_wpa_auth = wl_get_suite_auth_key_mgmt_type(mgmt->list[0].type, mcast);
+
+	WL_INFORM(("AKM updated from assoc ie in DHD Security profile = 0x%X 0x%X\n",
+		sec->wpa_auth, sec->fw_wpa_auth));
+
+	return 0;
+}
+
+#if defined(SUPPORT_SOFTAP_WPAWPA2_MIXED)
+static u32 wl_get_cipher_type(uint8 type)
+{
+	u32 ret = 0;
+	switch (type) {
+		case WPA_CIPHER_NONE:
+			ret = 0;
+			break;
+		case WPA_CIPHER_WEP_40:
+		case WPA_CIPHER_WEP_104:
+			ret = WEP_ENABLED;
+			break;
+		case WPA_CIPHER_TKIP:
+			ret = TKIP_ENABLED;
+			break;
+		case WPA_CIPHER_AES_CCM:
+			ret = AES_ENABLED;
+			break;
+
+#ifdef BCMWAPI_WPI
+		case WAPI_CIPHER_SMS4:
+			ret = SMS4_ENABLED;
+			break;
+#endif
+
+		default:
+			WL_ERR(("No Security Info\n"));
 	}
 	return ret;
 }
@@ -7145,3 +7201,90 @@ fail:
 	return err;
 }
 #endif /* CUSTOM_SOFTAP_SET_ANT */
+
+#if defined(LIMIT_AP_BW)
+uint32
+wl_cfg80211_get_ap_bw_limit_bit(struct bcm_cfg80211 *cfg, uint32 band)
+{
+
+	if (band != WL_CHANSPEC_BAND_6G) {
+		WL_ERR(("AP BW LIMIT supportted for 6G band only requested = %d\n", band));
+		return 0;
+	}
+
+	return cfg->ap_bw_limit;
+}
+
+#ifdef WL_6G_320_SUPPORT
+#define BAND_PARAM(a) a, 0
+#else
+#define BAND_PARAM(a) a
+#endif /* WL_6G_320_SUPPORT */
+
+chanspec_t
+wl_cfg80211_get_ap_bw_limited_chspec(struct bcm_cfg80211 *cfg, uint32 band, chanspec_t candidate)
+{
+
+	chanspec_t updated_chspec;
+	if (band != WL_CHANSPEC_BAND_6G) {
+		WL_ERR(("AP BW LIMIT supported for 6G band only requested = %d\n", band));
+		return candidate;
+	}
+
+	if (!cfg->ap_bw_limit ||
+		(wf_bw_chspec_to_mhz(candidate) <= wf_bw_chspec_to_mhz(cfg->ap_bw_chspec))) {
+		/* LIMIT is not set or narrower bandwidth is required */
+		return candidate;
+	}
+	updated_chspec = wf_create_chspec_from_primary(
+		wf_chspec_primary20_chan(candidate),
+		cfg->ap_bw_chspec,
+		BAND_PARAM(WL_CHANSPEC_BAND_6G));
+
+	return updated_chspec;
+}
+
+/* configure BW limit for AP
+ * support 6G band only
+ */
+int
+wl_cfg80211_set_softap_bw(struct bcm_cfg80211 *cfg, uint32 band, uint32 limit)
+{
+	int i, found = FALSE, f_idx = 0;
+	uint32 support_bw[][2] = {
+		{WLC_BW_20MHZ_BIT, WL_CHANSPEC_BW_20},
+		{WLC_BW_40MHZ_BIT, WL_CHANSPEC_BW_40},
+		{WLC_BW_80MHZ_BIT, WL_CHANSPEC_BW_80},
+#if defined(CHSPEC_IS160)
+		{WLC_BW_160MHZ_BIT, WL_CHANSPEC_BW_160},
+#endif /* CHSPEC_IS160 */
+	};
+
+	if (band != WL_CHANSPEC_BAND_6G) {
+		WL_ERR(("AP BW LIMIT supportted for 6G band only requested = %d\n", band));
+		return FALSE;
+	}
+
+	for (i = 0; i < ARRAYSIZE(support_bw); i++) {
+		if (support_bw[i][0] == limit) {
+			found = TRUE;
+			f_idx = i;
+			break;
+		}
+	}
+
+	if (limit && !found) {
+		WL_ERR(("AP BW LIMIT not supported bandwidth :%d\n", limit));
+		return BCME_ERROR;
+	}
+
+	cfg->ap_bw_limit = limit;
+	if (found) {
+		cfg->ap_bw_chspec = support_bw[f_idx][1];
+	} else {
+		cfg->ap_bw_chspec = INVCHANSPEC;
+	}
+
+	return BCME_OK;
+}
+#endif /* LIMIT_AP_BW */

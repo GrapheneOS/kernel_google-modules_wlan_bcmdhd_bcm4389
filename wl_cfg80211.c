@@ -745,7 +745,7 @@ static s32 wl_set_auth_type(struct net_device *dev,
 static s32 wl_set_set_cipher(struct net_device *dev,
 	struct cfg80211_connect_params *sme);
 static s32 wl_set_key_mgmt(struct net_device *dev,
-	struct cfg80211_connect_params *sme);
+	struct cfg80211_connect_params *sme, wlcfg_assoc_info_t *assoc_info);
 static s32 wl_set_set_sharedkey(struct net_device *dev,
 	struct cfg80211_connect_params *sme);
 #ifdef WL_FILS
@@ -5373,8 +5373,101 @@ done:
 	return err;
 }
 
+static void
+wl_prepare_joinpref_tuples(uint8 **pref_buf, u32 akm, u32 pairwise_cipher, u32 mcast_cipher)
+{
+	u32 val = 0;
+
+	/* Update AKM in tuple */
+	val = bcmswap32(akm);
+	/* memcpy_s return is typecast to void since we have JOIN_PREF_MAX_WPA_TUPLES check */
+	(void)memcpy_s(*pref_buf, sizeof(u32), (uint8 *)&val, sizeof(u32));
+	*pref_buf += WPA_SUITE_LEN;
+	/* Set unicast cipher in tuple */
+	val = bcmswap32(pairwise_cipher);
+	(void)memcpy_s(*pref_buf, sizeof(u32), (uint8 *)&val, sizeof(u32));
+	*pref_buf += WPA_SUITE_LEN;
+	/* Set multicast cipher tuple */
+	val = bcmswap32(mcast_cipher);
+	(void)memcpy_s(*pref_buf, sizeof(u32), (uint8 *)&val, sizeof(u32));
+	*pref_buf += WPA_SUITE_LEN;
+
+}
+
 static s32
-wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme)
+wl_set_multi_akm(struct net_device *dev, struct bcm_cfg80211 *cfg,
+	struct cfg80211_connect_params *sme, wlcfg_assoc_info_t *assoc_info)
+{
+	int num_tuples = 0;
+	char smbuf[WLC_IOCTL_SMLEN];
+	uint8 buf[JOIN_PREF_MAX_BUF_SIZE];
+	uint8 *pref = buf;
+	int j;
+	int total_bytes = 0;
+	u32 multi_akm = 0;
+	s32 err = 0;
+
+	/* Check for valid set AKM combinations */
+	for (j = 0; j < sme->crypto.n_akm_suites; j++) {
+		multi_akm |= wl_rsn_akm_wpa_auth_lookup(sme->crypto.akm_suites[j]);
+	}
+
+	/* Currently supplicant layer multi-AKM is support is restricted to
+	* SAE and WPA2PSK for seamless roaming
+	*/
+	if (multi_akm == (WPA3_AUTH_SAE_PSK | WPA2_AUTH_PSK)) {
+		/* Set auto_wpa_enabled to avoid wpa ie plumb */
+		assoc_info->auto_wpa_enabled = TRUE;
+		/* Update seamless_psk for AKMs needing psk plumb */
+		assoc_info->seamless_psk = TRUE;
+	} else {
+		WL_ERR(("Invalid MultiAKM combination 0x%x\n", multi_akm));
+		return -EINVAL;
+	}
+
+	bzero(buf, sizeof(buf));
+	/* Increment the num_tuples value whenever new joinpref tuple is added */
+	num_tuples = 2;
+
+	if (num_tuples <= JOIN_PREF_MAX_WPA_TUPLES) {
+		*pref++ = WL_JOIN_PREF_WPA;
+		*pref++ = (JOIN_PREF_WPA_TUPLE_SIZE * num_tuples) + 2;
+		*pref++ = 0;
+		*pref++ = (uint8)num_tuples;
+		total_bytes = JOIN_PREF_WPA_HDR_SIZE +
+			(JOIN_PREF_WPA_TUPLE_SIZE * num_tuples);
+	} else {
+		WL_ERR(("Too many wpa configs for join_pref\n"));
+		return -EINVAL;
+	}
+
+	/* Update tuples in akm-ucipher-mcipher format required for join_pref, the order of
+	* tuple defines the AKM preference, the first addition being the highest preference
+	*/
+	wl_prepare_joinpref_tuples(&pref, WLAN_AKM_SUITE_SAE,
+		WLAN_CIPHER_SUITE_CCMP, WLAN_CIPHER_SUITE_CCMP);
+	wl_prepare_joinpref_tuples(&pref, WLAN_AKM_SUITE_PSK,
+		WLAN_CIPHER_SUITE_CCMP, WLAN_CIPHER_SUITE_CCMP);
+
+#ifdef MFP
+	if ((err = wl_cfg80211_set_mfp(cfg, dev, sme)) < 0) {
+		WL_ERR(("MFP set failed err:%d\n", err));
+		return -EINVAL;
+	}
+#endif /* MFP */
+
+	err = wldev_iovar_setbuf(dev, "join_pref", buf, total_bytes,
+		smbuf, sizeof(smbuf), NULL);
+	if (err) {
+		WL_ERR(("Failed to set join_pref, error = %d\n", err));
+	}
+
+	return err;
+}
+
+static s32
+wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme,
+	wlcfg_assoc_info_t *assoc_info)
 {
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 	struct wl_security *sec;
@@ -5388,118 +5481,134 @@ wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme)
 	}
 
 	if (sme->crypto.n_akm_suites) {
-		err = wldev_iovar_getint(dev, "wpa_auth", &val);
-		if (unlikely(err)) {
-			WL_ERR(("could not get wpa_auth (%d)\n", err));
-			return err;
-		}
-		if (val & (WPA_AUTH_PSK |
-			WPA_AUTH_UNSPECIFIED)) {
-			switch (sme->crypto.akm_suites[0]) {
-			case WLAN_AKM_SUITE_8021X:
-				val = WPA_AUTH_UNSPECIFIED;
-				break;
-			case WLAN_AKM_SUITE_PSK:
-				val = WPA_AUTH_PSK;
-				break;
-			default:
-				WL_ERR(("invalid akm suite (0x%x)\n",
-					sme->crypto.akm_suites[0]));
-				return -EINVAL;
+		WL_DBG(("No of akms %d 0x%x 0x%x\n", sme->crypto.n_akm_suites,
+			sme->crypto.akm_suites[0], sme->crypto.akm_suites[1]));
+		if (sme->crypto.n_akm_suites > 1) {
+			err = wl_set_multi_akm(dev, cfg, sme, assoc_info);
+			if (unlikely(err)) {
+				WL_ERR(("Failed to set multi akm key mgmt err = %d\n", err));
+				return err;
 			}
-		} else if (val & (WPA2_AUTH_PSK |
-			WPA2_AUTH_UNSPECIFIED)) {
-			switch (sme->crypto.akm_suites[0]) {
+		} else {
+			err = wldev_iovar_getint(dev, "wpa_auth", &val);
+			if (unlikely(err)) {
+				WL_ERR(("could not get wpa_auth (%d)\n", err));
+				return err;
+			}
+			if (val & (WPA_AUTH_PSK |
+				WPA_AUTH_UNSPECIFIED)) {
+				switch (sme->crypto.akm_suites[0]) {
+				case WLAN_AKM_SUITE_8021X:
+					val = WPA_AUTH_UNSPECIFIED;
+					break;
+				case WLAN_AKM_SUITE_PSK:
+					val = WPA_AUTH_PSK;
+					break;
+				default:
+					WL_ERR(("invalid akm suite (0x%x)\n",
+						sme->crypto.akm_suites[0]));
+					return -EINVAL;
+				}
+			} else if (val & (WPA2_AUTH_PSK |
+				WPA2_AUTH_UNSPECIFIED)) {
+				switch (sme->crypto.akm_suites[0]) {
 #ifdef MFP
 
-			case WL_AKM_SUITE_SHA256_1X:
-				val = WPA2_AUTH_1X_SHA256;
-				break;
-			case WL_AKM_SUITE_SHA256_PSK:
-				val = WPA2_AUTH_PSK_SHA256;
-				break;
+				case WL_AKM_SUITE_SHA256_1X:
+					val = WPA2_AUTH_1X_SHA256;
+					break;
+				case WL_AKM_SUITE_SHA256_PSK:
+					val = WPA2_AUTH_PSK_SHA256;
+					break;
 #endif /* MFP */
-			case WLAN_AKM_SUITE_8021X:
-			case WLAN_AKM_SUITE_PSK:
+				case WLAN_AKM_SUITE_8021X:
+				case WLAN_AKM_SUITE_PSK:
 #if defined(WLFBT) && defined(WLAN_AKM_SUITE_FT_8021X)
-			case WLAN_AKM_SUITE_FT_8021X:
+				case WLAN_AKM_SUITE_FT_8021X:
 #endif
 #if defined(WLFBT) && defined(WLAN_AKM_SUITE_FT_PSK)
-			case WLAN_AKM_SUITE_FT_PSK:
+				case WLAN_AKM_SUITE_FT_PSK:
 #endif
-			case WLAN_AKM_SUITE_FILS_SHA256:
-			case WLAN_AKM_SUITE_FILS_SHA384:
-			case WLAN_AKM_SUITE_8021X_SUITE_B:
-			case WLAN_AKM_SUITE_8021X_SUITE_B_192:
+				case WLAN_AKM_SUITE_FILS_SHA256:
+				case WLAN_AKM_SUITE_FILS_SHA384:
+				case WLAN_AKM_SUITE_8021X_SUITE_B:
+				case WLAN_AKM_SUITE_8021X_SUITE_B_192:
 #ifdef WL_OWE
-			case WLAN_AKM_SUITE_OWE:
+				case WLAN_AKM_SUITE_OWE:
 #endif /* WL_OWE */
 #if defined(WL_SAE) || defined(WL_CLIENT_SAE)
-			case WLAN_AKM_SUITE_SAE:
+				case WLAN_AKM_SUITE_SAE:
 #endif /* WL_SAE || WL_CLIENT_SAE */
 #ifdef WL_SAE_FT
-			case WLAN_AKM_SUITE_FT_OVER_SAE:
+				case WLAN_AKM_SUITE_FT_OVER_SAE:
 #endif /* WL_SAE_FT */
-			case WLAN_AKM_SUITE_DPP:
-			case WLAN_AKM_SUITE_FT_8021X_SHA384:
-				val = wl_rsn_akm_wpa_auth_lookup(sme->crypto.akm_suites[0]);
-				break;
-			case WLAN_AKM_SUITE_FT_FILS_SHA256:
-				val = WPA2_AUTH_FILS_SHA256 | WPA2_AUTH_FT;
-				break;
-			case WLAN_AKM_SUITE_FT_FILS_SHA384:
-				val = WPA2_AUTH_FILS_SHA384 | WPA2_AUTH_FT;
-				break;
-			default:
-				WL_ERR(("invalid akm suite (0x%x)\n",
-					sme->crypto.akm_suites[0]));
-				return -EINVAL;
+				case WLAN_AKM_SUITE_DPP:
+				case WLAN_AKM_SUITE_FT_8021X_SHA384:
+					val = wl_rsn_akm_wpa_auth_lookup(sme->crypto.akm_suites[0]);
+					break;
+				case WLAN_AKM_SUITE_FT_FILS_SHA256:
+					val = WPA2_AUTH_FILS_SHA256 | WPA2_AUTH_FT;
+					break;
+				case WLAN_AKM_SUITE_FT_FILS_SHA384:
+					val = WPA2_AUTH_FILS_SHA384 | WPA2_AUTH_FT;
+					break;
+				default:
+					WL_ERR(("invalid akm suite (0x%x)\n",
+						sme->crypto.akm_suites[0]));
+					return -EINVAL;
+				}
 			}
-		}
 
 #ifdef BCMWAPI_WPI
-		else if (val & (WAPI_AUTH_PSK | WAPI_AUTH_UNSPECIFIED)) {
-			switch (sme->crypto.akm_suites[0]) {
-			case WLAN_AKM_SUITE_WAPI_CERT:
-				val = WAPI_AUTH_UNSPECIFIED;
-				break;
-			case WLAN_AKM_SUITE_WAPI_PSK:
-				val = WAPI_AUTH_PSK;
-				break;
-			default:
-				WL_ERR(("invalid akm suite (0x%x)\n",
-					sme->crypto.akm_suites[0]));
-				return -EINVAL;
+			else if (val & (WAPI_AUTH_PSK | WAPI_AUTH_UNSPECIFIED)) {
+				switch (sme->crypto.akm_suites[0]) {
+				case WLAN_AKM_SUITE_WAPI_CERT:
+					val = WAPI_AUTH_UNSPECIFIED;
+					break;
+				case WLAN_AKM_SUITE_WAPI_PSK:
+					val = WAPI_AUTH_PSK;
+					break;
+				default:
+					WL_ERR(("invalid akm suite (0x%x)\n",
+						sme->crypto.akm_suites[0]));
+					return -EINVAL;
+				}
 			}
-		}
 #endif
 
 #ifdef WL_FILS
 #if !defined(WL_FILS_ROAM_OFFLD)
-	err = wl_fils_toggle_roaming(dev, val);
-	if (unlikely(err)) {
-		return err;
-	}
+		err = wl_fils_toggle_roaming(dev, val);
+		if (unlikely(err)) {
+			return err;
+		}
 #endif /* !WL_FILS_ROAM_OFFLD */
 #endif /* !WL_FILS */
 
 #ifdef MFP
-		if ((err = wl_cfg80211_set_mfp(cfg, dev, sme)) < 0) {
-			WL_ERR(("MFP set failed err:%d\n", err));
-			return -EINVAL;
-		}
+			if ((err = wl_cfg80211_set_mfp(cfg, dev, sme)) < 0) {
+				WL_ERR(("MFP set failed err:%d\n", err));
+				return -EINVAL;
+			}
 #endif /* MFP */
 
-		WL_DBG_MEM(("[%s] wl wpa_auth to 0x%x\n", dev->name, val));
-		err = wldev_iovar_setint_bsscfg(dev, "wpa_auth", val, bssidx);
-		if (unlikely(err)) {
-			WL_ERR(("could not set wpa_auth (0x%x)\n", err));
-			return err;
+			WL_DBG_MEM(("[%s] wl wpa_auth to 0x%x\n", dev->name, val));
+			err = wldev_iovar_setint_bsscfg(dev, "wpa_auth", val, bssidx);
+			if (unlikely(err)) {
+				WL_ERR(("could not set wpa_auth (0x%x)\n", err));
+				return err;
+			}
 		}
 	}
 	sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
-	sec->wpa_auth = sme->crypto.akm_suites[0];
-	sec->fw_wpa_auth = val;
+	if (assoc_info->auto_wpa_enabled == TRUE) {
+		/* Set to value 0 indicating multi-akm configuration */
+		sec->wpa_auth = 0;
+		sec->fw_wpa_auth = 0;
+	} else {
+		sec->wpa_auth = sme->crypto.akm_suites[0];
+		sec->fw_wpa_auth = val;
+	}
 
 	return err;
 }
@@ -5906,8 +6015,8 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 }
 
 static s32
-wl_config_assoc_security(struct bcm_cfg80211 *cfg,
-	struct net_device *dev, struct cfg80211_connect_params *sme)
+wl_config_assoc_security(struct bcm_cfg80211 *cfg, struct net_device *dev,
+	struct cfg80211_connect_params *sme, wlcfg_assoc_info_t *assoc_info)
 {
 	s32 err = BCME_OK;
 	struct wl_security *sec;
@@ -5935,14 +6044,16 @@ wl_config_assoc_security(struct bcm_cfg80211 *cfg,
 		}
 	}
 #endif /* WL_FILS */
-
-	err = wl_set_set_cipher(dev, sme);
-	if (unlikely(err)) {
-		WL_ERR(("Invalid ciper\n"));
-		goto exit;
+	/* Avoid cipher setting for multi-AKM, cipher combinations for multi-AKM predefined */
+	if (!(sme->crypto.n_akm_suites > 1)) {
+		err = wl_set_set_cipher(dev, sme);
+		if (unlikely(err)) {
+			WL_ERR(("Invalid ciper\n"));
+			goto exit;
+		}
 	}
 
-	err = wl_set_key_mgmt(dev, sme);
+	err = wl_set_key_mgmt(dev, sme, assoc_info);
 	if (unlikely(err)) {
 		WL_ERR(("Invalid key mgmt\n"));
 		goto exit;
@@ -5951,7 +6062,8 @@ wl_config_assoc_security(struct bcm_cfg80211 *cfg,
 	BCM_REFERENCE(wl_set_passphrase);
 #ifdef WL_SAE
 	sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
-	if (sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK) {
+	if ((sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK) ||
+		(assoc_info->seamless_psk == TRUE)) {
 		err = wl_set_passphrase(dev, sme);
 		if (unlikely(err)) {
 			WL_ERR(("Unable to set passphrase\n"));
@@ -6056,10 +6168,13 @@ wl_config_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wpaie_len = 0;
 	}
 
-	err = wldev_iovar_setbuf(dev, "wpaie", wpaie, wpaie_len,
-		cfg->ioctl_buf, WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);
-	if (unlikely(err)) {
-		WL_ERR(("wpaie set error (%d)\n", err));
+	/* In case of auto_wpa FW prepares the wpaie */
+	if (info->auto_wpa_enabled == FALSE) {
+		err = wldev_iovar_setbuf(dev, "wpaie", wpaie, wpaie_len,
+			cfg->ioctl_buf, WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);
+		if (unlikely(err)) {
+			WL_ERR(("wpaie set error (%d)\n", err));
+		}
 	}
 
 	return err;
@@ -6671,7 +6786,7 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 			goto fail;
 		}
 	} else {
-		err = wl_config_assoc_security(cfg, dev, sme);
+		err = wl_config_assoc_security(cfg, dev, sme, &assoc_info);
 		if (unlikely(err)) {
 			WL_ERR(("config assoc security failed\n"));
 			goto fail;
@@ -13860,6 +13975,7 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 	wl_assoc_info_t assoc_info;
 	struct wl_connect_info *conn_info = wl_to_conn(cfg);
 	s32 err = 0;
+	struct wl_security *sec;
 #ifdef QOS_MAP_SET
 	bcm_tlv_t * qos_map_ie = NULL;
 #endif /* QOS_MAP_SET */
@@ -13909,6 +14025,12 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 			WL_ERR(("IE size %d above max %d size \n",
 				conn_info->req_ie_len, MAX_REQ_LINE));
 			return err;
+		}
+		sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
+		/* Update security wpa_auth for seamless roam, wpa_auth was earlier set to 0 */
+		if (sec->wpa_auth == 0) {
+			wl_update_akm_from_assoc_ie(cfg, ndev, conn_info->req_ie,
+				conn_info->req_ie_len);
 		}
 	} else {
 		conn_info->req_ie_len = 0;

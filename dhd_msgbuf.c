@@ -555,88 +555,23 @@ uint d2h_max_ctrlcpl;
 uint rx_buf_burst;
 uint rx_bufpost_threshold;
 
-void
-dhd_prot_set_ring_size_ver(dhd_pub_t *dhd, int version)
-{
-	if (ring_size_alloc_version < version) {
-		DHD_ERROR(("%s: Ring alloced version(%d) is lesser than requested(%d), ABORT\n",
-			__FUNCTION__, ring_size_alloc_version, version));
-		return;
-	}
-	ring_size_version = version;
+#ifndef DHD_RX_CPL_POST_BOUND
+#define DHD_RX_CPL_POST_BOUND		1024
+#endif
+#ifndef DHD_TX_POST_BOUND
+#define DHD_TX_POST_BOUND		256
+#endif
+#ifndef DHD_CTRL_CPL_POST_BOUND
+#define DHD_CTRL_CPL_POST_BOUND		64
+#endif
+#ifndef DHD_TX_CPL_BOUND
+#define DHD_TX_CPL_BOUND		2048
+#endif
 
-	/* Change each parameters only if they are 0s, non-zero means,
-	 * it is overridden via module parameter.
-	 */
-	switch (version) {
-		case 1:
-			if (!h2d_max_txpost) {
-				h2d_max_txpost = H2DRING_TXPOST_SIZE_V1;
-			}
-			if (!h2d_htput_max_txpost) {
-				h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_SIZE_V1;
-			}
-			if (!d2h_max_txcpl) {
-				d2h_max_txcpl = D2HRING_TXCPL_SIZE_V1;
-			}
-
-			if (!h2d_max_rxpost) {
-				h2d_max_rxpost = H2DRING_RXPOST_SIZE_V1;
-			}
-			if (!d2h_max_rxcpl) {
-				d2h_max_rxcpl = D2HRING_RXCPL_SIZE_V1;
-			}
-
-			if (!h2d_max_ctrlpost) {
-				h2d_max_ctrlpost = H2DRING_CTRLPOST_SIZE_V1;
-			}
-			if (!d2h_max_ctrlcpl) {
-				d2h_max_ctrlcpl = D2HRING_CTRLCPL_SIZE_V1;
-			}
-
-			if (!rx_buf_burst) {
-				rx_buf_burst = RX_BUF_BURST_V1;
-			}
-			if (!rx_bufpost_threshold) {
-				rx_bufpost_threshold = RX_BUFPOST_THRESHOLD_V1;
-			}
-			break;
-		case 2:
-			if (!h2d_max_txpost) {
-				h2d_max_txpost = H2DRING_TXPOST_SIZE_V2;
-			}
-			if (!h2d_htput_max_txpost) {
-				h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_SIZE_V2;
-			}
-			if (!d2h_max_txcpl) {
-				d2h_max_txcpl = D2HRING_TXCPL_SIZE_V2;
-			}
-
-			if (!h2d_max_rxpost) {
-				h2d_max_rxpost = H2DRING_RXPOST_SIZE_V2;
-			}
-			if (!d2h_max_rxcpl) {
-				d2h_max_rxcpl = D2HRING_RXCPL_SIZE_V2;
-			}
-
-			if (!h2d_max_ctrlpost) {
-				h2d_max_ctrlpost = H2DRING_CTRLPOST_SIZE_V2;
-			}
-			if (!d2h_max_ctrlcpl) {
-				d2h_max_ctrlcpl = D2HRING_CTRLCPL_SIZE_V2;
-			}
-
-			if (!rx_buf_burst) {
-				rx_buf_burst = RX_BUF_BURST_V2;
-			}
-			if (!rx_bufpost_threshold) {
-				rx_bufpost_threshold = RX_BUFPOST_THRESHOLD_V2;
-			}
-			break;
-		default:
-			DHD_ERROR(("%s: invalid override version:%d", __FUNCTION__, version));
-	}
-}
+uint dhd_rx_cpl_post_bound = DHD_RX_CPL_POST_BOUND;
+uint dhd_tx_post_bound = DHD_TX_POST_BOUND;
+uint dhd_tx_cpl_bound = DHD_TX_CPL_BOUND;
+uint dhd_ctrl_cpl_post_bound = DHD_CTRL_CPL_POST_BOUND;
 
 #ifdef AGG_H2D_DB
 bool agg_h2d_db_enab = TRUE;
@@ -846,6 +781,18 @@ typedef struct dhd_prot {
 	uint32 rx_wakeup_pkt;    /* Number of Rx wakeup packet rcvd */
 	uint32 info_wakeup_pkt;  /* Number of info cpl wakeup packet rcvd */
 	msgbuf_ring_t *d2hring_md_cpl; /* D2H metadata completion ring */
+	/* no. which controls how many rx cpl/post items are processed per dpc */
+	uint32 rx_cpl_post_bound;
+	/*
+	 * no. which controls how many tx post items are processed per dpc,
+	 * i.e, how many tx pkts are posted to flowring from the bkp queue
+	 * from dpc context
+	 */
+	uint32 tx_post_bound;
+	/* no. which controls how many tx cpl items are processed per dpc */
+	uint32 tx_cpl_bound;
+	/* no. which controls how many ctrl cpl/post items are processed per dpc */
+	uint32 ctrl_cpl_post_bound;
 } dhd_prot_t;
 
 #ifdef DHD_EWPR_VER2
@@ -898,7 +845,7 @@ static void* dhd_prot_get_ring_space(msgbuf_ring_t *ring, uint16 nitems,
 
 /* Consumer: Determine the location where the next message may be consumed */
 static uint8* dhd_prot_get_read_addr(dhd_pub_t *dhd, msgbuf_ring_t *ring,
-	uint32 *available_len);
+	uint32 *available_len, uint32 bound);
 
 /* Producer (WR index update) or Consumer (RD index update) indication */
 static void dhd_prot_ring_write_complete(dhd_pub_t *dhd, msgbuf_ring_t *ring,
@@ -1109,6 +1056,144 @@ static void dhd_rxchain_commit(dhd_pub_t *dhd);
 #endif
 
 static void dhd_prot_h2d_sync_init(dhd_pub_t *dhd);
+
+uint32
+dhd_prot_get_tx_post_bound(dhd_pub_t *dhd)
+{
+	dhd_prot_t *prot = dhd->prot;
+	return prot->tx_post_bound;
+}
+
+uint32
+dhd_prot_get_ctrl_cpl_post_bound(dhd_pub_t *dhd)
+{
+	dhd_prot_t *prot = dhd->prot;
+	return prot->ctrl_cpl_post_bound;
+}
+
+uint32
+dhd_prot_get_tx_cpl_bound(dhd_pub_t *dhd)
+{
+	dhd_prot_t *prot = dhd->prot;
+	return prot->tx_cpl_bound;
+}
+
+uint32
+dhd_prot_get_rx_cpl_post_bound(dhd_pub_t *dhd)
+{
+	dhd_prot_t *prot = dhd->prot;
+	return prot->rx_cpl_post_bound;
+}
+
+void
+dhd_prot_set_tx_post_bound(dhd_pub_t *dhd, uint32 val)
+{
+	dhd_prot_t *prot = dhd->prot;
+	prot->tx_post_bound = val;
+}
+
+void
+dhd_prot_set_ctrl_cpl_post_bound(dhd_pub_t *dhd, uint32 val)
+{
+	dhd_prot_t *prot = dhd->prot;
+	prot->ctrl_cpl_post_bound = val;
+}
+
+void
+dhd_prot_set_tx_cpl_bound(dhd_pub_t *dhd, uint32 val)
+{
+	dhd_prot_t *prot = dhd->prot;
+	prot->tx_cpl_bound = val;
+}
+
+void dhd_prot_set_rx_cpl_post_bound(dhd_pub_t *dhd, uint32 val)
+{
+	dhd_prot_t *prot = dhd->prot;
+	prot->rx_cpl_post_bound = val;
+}
+
+void
+dhd_prot_set_ring_size_ver(dhd_pub_t *dhd, int version)
+{
+	if (ring_size_alloc_version < version) {
+		DHD_ERROR(("%s: Ring alloced version(%d) is lesser than requested(%d), ABORT\n",
+			__FUNCTION__, ring_size_alloc_version, version));
+		return;
+	}
+	ring_size_version = version;
+
+	/* Change each parameters only if they are 0s, non-zero means,
+	 * it is overridden via module parameter.
+	 */
+	switch (version) {
+		case 1:
+			if (!h2d_max_txpost) {
+				h2d_max_txpost = H2DRING_TXPOST_SIZE_V1;
+			}
+			if (!h2d_htput_max_txpost) {
+				h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_SIZE_V1;
+			}
+			if (!d2h_max_txcpl) {
+				d2h_max_txcpl = D2HRING_TXCPL_SIZE_V1;
+			}
+
+			if (!h2d_max_rxpost) {
+				h2d_max_rxpost = H2DRING_RXPOST_SIZE_V1;
+			}
+			if (!d2h_max_rxcpl) {
+				d2h_max_rxcpl = D2HRING_RXCPL_SIZE_V1;
+			}
+
+			if (!h2d_max_ctrlpost) {
+				h2d_max_ctrlpost = H2DRING_CTRLPOST_SIZE_V1;
+			}
+			if (!d2h_max_ctrlcpl) {
+				d2h_max_ctrlcpl = D2HRING_CTRLCPL_SIZE_V1;
+			}
+
+			if (!rx_buf_burst) {
+				rx_buf_burst = RX_BUF_BURST_V1;
+			}
+			if (!rx_bufpost_threshold) {
+				rx_bufpost_threshold = RX_BUFPOST_THRESHOLD_V1;
+			}
+			break;
+		case 2:
+			if (!h2d_max_txpost) {
+				h2d_max_txpost = H2DRING_TXPOST_SIZE_V2;
+			}
+			if (!h2d_htput_max_txpost) {
+				h2d_htput_max_txpost = H2DRING_HTPUT_TXPOST_SIZE_V2;
+			}
+			if (!d2h_max_txcpl) {
+				d2h_max_txcpl = D2HRING_TXCPL_SIZE_V2;
+			}
+
+			if (!h2d_max_rxpost) {
+				h2d_max_rxpost = H2DRING_RXPOST_SIZE_V2;
+			}
+			if (!d2h_max_rxcpl) {
+				d2h_max_rxcpl = D2HRING_RXCPL_SIZE_V2;
+			}
+
+			if (!h2d_max_ctrlpost) {
+				h2d_max_ctrlpost = H2DRING_CTRLPOST_SIZE_V2;
+			}
+			if (!d2h_max_ctrlcpl) {
+				d2h_max_ctrlcpl = D2HRING_CTRLCPL_SIZE_V2;
+			}
+
+			if (!rx_buf_burst) {
+				rx_buf_burst = RX_BUF_BURST_V2;
+			}
+			if (!rx_bufpost_threshold) {
+				rx_bufpost_threshold = RX_BUFPOST_THRESHOLD_V2;
+			}
+			break;
+		default:
+			DHD_ERROR(("%s: invalid override version:%d", __FUNCTION__, version));
+	}
+}
 
 #ifdef D2H_MINIDUMP
 dhd_dma_buf_t *
@@ -4186,6 +4271,15 @@ dhd_prot_init(dhd_pub_t *dhd)
 	prot->host_ipc_version = PCIE_SHARED_VERSION;
 	prot->no_tx_resource = FALSE;
 
+	prot->rx_cpl_post_bound =
+		(dhd_rx_cpl_post_bound) ? dhd_rx_cpl_post_bound : DHD_RX_CPL_POST_BOUND;
+	prot->tx_post_bound =
+		(dhd_tx_post_bound) ? dhd_tx_post_bound : DHD_TX_POST_BOUND;
+	prot->tx_cpl_bound =
+		(dhd_tx_cpl_bound) ? dhd_tx_cpl_bound : DHD_TX_CPL_BOUND;
+	prot->ctrl_cpl_post_bound =
+		(dhd_ctrl_cpl_post_bound) ? dhd_ctrl_cpl_post_bound : DHD_CTRL_CPL_POST_BOUND;
+
 	/* Init the host API version */
 	dhd_set_host_cap(dhd);
 
@@ -6356,7 +6450,15 @@ BCMFASTPATH(dhd_prot_process_msgbuf_infocpl)(dhd_pub_t *dhd, uint bound,
 
 		DHD_RING_LOCK(ring->ring_lock, flags);
 		/* Get the message from ring */
-		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len);
+		/* must pass 'bound - n' rather than just 'bound', because
+		 * within this loop, dhd_prot_get_read_addr is called multiple
+		 * times, so if just 'bound' is passed we may end up reading
+		 * more than 'bound' items, ex:- for a bound of 2048,
+		 * during the first iteration let us say n = 2000, so the loop
+		 * continues and for the second iteration n = 1000 items may be read,
+		 * so the total items read will be 3000 which is > 2048
+		 */
+		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len, bound - n);
 		DHD_RING_UNLOCK(ring->ring_lock, flags);
 		if (msg_addr == NULL) {
 			more = FALSE;
@@ -6421,7 +6523,15 @@ BCMFASTPATH(dhd_prot_process_msgbuf_btlogcpl)(dhd_pub_t *dhd, uint bound)
 		}
 
 		/* Get the message from ring */
-		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len);
+		/* must pass 'bound - n' rather than just 'bound', because
+		 * within this loop, dhd_prot_get_read_addr is called multiple
+		 * times, so if just 'bound' is passed we may end up reading
+		 * more than 'bound' items, ex:- for a bound of 2048,
+		 * during the first iteration let us say n = 2000, so the loop
+		 * continues and for the second iteration n = 1000 items may be read,
+		 * so the total items read will be 3000 which is > 2048
+		 */
+		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len, bound - n);
 		if (msg_addr == NULL) {
 			more = FALSE;
 			break;
@@ -6772,8 +6882,7 @@ static int dhd_prot_lb_rxp_flow_ctrl(dhd_pub_t *dhd)
 
 /** called when DHD needs to check for 'receive complete' messages from the dongle */
 bool
-BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringtype,
-	uint32 *rxcpl_items)
+BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, int ringtype, uint32 *rxcpl_items)
 {
 	bool more = FALSE;
 	uint n = 0;
@@ -6832,7 +6941,16 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 		DHD_RING_LOCK(ring->ring_lock, flags);
 
 		/* Get the address of the next message to be read from ring */
-		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len);
+		/* must pass 'bound - n' rather than just 'bound', because
+		 * within this loop, dhd_prot_get_read_addr is called multiple
+		 * times, so if just 'bound' is passed we may end up reading
+		 * more than 'bound' items, ex:- for a bound of 2048,
+		 * during the first iteration let us say n = 2000, so the loop
+		 * continues and for the second iteration n = 1000 items may be read,
+		 * so the total items read will be 3000 which is > 2048
+		 */
+		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len,
+			prot->rx_cpl_post_bound - n);
 		if (msg_addr == NULL) {
 			DHD_RING_UNLOCK(ring->ring_lock, flags);
 			break;
@@ -6866,11 +6984,11 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 			pktid = ltoh32(msg->cmn_hdr.request_id);
 			if (msg->cmn_hdr.flags & BCMPCIE_CMNHDR_FLAGS_WAKE_PACKET) {
 				DHD_ERROR(("%s:Rx: Wakeup Packet received\n", __FUNCTION__));
-				dhd->prot->rx_wakeup_pkt ++;
+				prot->rx_wakeup_pkt ++;
 			}
 
 #ifdef DHD_PKTID_AUDIT_RING
-			if (DHD_PKTID_AUDIT_RING_DEBUG(dhd, dhd->prot->pktid_rx_map, pktid,
+			if (DHD_PKTID_AUDIT_RING_DEBUG(dhd, prot->pktid_rx_map, pktid,
 				DHD_DUPLICATE_FREE, msg, D2HRING_RXCMPLT_ITEMSIZE) != BCME_OK) {
 				msg_len -= item_len;
 				msg_addr += item_len;
@@ -6886,7 +7004,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 				msg_addr += item_len;
 				continue;
 			}
-			dhd->prot->tot_rxcpl++;
+			prot->tot_rxcpl++;
 
 			DMA_UNMAP(dhd->osh, pa, (uint) len, DMA_RX, 0, dmah);
 
@@ -6895,28 +7013,28 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 			dhd->dma_stats.rxdata_sz -= len;
 #endif /* DMAMAP_STATS */
 #ifdef DHD_HMAPTEST
-			if ((dhd->prot->hmaptest_rx_active == HMAPTEST_D11_RX_POSTED) &&
-				(pktid == dhd->prot->hmaptest_rx_pktid)) {
+			if ((prot->hmaptest_rx_active == HMAPTEST_D11_RX_POSTED) &&
+				(pktid == prot->hmaptest_rx_pktid)) {
 
 				uchar *ptr;
 				ptr = PKTDATA(dhd->osh, pkt) - (prot->rx_metadata_offset);
-				DMA_UNMAP(dhd->osh, dhd->prot->hmap_rx_buf_pa,
-					(uint)dhd->prot->hmap_rx_buf_len, DMA_RX, 0, dmah);
+				DMA_UNMAP(dhd->osh, prot->hmap_rx_buf_pa,
+					(uint)prot->hmap_rx_buf_len, DMA_RX, 0, dmah);
 				DHD_ERROR(("hmaptest: d11write rxcpl rcvd sc rxbuf pktid=0x%08x\n",
 					pktid));
 				DHD_ERROR(("hmaptest: d11write rxcpl r0_st=0x%08x r1_stat=0x%08x\n",
 					msg->rx_status_0, msg->rx_status_1));
 				DHD_ERROR(("hmaptest: d11write rxcpl rxbuf va=0x%p pa=0x%08x\n",
-					dhd->prot->hmap_rx_buf_va,
-					(uint32)PHYSADDRLO(dhd->prot->hmap_rx_buf_pa)));
+					prot->hmap_rx_buf_va,
+					(uint32)PHYSADDRLO(prot->hmap_rx_buf_pa)));
 				DHD_ERROR(("hmaptest: d11write rxcpl pktdata va=0x%p pa=0x%08x\n",
 					PKTDATA(dhd->osh, pkt), (uint32)PHYSADDRLO(pa)));
-				memcpy(ptr, dhd->prot->hmap_rx_buf_va, dhd->prot->hmap_rx_buf_len);
-				dhd->prot->hmaptest_rx_active = HMAPTEST_D11_RX_INACTIVE;
-				dhd->prot->hmap_rx_buf_va = NULL;
-				dhd->prot->hmap_rx_buf_len = 0;
-				PHYSADDRHISET(dhd->prot->hmap_rx_buf_pa, 0);
-				PHYSADDRLOSET(dhd->prot->hmap_rx_buf_pa, 0);
+				memcpy(ptr, prot->hmap_rx_buf_va, prot->hmap_rx_buf_len);
+				prot->hmaptest_rx_active = HMAPTEST_D11_RX_INACTIVE;
+				prot->hmap_rx_buf_va = NULL;
+				prot->hmap_rx_buf_len = 0;
+				PHYSADDRHISET(prot->hmap_rx_buf_pa, 0);
+				PHYSADDRLOSET(prot->hmap_rx_buf_pa, 0);
 				prot->hmaptest.in_progress = FALSE;
 			}
 #endif /* DHD_HMAPTEST */
@@ -7013,7 +7131,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 			}
 
 #ifdef DHD_TIMESYNC
-			if (dhd->prot->rx_ts_log_enabled) {
+			if (prot->rx_ts_log_enabled) {
 				dhd_pkt_parse_t parse;
 				ts_timestamp_t *ts = (ts_timestamp_t *)&msg->ts;
 
@@ -7074,7 +7192,7 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 
 		/* After batch processing, check RX bound */
 		n += pkt_cnt;
-		if (n >= bound) {
+		if (n >= prot->rx_cpl_post_bound) {
 			more = TRUE;
 			break;
 		}
@@ -7096,14 +7214,17 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 /**
  * Hands transmit packets (with a caller provided flow_id) over to dongle territory (the flow ring)
  */
-void
+bool
 dhd_prot_update_txflowring(dhd_pub_t *dhd, uint16 flowid, void *msgring)
 {
 	msgbuf_ring_t *ring = (msgbuf_ring_t *)msgring;
+	dhd_prot_t *prot = dhd->prot;
+	bool is_qempty = FALSE;
+	int ret = 0;
 
 	if (ring == NULL) {
 		DHD_ERROR(("%s: NULL txflowring. exiting...\n",  __FUNCTION__));
-		return;
+		return FALSE;
 	}
 	/* Update read pointer */
 	if (dhd->dma_d2h_ring_upd_support) {
@@ -7114,20 +7235,26 @@ dhd_prot_update_txflowring(dhd_pub_t *dhd, uint16 flowid, void *msgring)
 		ring->idx, flowid, ring->wr, ring->rd));
 
 	/* Need more logic here, but for now use it directly */
-	dhd_bus_schedule_queue(dhd->bus, flowid, TRUE); /* from queue to flowring */
+	ret = dhd_bus_schedule_queue(dhd->bus, flowid, TRUE,
+		prot->tx_post_bound, &is_qempty); /* from queue to flowring */
+	if (ret == BCME_OK) {
+		return !is_qempty;
+	} else {
+		return FALSE;
+	}
 }
 
 /** called when DHD needs to check for 'transmit complete' messages from the dongle */
 bool
-BCMFASTPATH(dhd_prot_process_msgbuf_txcpl)(dhd_pub_t *dhd, uint bound, int ringtype,
-	uint32 *txcpl_items)
+BCMFASTPATH(dhd_prot_process_msgbuf_txcpl)(dhd_pub_t *dhd, int ringtype, uint32 *txcpl_items)
 {
 	bool more = TRUE;
 	uint n = 0;
 	msgbuf_ring_t *ring;
 	unsigned long flags;
+	dhd_prot_t *prot = dhd->prot;
 
-		ring = &dhd->prot->d2hring_tx_cpln;
+		ring = &prot->d2hring_tx_cpln;
 
 	/* Process all the messages - DTOH direction */
 	while (!dhd_is_device_removed(dhd)) {
@@ -7150,8 +7277,17 @@ BCMFASTPATH(dhd_prot_process_msgbuf_txcpl)(dhd_pub_t *dhd, uint bound, int ringt
 		}
 
 		DHD_RING_LOCK(ring->ring_lock, flags);
+
 		/* Get the address of the next message to be read from ring */
-		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len);
+		/* must pass 'bound - n' rather than just 'bound', because
+		 * within this loop, dhd_prot_get_read_addr is called multiple
+		 * times, so if just 'bound' is passed we may end up reading
+		 * more than 'bound' items, ex:- for a bound of 2048,
+		 * during the first iteration let us say n = 2000, so the loop
+		 * continues and for the second iteration n = 1000 items may be read,
+		 * so the total items read will be 3000 which is > 2048
+		 */
+		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len, prot->tx_cpl_bound - n);
 		DHD_RING_UNLOCK(ring->ring_lock, flags);
 
 		if (msg_addr == NULL) {
@@ -7174,7 +7310,8 @@ BCMFASTPATH(dhd_prot_process_msgbuf_txcpl)(dhd_pub_t *dhd, uint bound, int ringt
 
 		/* After batch processing, check bound */
 		n += msg_len / ring->item_len;
-		if (n >= bound) {
+
+		if (n >= prot->tx_cpl_bound) {
 			break;
 		}
 	}
@@ -7225,12 +7362,14 @@ BCMFASTPATH(dhd_prot_process_trapbuf)(dhd_pub_t *dhd)
 }
 
 /** called when DHD needs to check for 'ioctl complete' messages from the dongle */
-int
+bool
 BCMFASTPATH(dhd_prot_process_ctrlbuf)(dhd_pub_t *dhd, uint32 *ctrlcpl_items)
 {
 	dhd_prot_t *prot = dhd->prot;
 	msgbuf_ring_t *ring = &prot->d2hring_ctrl_cpln;
 	unsigned long flags;
+	uint32 n = 0;
+	bool more = TRUE;
 
 	/* Process all the messages - DTOH direction */
 	while (!dhd_is_device_removed(dhd)) {
@@ -7238,23 +7377,36 @@ BCMFASTPATH(dhd_prot_process_ctrlbuf)(dhd_pub_t *dhd, uint32 *ctrlcpl_items)
 		uint32 msg_len;
 
 		if (dhd_query_bus_erros(dhd)) {
+			more = FALSE;
 			break;
 		}
 
 		if (dhd->hang_was_sent) {
+			more = FALSE;
 			break;
 		}
 
 		if (dhd->smmu_fault_occurred) {
+			more = FALSE;
 			break;
 		}
 
 		DHD_RING_LOCK(ring->ring_lock, flags);
 		/* Get the address of the next message to be read from ring */
-		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len);
+		/* must pass 'bound - n' rather than just 'bound', because
+		 * within this loop, dhd_prot_get_read_addr is called multiple
+		 * times, so if just 'bound' is passed we may end up reading
+		 * more than 'bound' items, ex:- for a bound of 2048,
+		 * during the first iteration let us say n = 2000, so the loop
+		 * continues and for the second iteration n = 1000 items may be read,
+		 * so the total items read will be 3000 which is > 2048
+		 */
+		msg_addr = dhd_prot_get_read_addr(dhd, ring, &msg_len,
+			prot->ctrl_cpl_post_bound - n);
 		DHD_RING_UNLOCK(ring->ring_lock, flags);
 
 		if (msg_addr == NULL) {
+			more = FALSE;
 			break;
 		}
 
@@ -7269,9 +7421,14 @@ BCMFASTPATH(dhd_prot_process_ctrlbuf)(dhd_pub_t *dhd, uint32 *ctrlcpl_items)
 
 		/* Write to dngl rd ptr */
 		dhd_prot_upd_read_idx(dhd, ring);
+
+		n += msg_len / ring->item_len;
+		if (n >= prot->ctrl_cpl_post_bound) {
+			break;
+		}
 	}
 
-	return 0;
+	return more;
 }
 
 /**
@@ -11868,10 +12025,11 @@ ret_no_mem:
 
 /**
  * Called on checking for 'completion' messages from the dongle. Returns next host buffer to read
- * from, or NULL if there are no more messages to read.
+ * from, or NULL if there are no more messages to read. If 'bound' is non-zero, limits
+ * the no. of items read to bound
  */
 static uint8*
-dhd_prot_get_read_addr(dhd_pub_t *dhd, msgbuf_ring_t *ring, uint32 *available_len)
+dhd_prot_get_read_addr(dhd_pub_t *dhd, msgbuf_ring_t *ring, uint32 *available_len, uint32 bound)
 {
 	uint16 wr;
 	uint16 rd;
@@ -11950,6 +12108,11 @@ dhd_prot_get_read_addr(dhd_pub_t *dhd, msgbuf_ring_t *ring, uint32 *available_le
 
 	/* if space is available, calculate address to be read */
 	read_addr = (char*)ring->dma_buf.va + (rd * ring->item_len);
+
+	/* limit no. of items to bound */
+	if (bound) {
+		items = MIN(items, bound);
+	}
 
 	/* update read pointer */
 	if ((ring->rd + items) >= ring->max_items)

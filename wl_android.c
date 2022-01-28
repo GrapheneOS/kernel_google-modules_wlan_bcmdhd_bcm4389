@@ -575,12 +575,6 @@ struct io_cfg {
 #define MAX_NUM_SUITES		10
 #define WIDTH_AKM_SUITE		8
 #define JOIN_PREF_RSSI_LEN		0x02
-#define JOIN_PREF_RSSI_SIZE		4	/* RSSI pref header size in bytes */
-#define JOIN_PREF_WPA_HDR_SIZE		4 /* WPA pref header size in bytes */
-#define JOIN_PREF_WPA_TUPLE_SIZE	12	/* Tuple size in bytes */
-#define JOIN_PREF_MAX_WPA_TUPLES	16
-#define MAX_BUF_SIZE		(JOIN_PREF_RSSI_SIZE + JOIN_PREF_WPA_HDR_SIZE +	\
-				           (JOIN_PREF_WPA_TUPLE_SIZE * JOIN_PREF_MAX_WPA_TUPLES))
 #endif /* BCMFW_ROAM_ENABLE */
 
 #if defined(CONFIG_TIZEN)
@@ -1126,6 +1120,13 @@ static int wl_android_uwbcx_get_prepare_time(struct net_device *dev, char *comma
 #endif /* WL_DUAL_STA */
 
 #define CMD_SETWSECINFO	"SETWSECINFO"
+
+#if defined(LIMIT_AP_BW)
+#define CMD_SET_SOFTAP_BW "CMD_SET_SOFTAP_BW"
+#define CMD_GET_SOFTAP_BW "CMD_GET_SOFTAP_BW"
+static int wl_android_set_softap_bw(struct net_device *ndev, char *command);
+static int wl_android_get_softap_bw(struct net_device *ndev, char *command, int total_len);
+#endif /* LIMIT_AP_BW */
 
 /**
  * Local (static) functions and variables
@@ -7367,6 +7368,11 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 			if (CHSPEC_BAND((chanspec_t)chosen) == WL_CHANSPEC_BAND_6G &&
 					cfg->band_6g_supported) {
 				/* Cache the chanspec for 6g, as fw will choose the BW */
+#if defined(LIMIT_AP_BW)
+				chosen = (int) wl_cfg80211_get_ap_bw_limited_chspec(cfg,
+					WL_CHANSPEC_BAND_6G, (chanspec_t) chosen);
+
+#endif /* LIMIT_AP_BW */
 				cfg->acs_chspec = (chanspec_t)chosen;
 			}
 #endif /* WL_6G_BAND */
@@ -8279,7 +8285,7 @@ wl_android_set_roampref(struct net_device *dev, char *command, int total_len)
 {
 	int error = 0;
 	char smbuf[WLC_IOCTL_SMLEN];
-	uint8 buf[MAX_BUF_SIZE];
+	uint8 buf[JOIN_PREF_MAX_BUF_SIZE];
 	uint8 *pref = buf;
 	char *pcmd;
 	int num_ucipher_suites = 0;
@@ -13462,6 +13468,16 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	else if (strnicmp(command, CMD_SETWSECINFO, strlen(CMD_SETWSECINFO)) == 0) {
 		bytes_written = wl_android_set_wsec_info(net, command);
 	}
+#if defined(LIMIT_AP_BW)
+	else if (strnicmp(command, CMD_SET_SOFTAP_BW,
+		strlen(CMD_SET_SOFTAP_BW)) == 0) {
+		bytes_written = wl_android_set_softap_bw(net, command);
+	} else if (strnicmp(command, CMD_GET_SOFTAP_BW,
+		strlen(CMD_GET_SOFTAP_BW)) == 0) {
+		bytes_written = wl_android_get_softap_bw(net, command,
+			priv_cmd.total_len);
+	}
+#endif /* LIMIT_AP_BW */
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
 		bytes_written = BCME_UNSUPPORTED;
@@ -14985,3 +15001,92 @@ wl_android_set_he_6g_band(struct net_device *dev, bool enable)
 	return err;
 }
 #endif /* CUSTOM_CONTROL_HE_6G_FEATURES */
+
+#if defined(LIMIT_AP_BW)
+static int
+wl_android_set_softap_bw(struct net_device *ndev, char *command)
+{
+	struct bcm_cfg80211 *cfg = NULL;
+	uint32 bw;
+	char *token, *pos;
+	int err = BCME_OK;
+
+	if (!ndev || (!(cfg = wl_get_cfg(ndev)))) {
+		err = BCME_NOTFOUND;
+		return err;
+	}
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* get band */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR((CMD_SET_SOFTAP_BW ": band is not specified\n"));
+		return -EINVAL;
+	}
+	if (strncmp(token, "6g", strlen("6g"))) {
+		WL_ERR((CMD_SET_SOFTAP_BW " support 6G only\n"));
+		return -EINVAL;
+	}
+
+	/* get bandwidth */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR((CMD_SET_SOFTAP_BW ": bandwidth is not specified\n"));
+		return -EINVAL;
+	}
+	bw = (uint32)bcm_atoi(token);
+	err = wl_cfg80211_set_softap_bw(cfg, WL_CHANSPEC_BAND_6G, bw);
+	if (err != BCME_OK) {
+		return -EINVAL;
+	}
+
+	WL_INFORM(("SOFTAP BANDWITH LIMIT: %d\n", bw));
+	return BCME_OK;
+}
+
+static int
+wl_android_get_softap_bw(struct net_device *ndev, char *command, int total_len)
+{
+	struct bcm_cfg80211 *cfg = NULL;
+	int err = BCME_OK;
+	char *token, *pos;
+	uint32 bw = 0;
+	int rem_len = 0, bytes_written = 0;
+
+	if (!ndev || (!(cfg = wl_get_cfg(ndev)))) {
+		err = BCME_NOTFOUND;
+		goto exit;
+		return err;
+	}
+
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* get band */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR((CMD_GET_SOFTAP_BW ": band is not specified\n"));
+		err = -EINVAL;
+		goto exit;
+	}
+	if (strncmp(token, "6g", strlen("6g"))) {
+		WL_ERR((CMD_GET_SOFTAP_BW " support 6G only\n"));
+		err = -EINVAL;
+		goto exit;
+	}
+
+	bw = wl_cfg80211_get_ap_bw_limit_bit(cfg, WL_CHANSPEC_BAND_6G);
+	bytes_written = scnprintf(command, rem_len, "%s = %d ",
+		CMD_GET_SOFTAP_BW, bw);
+	CHECK_SCNPRINTF_RET_VAL(bytes_written);
+
+exit:
+	WL_INFORM_MEM(("%s ret:%d bw:%d\n", CMD_GET_SOFTAP_BW, err, bw));
+	return bytes_written;
+}
+#endif /* SUPPORT_AP_INIT_BWCONF */

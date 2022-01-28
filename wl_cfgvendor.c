@@ -3347,6 +3347,46 @@ done:
 }
 #endif /* WL_SAE || WL_CLIENT_SAE */
 
+static int
+wl_cfgvendor_set_td_policy(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void  *data, int len)
+{
+	struct net_device *net = wdev->netdev;
+	int ret = BCME_OK;
+	int attr_type;
+	int rem = len;
+	const struct nlattr *iter;
+
+	BCM_REFERENCE(net);
+	nla_for_each_attr(iter, data, len, rem) {
+		attr_type = nla_type(iter);
+		WL_DBG(("attr type: (%u)\n", attr_type));
+
+		switch (attr_type) {
+		case BRCM_ATTR_TD_POLICY: {
+			u32 td_policy = nla_get_u32(iter);
+
+			WL_INFORM_MEM(("Setting TD policy %d\n", td_policy));
+			ret = wl_cfg80211_set_wsec_info(net, &td_policy,
+				sizeof(td_policy), WL_WSEC_INFO_BSS_TD_POLICY);
+			if (unlikely(ret)) {
+				WL_ERR(("set wsec_info for td_policy failed, error %d\n", ret));
+				/* Trigger disassoc, going ahead with connection is
+				 * violation of TD policy
+				 */
+				wl_cfg80211_disassoc(net, WLAN_REASON_UNSPECIFIED);
+			}
+			break;
+		}
+		/* Add new attributes here */
+		default:
+			WL_ERR(("%s: Unknown type, %d\n", __FUNCTION__, attr_type));
+		}
+	}
+
+	return ret;
+}
+
 #ifdef BCM_PRIV_CMD_SUPPORT
 /* strlen("ifname=") + IFNAMESIZE + strlen(" ") + '\0' */
 #define ANDROID_PRIV_CMD_IF_PREFIX_LEN	(7 + IFNAMSIZ + 2)
@@ -5526,7 +5566,22 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				ret = -EINVAL;
 				goto exit;
 			}
-			cmd_data->instant_chan = nla_get_u32(iter);
+			chan = wf_mhz2channel((uint)nla_get_u32(iter), 0);
+			if (chan < 0) {
+				WL_ERR((" Instant mode Channel is not valid %d chan %d \n",
+						(uint)nla_get_u32(iter), chan));
+				ret = -EINVAL;
+				break;
+			}
+			/* 20MHz as BW */
+			cmd_data->instant_chan = wf_channel2chspec(chan, WL_CHANSPEC_BW_20);
+			if (cmd_data->instant_chan <= 0) {
+				WL_ERR((" Instant mode Channel is not valid \n"));
+				ret = -EINVAL;
+				break;
+			}
+			WL_DBG(("valid instant mode chanspec, chanspec = 0x%04x \n",
+				cmd_data->instant_chan));
 			break;
 		case NAN_ATTRIBUTE_ENABLE_MERGE:
 			if (nla_len(iter) != sizeof(uint8)) {
@@ -11370,6 +11425,118 @@ wl_cfgvendor_trigger_ssr(struct wiphy *wiphy,
 #endif /* WLAN_ACCEL_BOOT */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+const struct nla_policy wifi_radio_combo_attr_policy[ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MAX] = {
+	[ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MATRIX] = { .type = NLA_BINARY },
+};
+#endif /* LINUX_VERSION >= 5.3 */
+
+wifi_radio_configuration radio6_2x2[] = {{WLAN_MAC_6_0_BAND, WIFI_ANTENNA_2X2}};
+wifi_radio_configuration radio5_2x2[] = {{WLAN_MAC_5_0_BAND, WIFI_ANTENNA_2X2}};
+wifi_radio_configuration radio2_2x2[] = {{WLAN_MAC_2_4_BAND, WIFI_ANTENNA_2X2}};
+wifi_radio_configuration radio25_2x2[] = {{WLAN_MAC_2_4_BAND, WIFI_ANTENNA_2X2},
+	{WLAN_MAC_5_0_BAND, WIFI_ANTENNA_2X2}};
+wifi_radio_configuration radio26_2x2[] = {{WLAN_MAC_2_4_BAND, WIFI_ANTENNA_2X2},
+	{WLAN_MAC_6_0_BAND, WIFI_ANTENNA_2X2}};
+
+static int
+wl_cfgvendor_get_radio_combo_matrix(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void *data, int len)
+{
+	struct net_device *ndev = wdev_to_ndev(wdev);
+	struct sk_buff *skb = NULL;
+	int err, mem_needed;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
+	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
+	u8 buf[WLC_IOCTL_SMLEN] = {0};
+	u32 total_len = 0, size = 0;
+	wifi_radio_combination *radio_combinations = NULL;
+	wifi_radio_combination_matrix *rc = NULL;
+
+	if (sizeof(buf) < MAX_RADIO_MATRIX_SIZE) {
+		WL_ERR(("Buff too short: %ld, exp max_radio matrix size: %ld\n",
+			sizeof(buf), MAX_RADIO_MATRIX_SIZE));
+		err = BCME_BUFTOOSHORT;
+		goto fail;
+	}
+
+	rc = (wifi_radio_combination_matrix *)buf;
+	(void)memset_s(&buf, sizeof(buf), 0x0, sizeof(buf));
+	radio_combinations = rc->radio_combinations;
+	total_len = sizeof(u32);
+
+	/* Fill up stand alone cases first and conditionally include rsdb & 6G */
+	radio_combinations->num_radio_combinations = 1;
+	(void)(memcpy_s(radio_combinations->radio_configurations,
+		sizeof(radio2_2x2), (void *)radio2_2x2, sizeof(radio2_2x2)));
+	total_len += size = sizeof(u32) + sizeof(radio2_2x2);
+	rc->num_combinations++;
+
+	radio_combinations = (wifi_radio_combination *)((u8 *)radio_combinations + size);
+	radio_combinations->num_radio_combinations = 1;
+	(void)(memcpy_s(radio_combinations->radio_configurations,
+		sizeof(radio5_2x2), (void *)radio5_2x2, sizeof(radio5_2x2)));
+	total_len += size = sizeof(u32) + sizeof(radio5_2x2);
+	rc->num_combinations++;
+
+	if (cfg->band_6g_supported) {
+		radio_combinations = (wifi_radio_combination *)((u8 *)radio_combinations + size);
+		radio_combinations->num_radio_combinations = 1;
+		(void)(memcpy_s(radio_combinations->radio_configurations,
+			sizeof(radio6_2x2), radio6_2x2, sizeof(radio6_2x2)));
+		total_len += size = sizeof(u32) + sizeof(radio6_2x2);
+		rc->num_combinations++;
+	}
+
+	if (FW_SUPPORTED(dhdp, rsdb)) {
+		radio_combinations = (wifi_radio_combination *)((u8 *)radio_combinations + size);
+		radio_combinations->num_radio_combinations = 2;
+		(void)memcpy_s(radio_combinations->radio_configurations,
+			sizeof(radio25_2x2), radio25_2x2, sizeof(radio25_2x2));
+		total_len += size = sizeof(u32) + sizeof(radio25_2x2);
+		rc->num_combinations++;
+
+		if (cfg->band_6g_supported) {
+			radio_combinations =
+				(wifi_radio_combination *)((u8 *)radio_combinations + size);
+			radio_combinations->num_radio_combinations = 2;
+			(void)memcpy_s(radio_combinations->radio_configurations,
+				sizeof(radio26_2x2), radio26_2x2, sizeof(radio26_2x2));
+			total_len += size = sizeof(u32) + sizeof(radio26_2x2);
+			rc->num_combinations++;
+		}
+	}
+
+	mem_needed = VENDOR_REPLY_OVERHEAD + total_len;
+	/* Alloc the SKB for vendor_event */
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, mem_needed);
+	if (unlikely(!skb)) {
+		WL_ERR(("skb alloc failed"));
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	err = nla_put(skb, ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MATRIX, total_len, rc);
+	if (unlikely(err)) {
+		WL_ERR(("nla_put ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MATRIX failed\n"));
+		goto fail;
+	}
+
+	err = cfg80211_vendor_cmd_reply(skb);
+	if (unlikely(err)) {
+		WL_ERR(("Vendor Command reply failed err:%d \n", err));
+	}
+	return err;
+
+fail:
+	if (skb) {
+		/* Free skb memory */
+		kfree_skb(skb);
+	}
+
+	return err;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
 const struct nla_policy andr_wifi_attr_policy[ANDR_WIFI_ATTRIBUTE_MAX] = {
 	[ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET] = { .type = NLA_U32 },
 	[ANDR_WIFI_ATTRIBUTE_FEATURE_SET] = { .type = NLA_U32 },
@@ -11450,6 +11617,7 @@ const struct nla_policy brcm_drv_attr_policy[BRCM_ATTR_DRIVER_MAX] = {
 	((BRCM_WLAN_VENDOR_FEATURES_MAX / 8) + 1) },
 	[BRCM_ATTR_DRIVER_RAND_MAC] = { .type = NLA_BINARY, .len = ETHER_ADDR_LEN },
 	[BRCM_ATTR_SAE_PWE] = { .type = NLA_U32 },
+	[BRCM_ATTR_TD_POLICY] = { .type = NLA_U32 },
 };
 
 #ifdef RTT_SUPPORT
@@ -11839,6 +12007,18 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		},
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = wl_cfgvendor_start_ap_params_handler,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = brcm_drv_attr_policy,
+		.maxattr = BRCM_ATTR_DRIVER_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+	{
+		{
+			.vendor_id = OUI_BRCM,
+			.subcmd = BRCM_VENDOR_SCMD_SET_TD_POLICY
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_set_td_policy,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
 		.policy = brcm_drv_attr_policy,
 		.maxattr = BRCM_ATTR_DRIVER_MAX
@@ -12976,7 +13156,18 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.doit = wl_cfgvendor_trigger_ssr
 	},
 #endif /* WLAN_ACCEL_BOOT */
-
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = WIFI_SUBCMD_GET_RADIO_COMBO_MATRIX
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_get_radio_combo_matrix,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = wifi_radio_combo_attr_policy,
+		.maxattr = ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
 };
 
 static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
@@ -13504,8 +13695,8 @@ wl_cfgvendor_custom_advlog_scan_cmpl(void *plog, uint32 armcycle)
 			"rssi=%d cu=%d score=%d.%02d tp=%dkbps\n",
 			i, MAC2STRDBG_FULL((uint8 *)&log->scan_list[i].addr), freq,
 			log->scan_list[i].rssi,
-			log->cur_info.cu_avail ?
-			(log->cur_info.cu * 100 / WL_MAX_CHANNEL_USAGE) : WL_CU_NOT_AVAIL,
+			log->scan_list[i].cu_avail ?
+			(log->scan_list[i].cu * 100 / WL_MAX_CHANNEL_USAGE) : WL_CU_NOT_AVAIL,
 			log->scan_list[i].score / 100, log->scan_list[i].score % 100,
 			log->scan_list[i].estm_tput != ROAM_LOG_INVALID_TPUT?
 			log->scan_list[i].estm_tput:0));
