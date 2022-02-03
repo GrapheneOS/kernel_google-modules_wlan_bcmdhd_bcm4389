@@ -315,12 +315,7 @@ bool ap_fw_loaded = FALSE;
 
 #define DHD_VERSION "\nDongle Host Driver, version " EPI_VERSION_STR "\n"
 
-#if defined(DHD_DEBUG) && defined(DHD_COMPILED)
-const char dhd_version[] = DHD_VERSION DHD_COMPILED " compiled on "
-			__DATE__ " at " __TIME__ "\n\0<TIMESTAMP>";
-#else
 const char dhd_version[] = DHD_VERSION;
-#endif /* DHD_DEBUG && DHD_COMPILED */
 
 char fw_version[FW_VER_STR_LEN] = "\0";
 char clm_version[CLM_VER_STR_LEN] = "\0";
