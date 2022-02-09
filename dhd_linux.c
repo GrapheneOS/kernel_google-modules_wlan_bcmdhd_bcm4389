@@ -419,7 +419,6 @@ bool dhd_is_static_ndev(dhd_pub_t *dhdp, struct net_device *ndev);
 #endif /* WL_STATIC_IF */
 
 atomic_t exit_in_progress = ATOMIC_INIT(0);
-atomic_t reboot_in_progress = ATOMIC_INIT(0);
 
 static void dhd_process_daemon_msg(struct sk_buff *skb);
 static void dhd_destroy_to_notifier_skt(void);
@@ -14609,14 +14608,6 @@ static int
 dhd_reboot_callback(struct notifier_block *this, unsigned long code, void *unused)
 {
 	DHD_ERROR(("%s: code = %ld\n", __FUNCTION__, code));
-	if (!atomic_read(&reboot_in_progress)) {
-		atomic_set(&reboot_in_progress, 1);
-	} else {
-		return NOTIFY_DONE;
-	}
-
-	/* To avoid multiple calling, unregisters promptly. */
-	unregister_reboot_notifier(&dhd_reboot_notifier);
 	dhd_module_cleanup();
 	return NOTIFY_DONE;
 }
