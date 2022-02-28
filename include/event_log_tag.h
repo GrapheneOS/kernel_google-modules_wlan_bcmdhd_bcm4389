@@ -562,8 +562,12 @@
 
 #define EVENT_LOG_TAG_WL_RATE_ERR		444
 
+#define EVENT_LOG_TAG_6GCHANPROF_ERROR		445
+#define EVENT_LOG_TAG_6GCHANPROF_INFO		446
+#define EVENT_LOG_TAG_6GCHANPROF_TRACE		447
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			444
+#define EVENT_LOG_TAG_MAX			447
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

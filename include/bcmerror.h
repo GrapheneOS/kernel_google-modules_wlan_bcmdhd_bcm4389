@@ -880,4 +880,15 @@ typedef enum {
 
 #endif	/* BCMUTILS_ERR_CODES */
 
+/*
+* 6G scan error code [-12288 .. -13311] (1K)
+*/
+enum {
+	/* TPE cache does not exit for the given 6G channel */
+	BCME_6G_SCAN_NO_TPE_CACHE	= -12288,
+	/* TPE cache in the FW has expired */
+	BCME_6G_SCAN_TPE_CACHE_EXPIRED	= -12289,
+	/* Wild card directed scan requested */
+	BCME_6G_SCAN_DIRECTED_WILDCARD	= -12290
+};
 #endif	/* _bcmerror_h_ */

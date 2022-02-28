@@ -1121,9 +1121,6 @@ dhd_eap_txcomplete(dhd_pub_t *dhdp, void *txp, bool success, int ifidx)
 }
 #endif /* DHD_4WAYM4_FAIL_DISCONNECT */
 
-#ifdef DHD_PKT_LOGGING_DBGRING
-extern void dhd_os_dbg_urgent_pullreq(void *os_priv, int ring_id);
-#endif /* DHD_PKT_LOGGING_DBGRING */
 void
 dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata, uint32 pktid,
 	uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, uint8 *dhd_igmp,

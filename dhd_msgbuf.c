@@ -9543,6 +9543,7 @@ int dmaxfer_prepare_dmaaddr(dhd_pub_t *dhd, uint len,
 	}
 
 	dmaxfer->len = len;
+	DHD_ERROR(("using pattern %d, for loopback test\n", dhd->bus->lpbk_xfer_data_pattern_type));
 
 	/* Populate source with a pattern like below
 	 * 0x00000000
@@ -9555,10 +9556,28 @@ int dmaxfer_prepare_dmaaddr(dhd_pub_t *dhd, uint len,
 	 * 0xFFFFFFFF
 	 */
 	while (i < dmaxfer->len) {
-		((uint8*)dmaxfer->srcmem.va)[i] = j % 256;
-		i++;
-		if (i % 4 == 0) {
-			j++;
+		if (dhd->bus->lpbk_xfer_data_pattern_type == LPBK_DMA_XFER_DTPTRN_0x00) {
+			((uint8*)dmaxfer->srcmem.va)[i] = 0x00;
+			i++;
+		}
+		else if (dhd->bus->lpbk_xfer_data_pattern_type == LPBK_DMA_XFER_DTPTRN_0xFF) {
+			((uint8*)dmaxfer->srcmem.va)[i] = 0xFF;
+			i++;
+		}
+		else if (dhd->bus->lpbk_xfer_data_pattern_type == LPBK_DMA_XFER_DTPTRN_0x55) {
+			((uint8*)dmaxfer->srcmem.va)[i] = 0x55;
+			i++;
+		}
+		else if (dhd->bus->lpbk_xfer_data_pattern_type == LPBK_DMA_XFER_DTPTRN_0xAA) {
+			((uint8*)dmaxfer->srcmem.va)[i] = 0xAA;
+			i++;
+		}
+		else {
+			((uint8*)dmaxfer->srcmem.va)[i] = j % 256;
+			i++;
+			if (i % 4 == 0) {
+				j++;
+			}
 		}
 	}
 
@@ -12187,8 +12206,10 @@ int dhd_prot_h2d_mbdata_send_ctrlmsg(dhd_pub_t *dhd, uint32 mb_data)
 	if ((INBAND_DW_ENAB(dhd->bus)) &&
 		(dhdpcie_bus_get_pcie_inband_dw_state(dhd->bus) ==
 			DW_DEVICE_DS_DEV_SLEEP)) {
-		if (mb_data == H2D_HOST_CONS_INT) {
+		if (mb_data == H2D_HOST_CONS_INT || mb_data == H2D_HOST_PTM_ENABLE ||
+			mb_data == H2D_HOST_PTM_DISABLE) {
 			/* One additional device_wake post needed */
+			DHD_INFO(("%s One additional device_wake post needed\n", __FUNCTION__));
 			num_post = 2;
 		}
 	}
@@ -12229,7 +12250,8 @@ int dhd_prot_h2d_mbdata_send_ctrlmsg(dhd_pub_t *dhd, uint32 mb_data)
 			h2d_mb_data->mail_box_data = htol32(mb_data);
 		}
 
-		DHD_INFO(("%s Send H2D MB data Req data 0x%04x\n", __FUNCTION__, mb_data));
+		DHD_INFO(("%s Send H2D MB data Req data 0x%04x\n", __FUNCTION__,
+			h2d_mb_data->mail_box_data));
 
 		/* upd wrt ptr and raise interrupt */
 		dhd_prot_ring_write_complete_mbdata(dhd, ctrl_ring, h2d_mb_data,
@@ -14136,9 +14158,9 @@ dhd_prot_flow_ring_batch_suspend_request(dhd_pub_t *dhd, uint16 *ringid, uint16 
 
 static void dump_psmwd_v1(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
 {
-	const hnd_ext_trap_psmwd_v1_t* psmwd = NULL;
+	const hnd_ext_trap_psmwd_v1_t* psmwd = (const hnd_ext_trap_psmwd_v1_t *)tlv->data;
 	uint32 i;
-	psmwd = (const hnd_ext_trap_psmwd_v1_t *)tlv;
+
 	for (i = 0; i < PSMDBG_REG_READ_CNT_FOR_PSMWDTRAP_V1; i++) {
 		bcm_bprintf(b, " psmdebug[%d]: 0x%x\n", i, psmwd->i32_psmdebug[i]);
 	}
@@ -14170,9 +14192,9 @@ static void dump_psmwd_v1(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
 
 static void dump_psmwd_v2(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
 {
-	const hnd_ext_trap_psmwd_t* psmwd = NULL;
+	const hnd_ext_trap_psmwd_v2_t* psmwd = (const hnd_ext_trap_psmwd_v2_t *)tlv->data;
 	uint32 i;
-	psmwd = (const hnd_ext_trap_psmwd_t *)tlv;
+
 	for (i = 0; i < PSMDBG_REG_READ_CNT_FOR_PSMWDTRAP_V2; i++) {
 		bcm_bprintf(b, " psmdebug[%d]: 0x%x\n", i, psmwd->i32_psmdebug[i]);
 	}
@@ -14205,6 +14227,130 @@ static void dump_psmwd_v2(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
 	bcm_bprintf(b, " shm_prewds_cnt: 0x%x\n", psmwd->shm_prewds_cnt);
 	bcm_bprintf(b, " shm_txtplufl_cnt: 0x%x\n", psmwd->shm_txtplufl_cnt);
 	bcm_bprintf(b, " shm_txphyerr_cnt: 0x%x\n", psmwd->shm_txphyerr_cnt);
+}
+
+static void dump_psmwd_v3(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
+{
+	const hnd_ext_trap_psmwd_v3_t* psmwd = (const hnd_ext_trap_psmwd_v3_t *)tlv->data;
+	uint32 i;
+
+	for (i = 0; i < PSMDBG_REG_READ_CNT_FOR_PSMWDTRAP_V1; i++) {
+		bcm_bprintf(b, " psmdebug[%d]: 0x%x\n", i, psmwd->i32_psmdebug[i]);
+	}
+
+	bcm_bprintf(b, " i32_gated_clock_en: 0x%x\n", psmwd->i32_gated_clock_en);
+	bcm_bprintf(b, " Rcv Fifo Ctrl: 0x%x\n", psmwd->rcv_fifo_ctrl);
+	bcm_bprintf(b, " Rx ctrl 1: 0x%x\n", psmwd->rx_ctrl1);
+	bcm_bprintf(b, " Rxe Status 1: 0x%x\n", psmwd->rxe_status1);
+	bcm_bprintf(b, " Rxe Status 2: 0x%x\n", psmwd->rxe_status2);
+
+	bcm_bprintf(b, " rcv wrd count 0: 0x%x\n", psmwd->rcv_wrd_count0);
+	bcm_bprintf(b, " rcv wrd count 1: 0x%x\n", psmwd->rcv_wrd_count1);
+	bcm_bprintf(b, " RCV_LFIFO_STS: 0x%x\n", psmwd->rcv_lfifo_sts);
+	bcm_bprintf(b, " PSM_SLP_TMR: 0x%x\n", psmwd->psm_slp_tmr);
+	bcm_bprintf(b, " PSM BRC: 0x%x\n", psmwd->psm_brc);
+
+	bcm_bprintf(b, " TXE CTRL: 0x%x\n", psmwd->txe_ctrl);
+	bcm_bprintf(b, " TXE Status: 0x%x\n", psmwd->txe_status);
+	bcm_bprintf(b, " TXE_xmtdmabusy: 0x%x\n", psmwd->txe_xmtdmabusy);
+	bcm_bprintf(b, " TXE_XMTfifosuspflush: 0x%x\n", psmwd->txe_xmt_fifo_susp_flush);
+	bcm_bprintf(b, " IFS Stat: 0x%x\n", psmwd->ifs_stat);
+
+	bcm_bprintf(b, " IFS_MEDBUSY_CTR: 0x%x\n", psmwd->ifs_medbusy_ctr);
+	bcm_bprintf(b, " IFS_TX_DUR: 0x%x\n", psmwd->ifs_tx_dur);
+	bcm_bprintf(b, " SLow_CTL: 0x%x\n", psmwd->slow_ctl);
+	bcm_bprintf(b, " TXE_AQM fifo Ready: 0x%x\n", psmwd->txe_aqm_fifo_ready);
+	bcm_bprintf(b, " Dagg ctrl: 0x%x\n", psmwd->dagg_ctrl);
+
+	bcm_bprintf(b, " shm_prewds_cnt: 0x%x\n", psmwd->shm_prewds_cnt);
+	bcm_bprintf(b, " shm_txtplufl_cnt: 0x%x\n", psmwd->shm_txtplufl_cnt);
+	bcm_bprintf(b, " shm_txphyerr_cnt: 0x%x\n", psmwd->shm_txphyerr_cnt);
+}
+
+static void dump_psmwd(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
+{
+	const hnd_ext_trap_psmwd_v1_t * psmwd = (const hnd_ext_trap_psmwd_v1_t*)tlv->data;
+
+	if (psmwd->version == 0 || psmwd->version > HND_EXT_TRAP_PSMWD_INFO_VER_3) {
+		bcm_bprintf(b, " Bad version: 0x%x\n", psmwd->version);
+		return;
+	}
+	bcm_bprintf(b, " version: 0x%x\n", psmwd->version);
+	bcm_bprintf(b, " maccontrol: 0x%x\n", psmwd->i32_maccontrol);
+	bcm_bprintf(b, " maccommand: 0x%x\n", psmwd->i32_maccommand);
+	bcm_bprintf(b, " macintstatus: 0x%x\n", psmwd->i32_macintstatus);
+	bcm_bprintf(b, " phydebug: 0x%x\n", psmwd->i32_phydebug);
+	bcm_bprintf(b, " clk_ctl_st: 0x%x\n", psmwd->i32_clk_ctl_st);
+	if (psmwd->version == HND_EXT_TRAP_PSMWD_INFO_VER_1) {
+		dump_psmwd_v1(tlv, b);
+	} else if (psmwd->version == HND_EXT_TRAP_PSMWD_INFO_VER_2) {
+		dump_psmwd_v2(tlv, b);
+	} else if (psmwd->version == HND_EXT_TRAP_PSMWD_INFO_VER_3) {
+		dump_psmwd_v3(tlv, b);
+	}
+	return;
+}
+
+static void dump_macwake_v1(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
+{
+	const hnd_ext_trap_macenab_v1_t* macwake = (const hnd_ext_trap_macenab_v1_t *)tlv->data;
+
+	bcm_bprintf(b, " gated clock en: 0x%x\n", macwake->i16_0x1a8);
+	bcm_bprintf(b, " PSM_SLP_TMR: 0x%x\n", macwake->i16_0x480);
+	bcm_bprintf(b, " PSM BRC: 0x%x\n", macwake->i16_0x490);
+	bcm_bprintf(b, " TSF CTL: 0x%x\n", macwake->i16_0x600);
+	bcm_bprintf(b, " IFS Stat: 0x%x\n", macwake->i16_0x690);
+	bcm_bprintf(b, " IFS_MEDBUSY_CTR: 0x%x\n", macwake->i16_0x692);
+	bcm_bprintf(b, " Slow_CTL: 0x%x\n", macwake->i16_0x6a0);
+	bcm_bprintf(b, " Slow_FRAC: 0x%x\n", macwake->i16_0x6a6);
+	bcm_bprintf(b, " fast power up delay: 0x%x\n", macwake->i16_0x6a8);
+	bcm_bprintf(b, " Slow_PER: 0x%x\n", macwake->i16_0x6aa);
+	bcm_bprintf(b, " shm_ucode_dbgst: 0x%x\n", macwake->shm_ucode_dbgst);
+}
+
+static void dump_macwake_v2(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
+{
+	const hnd_ext_trap_macenab_v2_t* macwake = (const hnd_ext_trap_macenab_v2_t *)tlv->data;
+
+	bcm_bprintf(b, " gated clock en: 0x%x\n", macwake->i32_gated_clock_en);
+	bcm_bprintf(b, " PSM_SLP_TMR: 0x%x\n", macwake->psm_slp_tmr);
+	bcm_bprintf(b, " PSM BRC: 0x%x\n", macwake->psm_brc);
+	bcm_bprintf(b, " TSF CTL: 0x%x\n", macwake->tsf_ctl);
+	bcm_bprintf(b, " IFS Stat: 0x%x\n", macwake->ifs_stat);
+	bcm_bprintf(b, " IFS_MEDBUSY_CTR: 0x%x\n", macwake->ifs_medbusy_ctr);
+	bcm_bprintf(b, " Slow_CTL: 0x%x\n", macwake->slow_ctl);
+	bcm_bprintf(b, " Slow_FRAC: 0x%x\n", macwake->slow_frac);
+	bcm_bprintf(b, " fast power up delay: 0x%x\n", macwake->fast_powerup_delay);
+	bcm_bprintf(b, " Slow_PER: 0x%x\n", macwake->slow_per);
+	bcm_bprintf(b, " shm_ucode_dbgst: 0x%x\n", macwake->shm_ucode_dbgst);
+}
+
+static void dump_macwake(const bcm_tlv_t *tlv, struct bcmstrbuf *b)
+{
+	const hnd_ext_trap_macenab_v1_t* macwake = (const hnd_ext_trap_macenab_v1_t *)tlv->data;
+	uint32 i;
+
+	if (macwake->version == 0 || macwake->version > HND_EXT_TRAP_MACENAB_INFO_VER_2) {
+		bcm_bprintf(b, " Bad version: 0x%x\n", macwake->version);
+		return;
+	}
+
+	bcm_bprintf(b, " version: 0x%x\n", macwake->version);
+	bcm_bprintf(b, " trap_reason: 0x%x\n", macwake->trap_reason);
+	bcm_bprintf(b, " maccontrol: 0x%x\n", macwake->i32_maccontrol);
+	bcm_bprintf(b, " maccommand: 0x%x\n", macwake->i32_maccommand);
+	bcm_bprintf(b, " macintstatus: 0x%x\n", macwake->i32_macintstatus);
+	for (i = 0; i < 8; i++)
+		bcm_bprintf(b, " psmdebug[%d]: 0x%x\n", i, macwake->i32_psmdebug[i]);
+	bcm_bprintf(b, " clk_ctl_st: 0x%x\n", macwake->i32_clk_ctl_st);
+	bcm_bprintf(b, " powerctl: 0x%x\n", macwake->i32_powerctl);
+
+	if (macwake->version == HND_EXT_TRAP_MACENAB_INFO_VER_1) {
+		dump_macwake_v1(tlv, b);
+	} else if (macwake->version == HND_EXT_TRAP_MACENAB_INFO_VER_2) {
+		dump_macwake_v2(tlv, b);
+	}
+	return;
 }
 
 static const char* etd_trap_name(hnd_ext_tag_trap_t tag)
@@ -14442,22 +14588,8 @@ int dhd_prot_dump_extended_trap(dhd_pub_t *dhdp, struct bcmstrbuf *b, bool raw)
 
 	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_PSM_WD);
 	if (tlv) {
-		const hnd_ext_trap_psmwd_t* psmwd;
-
 		bcm_bprintf(b, "\n%s len: %d\n", etd_trap_name(TAG_TRAP_PSM_WD), tlv->len);
-		psmwd = (const hnd_ext_trap_psmwd_t *)tlv->data;
-		bcm_bprintf(b, " version: 0x%x\n", psmwd->version);
-		bcm_bprintf(b, " maccontrol: 0x%x\n", psmwd->i32_maccontrol);
-		bcm_bprintf(b, " maccommand: 0x%x\n", psmwd->i32_maccommand);
-		bcm_bprintf(b, " macintstatus: 0x%x\n", psmwd->i32_macintstatus);
-		bcm_bprintf(b, " phydebug: 0x%x\n", psmwd->i32_phydebug);
-		bcm_bprintf(b, " clk_ctl_st: 0x%x\n", psmwd->i32_clk_ctl_st);
-		if (psmwd->version == 1) {
-			dump_psmwd_v1(tlv, b);
-		}
-		if (psmwd->version == 2) {
-			dump_psmwd_v2(tlv, b);
-		}
+		dump_psmwd(tlv, b);
 	}
 /* PHY TxErr MacDump */
 	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_PHYTXERR_THRESH);
@@ -14531,29 +14663,8 @@ int dhd_prot_dump_extended_trap(dhd_pub_t *dhdp, struct bcmstrbuf *b, bool raw)
 
 	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_MAC_WAKE);
 	if (tlv) {
-		const hnd_ext_trap_macenab_t* macwake;
 		bcm_bprintf(b, "\n%s len: %d\n", etd_trap_name(TAG_TRAP_MAC_WAKE), tlv->len);
-		macwake = (const hnd_ext_trap_macenab_t *)tlv->data;
-		bcm_bprintf(b, " version: 0x%x\n", macwake->version);
-		bcm_bprintf(b, " trap_reason: 0x%x\n", macwake->trap_reason);
-		bcm_bprintf(b, " maccontrol: 0x%x\n", macwake->i32_maccontrol);
-		bcm_bprintf(b, " maccommand: 0x%x\n", macwake->i32_maccommand);
-		bcm_bprintf(b, " macintstatus: 0x%x\n", macwake->i32_macintstatus);
-		for (i = 0; i < 8; i++)
-			bcm_bprintf(b, " psmdebug[%d]: 0x%x\n", i, macwake->i32_psmdebug[i]);
-		bcm_bprintf(b, " clk_ctl_st: 0x%x\n", macwake->i32_clk_ctl_st);
-		bcm_bprintf(b, " powerctl: 0x%x\n", macwake->i32_powerctl);
-		bcm_bprintf(b, " gated clock en: 0x%x\n", macwake->i16_0x1a8);
-		bcm_bprintf(b, " PSM_SLP_TMR: 0x%x\n", macwake->i16_0x480);
-		bcm_bprintf(b, " PSM BRC: 0x%x\n", macwake->i16_0x490);
-		bcm_bprintf(b, " TSF CTL: 0x%x\n", macwake->i16_0x600);
-		bcm_bprintf(b, " IFS Stat: 0x%x\n", macwake->i16_0x690);
-		bcm_bprintf(b, " IFS_MEDBUSY_CTR: 0x%x\n", macwake->i16_0x692);
-		bcm_bprintf(b, " Slow_CTL: 0x%x\n", macwake->i16_0x6a0);
-		bcm_bprintf(b, " Slow_FRAC: 0x%x\n", macwake->i16_0x6a6);
-		bcm_bprintf(b, " fast power up delay: 0x%x\n", macwake->i16_0x6a8);
-		bcm_bprintf(b, " Slow_PER: 0x%x\n", macwake->i16_0x6aa);
-		bcm_bprintf(b, " shm_ucode_dbgst: 0x%x\n", macwake->shm_ucode_dbgst);
+		dump_macwake(tlv, b);
 	}
 
 	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_BUS);

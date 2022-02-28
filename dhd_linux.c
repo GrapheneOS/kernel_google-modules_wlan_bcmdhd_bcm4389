@@ -2328,17 +2328,29 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				}
 #endif /* ARP_OFFLOAD_SUPPORT */
 #ifdef PASS_ALL_MCAST_PKTS
-				allmulti = 0;
 				for (i = 0; i < DHD_MAX_IFS; i++) {
-					if (dhdinfo->iflist[i] && dhdinfo->iflist[i]->net) {
-						ret = dhd_iovar(dhd, i, "allmulti",
-								(char *)&allmulti,
-								sizeof(allmulti),
-								NULL, 0, TRUE);
-						if (ret < 0) {
-							DHD_ERROR(("%s allmulti failed %d\n",
-								__FUNCTION__, ret));
-						}
+					struct net_device *ndev = NULL;
+					if (!dhdinfo->iflist[i] || !dhdinfo->iflist[i]->net) {
+						continue;
+					}
+
+					ndev = dhdinfo->iflist[i]->net;
+					if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_P2P_GO ||
+						ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP) {
+						allmulti = 1;
+						DHD_LOG_MEM(("%s: IF[%s] is AP/GO, set allmulti.\n",
+							__FUNCTION__, ndev->name));
+					} else {
+						allmulti = 0;
+					}
+
+					ret = dhd_iovar(dhd, i, "allmulti",
+						(char *)&allmulti,
+						sizeof(allmulti),
+						NULL, 0, TRUE);
+					if (ret < 0) {
+						DHD_ERROR(("%s allmulti failed %d\n",
+							__FUNCTION__, ret));
 					}
 				}
 #endif /* PASS_ALL_MCAST_PKTS */
@@ -14462,6 +14474,10 @@ dhd_clear(dhd_pub_t *dhdp)
 static void
 dhd_module_cleanup(void)
 {
+#if defined(ENABLE_NOT_LOAD_DHD_MODULE)
+	DHD_ERROR(("%s ##### Do not clean-up due to secondary build\n", __FUNCTION__));
+	return;
+#endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 #ifdef BCMDBUS
@@ -14478,6 +14494,10 @@ dhd_module_cleanup(void)
 static void __exit
 dhd_module_exit(void)
 {
+#if defined(ENABLE_NOT_LOAD_DHD_MODULE)
+	DHD_ERROR(("%s ##### Do not unload driver due to secondary build\n", __FUNCTION__));
+	return;
+#endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	atomic_set(&exit_in_progress, 1);
 #ifdef DHD_BUZZZ_LOG_ENABLED
 	dhd_buzzz_detach();
@@ -14581,6 +14601,10 @@ dhd_module_init(void)
 {
 	int err;
 
+#if defined(ENABLE_NOT_LOAD_DHD_MODULE)
+	DHD_ERROR(("%s ##### Do not load driver due to secondary build\n", __FUNCTION__));
+	return 0;
+#endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	err = _dhd_module_init();
 #ifdef DHD_SUPPORT_HDM
 	if (hdm_wifi_support && err && !dhd_download_fw_on_driverload) {
@@ -14627,8 +14651,11 @@ dhd_module_init_hdm(void)
 static int
 dhd_reboot_callback(struct notifier_block *this, unsigned long code, void *unused)
 {
+	dhd_pub_t *dhdp = g_dhd_pub;
+
+	BCM_REFERENCE(dhdp);
 	DHD_ERROR(("%s: code = %ld\n", __FUNCTION__, code));
-	if (!atomic_inc_and_test(&reboot_in_progress)) {
+	if (!OSL_ATOMIC_INC_AND_TEST(dhdp->osh, &reboot_in_progress)) {
 		DHD_ERROR(("%s: Skip duplicated reboot callback!\n", __FUNCTION__));
 		return NOTIFY_DONE;
 	}
@@ -16393,7 +16420,7 @@ dhd_dev_set_lazy_roam_cfg(struct net_device *dev,
 	      roam_param->alert_roam_trigger_threshold, roam_param->a_band_max_boost));
 
 	memcpy(&roam_exp_cfg.params, roam_param, sizeof(*roam_param));
-	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION;
+	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION_1;
 	roam_exp_cfg.flags = ROAM_EXP_CFG_PRESENT;
 	if (dhd->pub.lazy_roam_enable) {
 		roam_exp_cfg.flags |= ROAM_EXP_ENABLE_FLAG;
@@ -16415,7 +16442,7 @@ dhd_dev_lazy_roam_enable(struct net_device *dev, uint32 enable)
 	wl_roam_exp_cfg_t roam_exp_cfg;
 
 	memset(&roam_exp_cfg, 0, sizeof(roam_exp_cfg));
-	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION;
+	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION_1;
 	if (enable) {
 		roam_exp_cfg.flags = ROAM_EXP_ENABLE_FLAG;
 	}
@@ -16438,7 +16465,7 @@ dhd_dev_set_lazy_roam_bssid_pref(struct net_device *dev,
 	uint len;
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
-	bssid_pref->version = BSSID_PREF_LIST_VERSION;
+	bssid_pref->version = BSSID_PREF_LIST_VERSION_1;
 	/* By default programming bssid pref flushes out old values */
 	bssid_pref->flags = (flush && !bssid_pref->count) ? ROAM_EXP_CLEAR_BSSID_PREF: 0;
 	len = sizeof(wl_bssid_pref_cfg_t);
@@ -16522,7 +16549,7 @@ dhd_dev_set_rssi_monitor_cfg(struct net_device *dev, int start,
 	wl_rssi_monitor_cfg_t rssi_monitor;
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
-	rssi_monitor.version = RSSI_MONITOR_VERSION;
+	rssi_monitor.version = RSSI_MONITOR_VERSION_1;
 	rssi_monitor.max_rssi = max_rssi;
 	rssi_monitor.min_rssi = min_rssi;
 	rssi_monitor.flags = start ? 0: RSSI_MONITOR_STOP;
@@ -21129,7 +21156,7 @@ int dhd_parse_filter_ie(dhd_pub_t *dhd, uint8 *buf)
 	}
 
 	/* setup filter iovar header */
-	p_filter_iov->version = WL_FILTER_IE_VERSION;
+	p_filter_iov->version = WL_FILTER_IE_VERSION_1;
 	p_filter_iov->len = filter_iovsize;
 	p_filter_iov->fixed_length = p_filter_iov->len - FILTER_IE_BUFSZ;
 	p_filter_iov->pktflag = FC_PROBE_REQ;

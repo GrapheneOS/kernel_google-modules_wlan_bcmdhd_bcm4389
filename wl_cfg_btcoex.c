@@ -686,7 +686,7 @@ wl_cfg_uwb_coex_proc_resp_buf(bcm_iov_batch_buf_t *resp, uint16 max_len, uint8 i
 	uint16 tlvs_len;
 
 	version = dtoh16(*(uint16 *)resp);
-	if (version & (BCM_IOV_XTLV_VERSION | BCM_IOV_BATCH_MASK)) {
+	if (version & (BCM_IOV_XTLV_VERSION_0 | BCM_IOV_BATCH_MASK)) {
 		if (!resp->count) {
 			return BCME_RANGE;
 		} else {
@@ -748,7 +748,7 @@ wl_cfg_uwb_coex_fill_ioctl_data(bcm_iov_batch_buf_t *b_buf, const uint8 is_set,
 	bcm_iov_batch_subcmd_t *sub_cmd;
 
 	/* Fill the header */
-	b_buf->version = htol16(BCM_IOV_XTLV_VERSION | BCM_IOV_BATCH_MASK);
+	b_buf->version = htol16(BCM_IOV_XTLV_VERSION_0 | BCM_IOV_BATCH_MASK);
 	b_buf->count = 1;
 	b_buf->is_set = is_set;
 	len = OFFSETOF(bcm_iov_batch_buf_t, cmds[0]);

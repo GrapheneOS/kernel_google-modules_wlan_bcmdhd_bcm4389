@@ -145,6 +145,16 @@ uint wl_reassoc_support = false;
 #endif /* WL_REASSOC */
 module_param(wl_reassoc_support, uint, 0660);
 
+#ifdef WL_RAV_MSCS_NEG_IN_ASSOC
+/* Call IOVs to enable MSCS OFFLOAD
+ * and set default MSCS configuration.
+ */
+uint mscs_offload = true;
+#else
+uint mscs_offload = false;
+#endif /* WL_REASSOC */
+module_param(mscs_offload, uint, 0660);
+
 static struct device *cfg80211_parent_dev = NULL;
 static struct bcm_cfg80211 *g_bcmcfg = NULL;
 /*
@@ -453,6 +463,10 @@ static const uchar disco_bcnloss_vsie[] = {
 };
 #endif /* WL_ANALYTICS */
 
+#ifdef WL_RAV_MSCS_NEG_IN_ASSOC
+static s32 wl_cfg80211_enable_rav_mscs_params(struct bcm_cfg80211 *cfg, bool mscs_offload);
+static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg);
+#endif /* WL_RAV_MSCS_NEG_IN_ASSOC */
 static void wl_cfg80211_recovery_handler(struct work_struct *work);
 static int wl_vndr_ies_get_vendor_oui(struct bcm_cfg80211 *cfg,
 		struct net_device *ndev, char *vndr_oui, u32 vndr_oui_len);
@@ -13316,6 +13330,26 @@ wl_handle_assoc_events(struct bcm_cfg80211 *cfg,
 	return err;
 }
 
+void
+wl_handle_unexpected_assoc_states(struct bcm_cfg80211 *cfg,
+	struct wireless_dev *wdev, const wl_event_msg_t *e,
+	void *data, wl_assoc_state_t assoc_state)
+{
+	struct net_device *ndev = wdev->netdev;
+	u32 event = ntoh32(e->event_type);
+	u16 flags = ntoh16(e->flags);
+
+	if ((assoc_state == WL_STATE_ASSOC_IDLE) &&
+			(((event == WLC_E_LINK) && (flags & WLC_EVENT_MSG_LINK)) ||
+			(event == WLC_E_ROAM) || (event == WLC_E_BSSID))) {
+		/* If link up/roam events are received, issue disassoc to
+		 * firwmware to sync up the states.
+		 */
+		WL_ERR(("event_type:%d in assoc idle state. force sync fw state\n", event));
+		wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+	}
+}
+
 #define IS_OBSOLETE_EVENT(cur_idx, marker_idx) ((s32)(cur_idx - marker_idx) < 0)
 static s32
 wl_notify_connect_status_sta(struct bcm_cfg80211 *cfg,
@@ -13359,6 +13393,7 @@ wl_notify_connect_status_sta(struct bcm_cfg80211 *cfg,
 	} else {
 		WL_ERR(("Unexpected event:%d in assoc idle state\n", event_type));
 		assoc_state = WL_STATE_ASSOC_IDLE;
+		wl_handle_unexpected_assoc_states(cfg, wdev, e, data, assoc_state);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -13457,7 +13492,7 @@ wl_handle_roam_exp_event(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 	if (datalen) {
 		wl_roam_exp_event_t *evt_data = (wl_roam_exp_event_t *)data;
-		if (evt_data->version == ROAM_EXP_EVENT_VERSION) {
+		if (evt_data->version == ROAM_EXP_EVENT_VERSION_1) {
 			wlc_ssid_t *ssid = &evt_data->cur_ssid;
 			struct wireless_dev *wdev;
 			ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
@@ -13472,7 +13507,7 @@ wl_handle_roam_exp_event(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			}
 		} else {
 			WL_ERR(("Version mismatch %d, expected %d", evt_data->version,
-			       ROAM_EXP_EVENT_VERSION));
+			       ROAM_EXP_EVENT_VERSION_1));
 		}
 	}
 	return BCME_OK;
@@ -14673,7 +14708,6 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	} else {
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 	}
-
 #ifdef WL_FILS
 	if ((sec->auth_type == NL80211_AUTHTYPE_FILS_SK_PFS) ||
 		(sec->auth_type == NL80211_AUTHTYPE_FILS_SK)) {
@@ -17881,6 +17915,137 @@ s32 wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify)
 	return err;
 }
 
+#ifdef WL_RAV_MSCS_NEG_IN_ASSOC
+static s32 wl_cfg80211_enable_rav_mscs_params(struct bcm_cfg80211 *cfg, bool mscs_offload)
+{
+	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
+	s32 err = BCME_OK;
+	bcm_iov_buf_t *iov_buf = NULL;
+	char *ioctl_buf = NULL;
+	uint16 buflen = 0, buflen_start = 0;
+	uint16 iovlen = 0;
+	uint8 *data;
+
+	if (!cfg) {
+		return BCME_ERROR;
+	}
+
+	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (!ioctl_buf) {
+		WL_ERR(("ioctl memory alloc failed\n"));
+		err = BCME_NOMEM;
+		goto exit;
+	}
+
+	iov_buf = (bcm_iov_buf_t *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (!iov_buf) {
+		WL_ERR(("No memory"));
+		err = BCME_NOMEM;
+		goto exit;
+	}
+
+	/* fill header */
+	iov_buf->version = WL_QOS_VERSION_1;
+	iov_buf->id = WL_QOS_CMD_ENABLE;
+
+	data = (uint8 *)&iov_buf->data[0];
+	buflen = buflen_start = WLC_IOCTL_MEDLEN - sizeof(bcm_iov_buf_t);
+	*((uint16 *)data) = WL_QOS_CMD_ENABLE_FLAG_RAV_MSCS;
+
+	if (mscs_offload) {
+		*((uint16 *)data) |=  WL_QOS_CMD_ENABLE_FLAG_RAV_MSCS_NEG_IN_ASSOC;
+	}
+
+	buflen -= sizeof(uint16);
+
+	iov_buf->len = buflen_start - buflen;
+	iovlen = sizeof(bcm_iov_buf_t) + iov_buf->len;
+
+	err = wldev_iovar_setbuf(ndev, "qos_mgmt", iov_buf, iovlen,
+			ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
+	if (unlikely(err)) {
+		WL_ERR(("set qos_mgmt failed ,err(%d)\n", err));
+	}
+
+exit:
+	if (ioctl_buf) {
+		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
+	}
+
+	if (iov_buf) {
+		MFREE(cfg->osh, iov_buf, WLC_IOCTL_MEDLEN);
+	}
+
+	return err;
+}
+
+static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg)
+{
+	int err = BCME_OK;
+	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
+	bcm_iov_buf_t *iov_buf = NULL;
+	uint16 buflen = 0, buflen_start = 0;
+	char *ioctl_buf = NULL;
+	uint16 iovlen;
+	wl_qos_rav_mscs_config_v1_t rav_mscs_cfg;
+	uint8 *data;
+
+	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (!ioctl_buf) {
+		WL_ERR(("ioctl memory alloc failed\n"));
+		err = BCME_NOMEM;
+		goto fail;
+	}
+
+	bzero(&rav_mscs_cfg, sizeof(rav_mscs_cfg));
+	rav_mscs_cfg.version = WL_QOS_RAV_MSCS_SC_VERSION_1;
+	rav_mscs_cfg.length = (uint16) sizeof(wl_qos_rav_mscs_config_v1_t);
+
+	iov_buf = (bcm_iov_buf_t *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (!iov_buf) {
+		WL_ERR(("No memory"));
+		err = BCME_NOMEM;
+		goto fail;
+	}
+
+	/* Fill the bcm_iov_buf_t, IOVAR header */
+	iov_buf->version = WL_QOS_VERSION_1;
+	iov_buf->id = WL_QOS_CMD_RAV_MSCS;
+
+	data = (uint8 *)&iov_buf->data[0];
+	buflen = buflen_start = WLC_IOCTL_MEDLEN - sizeof(bcm_iov_buf_t);
+
+	rav_mscs_cfg.up_bitmap = MSCS_CFG_DEF_FC_MASK;
+	rav_mscs_cfg.up_limit = MSCS_CFG_DEF_UP_LIMIT;
+	rav_mscs_cfg.stream_timeout = MSCS_CFG_DEF_STREAM_TIMEOUT;
+	rav_mscs_cfg.fc_type = DOT11_TCLAS_FC_4_IP_HIGHER;
+	rav_mscs_cfg.fc_mask = MSCS_CFG_DEF_TCLAS_MASK;
+	rav_mscs_cfg.req_type = DOT11_MSCS_REQ_TYPE_ADD;
+
+	*(wl_qos_rav_mscs_config_v1_t *) data = rav_mscs_cfg;
+	buflen -= sizeof(wl_qos_rav_mscs_config_v1_t);
+
+	iov_buf->len = buflen_start - buflen;
+	iovlen = sizeof(bcm_iov_buf_t) + iov_buf->len;
+
+	err = wldev_iovar_setbuf(ndev, "qos_mgmt", iov_buf, iovlen,
+		ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
+	if (unlikely(err)) {
+		WL_ERR(("set qos_mgmt failed ,err(%d)\n", err));
+	}
+fail:
+	if (ioctl_buf) {
+		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
+	}
+
+	if (iov_buf) {
+		MFREE(cfg->osh, iov_buf, WLC_IOCTL_MEDLEN);
+	}
+
+	return err;
+}
+#endif /* WL_RAV_MSCS_NEG_IN_ASSOC */
+
 static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 {
 	s32 err = 0;
@@ -18052,6 +18217,20 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 			return BCME_ERROR;
 		}
 	}
+
+#ifdef WL_RAV_MSCS_NEG_IN_ASSOC
+	if (mscs_offload) {
+		ret = wl_cfg80211_config_rav_mscs_params(cfg);
+		if (ret) {
+			WL_INFORM(("config rav_mscs failed ,err(%d)\n", ret));
+		}
+	}
+	ret = wl_cfg80211_enable_rav_mscs_params(cfg, mscs_offload);
+	if (ret) {
+		WL_INFORM(("enable rav_mscs failed ,err(%d)\n", ret));
+	}
+#endif /* WL_RAV_MSCS_NEG_IN_ASSOC */
+
 #ifdef DHD_LOSSLESS_ROAMING
 	del_timer_sync(&cfg->roam_timeout);
 #endif /* DHD_LOSSLESS_ROAMING */
@@ -25022,7 +25201,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 				(chaninfo & WL_CHAN_CLM_RESTRICTED));
 #ifdef WL_SOFTAP_6G
 		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
-				(chaninfo & WL_CHAN_BAND_6G_VLP));
+			(chaninfo & WL_CHAN_BAND_6G_VLP));
 #endif /* WL_SOFTAP_6G */
 #ifdef WL_UNII4_CHAN
 		is_unii4 = (CHSPEC_IS5G(chspec) &&

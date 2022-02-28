@@ -291,6 +291,9 @@ typedef uint32 ratespec_t;
 /* BIT MASK for 6G_SCAN_TYPE  */
 #define WL_SCAN_SSIDFLAGS_SHORT_SSID		0x01U /* include short ssid */
 #define WL_SCAN_INC_RNR				0x02U /* Include RNR channels for scan */
+#define WL_SCAN_SKIP_FILS_DISCOVERY_PERIOD	0x04U /* Skip FILS Discovery Period for 6G chans */
+#define WL_SCAN_ACTIVE_6GHZ			0x08U /* Force active scan for 6GHZ channel */
+
 /* Value to decide scan type based on scqs */
 #define WL_SC_RETRY_SCAN_MODE_NO_SCAN		0x0u	/* Do not reschedule scan */
 #define WL_SC_RETRY_SCAN_MODE_HIGH_ACC		0x1u	/* Reschedule scan as HighAccuracy */
@@ -1549,6 +1552,7 @@ typedef uint32 ratespec_t;
 #define WL_CHAN_BAND_6G            (1u << 9)     /* 6GHz-band channel */
 #define WL_CHAN_BAND_6G_VLP        (1u << 10u)   /* 6GHz VLP channel */
 #define WL_CHAN_BAND_6G_PSC        (1u << 11u)   /* 6GHz PSC channel */
+#define WL_CHAN_BAND_6G_LPI        (1u << 12u)   /* 6GHz LPI channel */
 
 #define WL_CHAN_OOS_SHIFT          24u           /* shift for OOS field */
 #define WL_CHAN_OOS_MASK           0xFF000000u   /* field specifying minutes remaining for this
@@ -1558,12 +1562,13 @@ typedef uint32 ratespec_t;
 
 /* BTC mode used by "btc_mode" iovar */
 #define	WL_BTC_DISABLE		0	/* disable BT coexistence */
-#define WL_BTC_FULLTDM      1	/* full TDM COEX */
-#define WL_BTC_ENABLE       1	/* full TDM COEX to maintain backward compatiblity */
-#define WL_BTC_PREMPT      2    /* full TDM COEX with preemption */
-#define WL_BTC_LITE        3	/* light weight coex for large isolation platform */
-#define WL_BTC_PARALLEL		4   /* BT and WLAN run in parallel with separate antenna  */
-#define WL_BTC_HYBRID		5   /* hybrid coex, only ack is allowed to transmit in BT slot */
+#define WL_BTC_FULLTDM		1	/* full TDM COEX */
+#define WL_BTC_ENABLE		1	/* full TDM COEX to maintain backward compatiblity */
+#define WL_BTC_PREMPT		2	/* full TDM COEX with preemption */
+#define WL_BTC_LITE		3	/* light weight coex for large isolation platform */
+#define WL_BTC_PARALLEL		4	/* BT and WLAN run in parallel with separate antenna  */
+#define WL_BTC_HYBRID		5	/* hybrid coex, only ack allowed to transmit in BT slot */
+#define WL_BTC_HYBRID_WLTX	6	/* hybrid coex HPP mode w WL data Tx during BT grant */
 #define WL_BTC_DEFAULT		8	/* set the default mode for the device */
 #define WL_INF_BTC_DISABLE      0
 #define WL_INF_BTC_ENABLE       1

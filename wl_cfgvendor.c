@@ -5621,6 +5621,13 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 			}
 			cmd_data->dw_early_termination = nla_get_u32(iter);
 			break;
+		case NAN_ATTRIBUTE_CHRE_REQUEST:
+			if (nla_len(iter) != sizeof(uint8)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->chre_req = nla_get_u8(iter);
+			break;
 		default:
 			WL_ERR(("%s: Unknown type, %d\n", __FUNCTION__, attr_type));
 			ret = -EINVAL;
@@ -6586,6 +6593,7 @@ wl_cfgvendor_nan_start_handler(struct wiphy *wiphy,
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	nan_hal_resp_t nan_req_resp;
 	uint32 nan_attr_mask = 0;
+	wl_nancfg_t *nancfg = cfg->nancfg;
 
 	wdev = bcmcfg_to_prmry_wdev(cfg);
 	cmd_data = (nan_config_cmd_data_t *)MALLOCZ(cfg->osh, sizeof(*cmd_data));
@@ -6602,11 +6610,6 @@ wl_cfgvendor_nan_start_handler(struct wiphy *wiphy,
 		goto exit;
 	}
 
-	if (cfg->nancfg->nan_enable) {
-		WL_ERR(("nan is already enabled\n"));
-		ret = BCME_OK;
-		goto exit;
-	}
 	bzero(&nan_req_resp, sizeof(nan_req_resp));
 
 	cmd_data->sid_beacon.sid_enable = NAN_SID_ENABLE_FLAG_INVALID; /* Setting to some default */
@@ -6623,6 +6626,32 @@ wl_cfgvendor_nan_start_handler(struct wiphy *wiphy,
 		goto exit;
 	}
 
+	if (nancfg->nan_enable) {
+		if (cmd_data->chre_req) {
+			if (cfg->nancfg->enab_reason == ENABLE_FOR_CHRE) {
+				/* Already enabled for CHRE */
+				ret = BCME_OK;
+				goto exit;
+			} else {
+				/* enabled for APP .. return busy for CHRE req */
+				ret = BCME_BUSY;
+				goto exit;
+			}
+		} else {
+			if (cfg->nancfg->enab_reason == ENABLE_FOR_CHRE) {
+				/* TODO : Disable Nan and enable again for APP
+				 * For now return busy
+				 */
+				ret = BCME_BUSY;
+				goto exit;
+			} else {
+				/* already enabled for APP */
+				ret = BCME_OK;
+				goto exit;
+			}
+		}
+	}
+
 	ret = wl_cfgnan_start_handler(wdev->netdev, cfg, cmd_data, nan_attr_mask);
 	if (ret) {
 		WL_ERR(("failed to start nan error[%d]\n", ret));
@@ -6630,7 +6659,14 @@ wl_cfgvendor_nan_start_handler(struct wiphy *wiphy,
 	}
 	/* Initializing Instance Id List */
 	bzero(cfg->nancfg->nan_inst_ctrl, NAN_ID_CTRL_SIZE * sizeof(nan_svc_inst_t));
+
 exit:
+	if (ret == BCME_OK) {
+		nancfg->enab_reason = cmd_data->chre_req ?
+			ENABLE_FOR_CHRE : ENABLE_FOR_APP;
+		WL_INFORM_MEM(("Enabled successful for reason %d\n", nancfg->enab_reason));
+	}
+
 	ret = wl_cfgvendor_nan_cmd_reply(wiphy, NAN_WIFI_SUBCMD_ENABLE,
 		&nan_req_resp, ret, cmd_data ? cmd_data->status : BCME_OK);
 	if (cmd_data) {
@@ -6641,6 +6677,7 @@ exit:
 		MFREE(cfg->osh, cmd_data, sizeof(*cmd_data));
 	}
 	NAN_DBG_EXIT();
+
 	return ret;
 }
 
@@ -6704,11 +6741,31 @@ wl_cfgvendor_nan_stop_handler(struct wiphy *wiphy,
 	bool ssn_exists = false;
 	uint32 delay_ms = 0;
 	wl_nancfg_t *nancfg = cfg->nancfg;
+	nan_config_cmd_data_t *cmd_data;
+	uint32 nan_attr_mask = 0;
 
 	NAN_DBG_ENTER();
 	mutex_lock(&cfg->if_sync);
 
 	wdev = bcmcfg_to_prmry_wdev(cfg);
+
+	cmd_data = (nan_config_cmd_data_t *)MALLOCZ(cfg->osh, sizeof(*cmd_data));
+	if (!cmd_data) {
+		WL_ERR(("%s: memory allocation failed\n", __func__));
+		ret = BCME_NOMEM;
+		goto exit;
+	}
+
+	ret = wl_cfgvendor_nan_parse_args(wiphy, data, len, cmd_data, &nan_attr_mask);
+	if (ret) {
+		WL_ERR(("failed to parse nan vendor args, ret %d\n", ret));
+		goto exit;
+	}
+	if (cmd_data->status == BCME_BADARG) {
+		WL_ERR(("nan vendor args is invalid\n"));
+		goto exit;
+	}
+
 	if (nancfg->nan_init_state == false) {
 		WL_INFORM_MEM(("nan is not initialized/nmi doesnt exists\n"));
 		goto exit;
@@ -6716,6 +6773,19 @@ wl_cfgvendor_nan_stop_handler(struct wiphy *wiphy,
 	if (nancfg->nan_enable == false) {
 		WL_INFORM_MEM(("nan is in disabled state\n"));
 	} else {
+		if (cmd_data->chre_req) {
+			if (nancfg->enab_reason != ENABLE_FOR_CHRE) {
+				/* Not enabled for CHRE.. ignore disable req */
+				WL_INFORM_MEM(("nan not enabled for CHRE..ignore disab\n"));
+				goto exit;
+			}
+		} else {
+			if (nancfg->enab_reason != ENABLE_FOR_APP) {
+				/* Not enabled for APP.. ignore disable req */
+				WL_INFORM_MEM(("nan not enabled for APP..ignore disab\n"));
+				goto exit;
+			}
+		}
 		nancfg->notify_user = true;
 		wl_cfgvendor_terminate_dp_rng_sessions(cfg, wdev, &ssn_exists);
 		if (ssn_exists == true) {
@@ -11771,15 +11841,13 @@ const struct nla_policy nan_attr_policy[NAN_ATTRIBUTE_MAX] = {
 	[NAN_ATTRIBUTE_PEER_DISC_MAC_ADDR] = { .type = NLA_BINARY, .len = ETHER_ADDR_LEN },
 	[NAN_ATTRIBUTE_PEER_NDI_MAC_ADDR] = { .type = NLA_BINARY, .len = ETHER_ADDR_LEN },
 	[NAN_ATTRIBUTE_IF_ADDR] = { .type = NLA_BINARY, .len = ETHER_ADDR_LEN },
-	[NAN_ATTRIBUTE_ENTRY_CONTROL] = { .type = NLA_U8, .len = sizeof(uint8) },
-	[NAN_ATTRIBUTE_AVAIL_BIT_MAP] = { .type = NLA_U32, .len = sizeof(uint32) },
-	[NAN_ATTRIBUTE_CHANNEL] = { .type = NLA_U32, .len = sizeof(uint32) },
 	[NAN_ATTRIBUTE_NO_CONFIG_AVAIL] = { .type = NLA_U8, .len = sizeof(uint8) },
 	[NAN_ATTRIBUTE_CHANNEL_INFO] = { .type = NLA_BINARY, .len =
 	sizeof(nan_channel_info_t) * NAN_MAX_CHANNEL_INFO_SUPPORTED },
 	[NAN_ATTRIBUTE_NUM_CHANNELS] = { .type = NLA_U32, .len = sizeof(uint32) },
 	[NAN_ATTRIBUTE_INSTANT_MODE_ENABLE] = { .type = NLA_U32, .len = sizeof(uint32) },
 	[NAN_ATTRIBUTE_INSTANT_COMM_CHAN] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_CHRE_REQUEST] = { .type = NLA_U8, .len = sizeof(uint8) },
 };
 #endif /* WL_NAN */
 

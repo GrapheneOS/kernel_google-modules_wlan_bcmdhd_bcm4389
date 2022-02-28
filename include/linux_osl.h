@@ -827,6 +827,7 @@ typedef atomic_t osl_atomic_t;
 #define OSL_ATOMIC_INIT(osh, v)		atomic_set(v, 0)
 #define OSL_ATOMIC_INC(osh, v)		atomic_inc(v)
 #define OSL_ATOMIC_INC_RETURN(osh, v)	atomic_inc_return(v)
+#define OSL_ATOMIC_INC_AND_TEST(osh, v)	atomic_inc_and_test(v)
 #define OSL_ATOMIC_DEC(osh, v)		atomic_dec(v)
 #define OSL_ATOMIC_DEC_RETURN(osh, v)	atomic_dec_return(v)
 #define OSL_ATOMIC_READ(osh, v)		atomic_read(v)

@@ -692,6 +692,9 @@ DHDCFLAGS += -DWL_TWT_HAL_IF
 # RNR INCLUSION
 DHDCFLAGS += -DDHD_SCAN_INC_RNR
 
+# MSCS OFFLOAD
+DHDCFLAGS += -DWL_RAV_MSCS_NEG_IN_ASSOC
+
 ##########################
 # driver type
 # m: module type driver

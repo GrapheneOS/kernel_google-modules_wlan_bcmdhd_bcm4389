@@ -1383,13 +1383,14 @@ typedef struct wl_ext_reassoc_params {
 } wl_ext_reassoc_params_t;
 
 /* Flags field defined above in wl_ext_reassoc_params
- * The value in bits [2:0] is used to specify the type
+ * The below flag bit is used to specify the type
  * of scan to be used for reassoc
  */
 
-#define WL_SCAN_MODE_HIGH_ACC	0u	/**<  use high accuracy scans for roam */
-#define WL_SCAN_MODE_LOW_SPAN	1u	/**< use low span scans for roam */
-#define WL_SCAN_MODE_LOW_POWER	2u	/**< use low power scans for roam */
+#define WL_SCAN_MODE_HIGH_ACC		0u	/**<  use high accuracy scans for roam */
+#define WL_SCAN_MODE_LOW_SPAN		1u	/**< use low span scans for roam */
+#define WL_SCAN_MODE_LOW_POWER		2u	/**< use low power scans for roam */
+#define WL_SCAN_MODE_NO_6GHZ_FOLLOWUP	4u	/* 6G active scan not done due to RNR or FILS */
 
 #define WL_EXTREASSOC_PARAMS_FIXED_SIZE		(OFFSETOF(wl_ext_reassoc_params_t, params) + \
 					 WL_REASSOC_PARAMS_FIXED_SIZE)
@@ -3681,6 +3682,48 @@ typedef struct ocl_status_info_v2 {
 	uint32 disable_dur;		/* total disable duration (ms) */
 } ocl_status_info_v2_t;
 
+/* v3 shows per-chanspec OCL status, active link type
+ * on that chanspec, and user's ocl configuration
+ */
+#define WL_OCL_STATUS_VERSION_3 3
+typedef struct ocl_status_info_v3 {
+	uint8  version;
+	uint8  len;
+	uint8  hw_status;		/* Bits for actual HW config and SISO/MIMO coremask */
+	uint8  coremask;		/* The ocl core mask (indicating listening core) */
+	uint32 fw_status;		/* Bits representing FW disable reasons */
+	uint32 disable_start_req;	/* disable reason which triggered the ocl state change
+		                         * from enable to disable, afterwards there could be more
+		                         * disable reason(s) active before ocl state is enabled
+		                         * again. All current disable reason(s) are
+		                         * indicated in fw_status and at snapshot maynot include
+		                         * the disable reason which actually triggered ocl disable
+		                         * as reasons become active/inactive independently.
+		                         */
+	uint32 enable_start_req;	/* disable reason which triggered the ocl state change
+		                         * from disable to enable. This is the reason which very
+		                         * recently turned off which caused the ocl to enable.
+		                         */
+	uint32 cur_ts;			/* current timestamp (ms) */
+	uint32 disable_start_ts;	/* disable_start_req timestamp (ms) */
+	uint32 enable_start_ts;		/* enable_start_req timestamp (ms) */
+	uint32 disable_count_as;	/* total effective-disable (i.e., ocl state changing
+		                         * from enable-to-disable) count since last assoc
+		                         */
+	uint32 disable_reqs_count_as;	/* total disable requests since last assoc */
+	uint32 disable_dur_as;		/* total disable duration (ms) since last assoc */
+	uint32 disable_count;		/* total effective-disable count */
+	uint32 disable_reqs_count;	/* total disable requests */
+	uint32 disable_dur;		/* total disable duration (ms) */
+	uint16 chanspec;		/* chanspec on which ocl_status is reported */
+	uint8  active_link;		/* Bits showing which link is active */
+	uint8  ocl_en;			/* user's configuation */
+} ocl_status_info_v3_t;
+
+#define OCL_SET_INFRA	(1u << 0u) /* host OCL enable/disable for INFRA */
+#define OCL_SET_NAN	(1u << 1u) /* host OCL enable/disable for NAN */
+#define OCL_SET_AWDL	(1u << 2u) /* host OCL enable/disable for AWDL */
+
 /* MWS OCL map */
 #define WL_MWS_OCL_OVERRIDE_VERSION 1	 // TODO REMOVE
 #define WL_MWS_OCL_OVERRIDE_VERSION_1	 1
@@ -3701,24 +3744,24 @@ typedef struct wl_mws_ocl_override {
 } wl_mws_ocl_override_t;
 
 /* Bits for fw_status and disable/enable start request */
-#define OCL_DISABLED_HOST		0x00000001u   /* Host has disabled through ocl_enable */
-#define OCL_DISABLED_RSSI		0x00000002u   /* Disabled because of ocl_rssi_threshold */
-#define OCL_DISABLED_LTEC		0x00000004u   /* Disabled due to LTE Coex activity */
-#define OCL_DISABLED_SISO		0x00000008u   /* Disabled while in SISO mode */
-#define OCL_DISABLED_CAL		0x00000010u   /* Disabled during active calibration */
-#define OCL_DISABLED_CHANSWITCH		0x00000020u   /* Disabled during active channel switch */
-#define OCL_DISABLED_ASPEND		0x00000040u   /* Disabled due to assoc pending */
-#define OCL_DISABLED_SEQ_RANGE		0x00000080u   /* Disabled during SEQ Ranging */
-#define OCL_DISABLED_RXIQ_EST_BTLOWAR	0x00000100u   /* Disabled if the bt-lo-war is active */
-#define OCL_DISABLED_IDLE_TSSICAL	0x00000200u
-#define OCL_DISABLED_TONE		0x00000400u   /* Disabled if the tone is active */
-#define OCL_DISABLED_NOISECAL		0x00000800u   /* Disabled if the noise cal is active */
-#define OCL_DISABLED_INIT		0x00001000u   /* Disabled during phy init */
-#define OCL_DISABLED_AZ			0x00002000u   /* Disabled during 802.11az ranging */
-#define OCL_DISABLED_PHYTS		0x00004000u   /* Disabled during PHYTS */
-#define OCL_DISABLED_SCPEND		0x00008000u   /* Disabled due to scan pending */
-#define OCL_DISABLED_EMLSR		0x00010000u   /* Disabled due to EMLSR enabled */
-#define OCL_DISABLED_BTBPHYWAR		0x00020000u   /* Disabled during BT eSCO traffic */
+#define OCL_DISABLED_HOST		(1u << 0u)   /* Disabled by host through ocl_enable */
+#define OCL_DISABLED_RSSI		(1u << 1u)   /* Disabled because of ocl_rssi_threshold */
+#define OCL_DISABLED_LTEC		(1u << 2u)   /* Disabled due to LTE Coex activity */
+#define OCL_DISABLED_SISO		(1u << 3u)   /* Disabled while in SISO mode */
+#define OCL_DISABLED_CAL		(1u << 4u)   /* Disabled during active calibration */
+#define OCL_DISABLED_CHANSWITCH		(1u << 5u)   /* Disabled during channel switch */
+#define OCL_DISABLED_ASPEND		(1u << 6u)   /* Disabled due to assoc pending */
+#define OCL_DISABLED_SEQ_RANGE		(1u << 7u)   /* Disabled during SEQ Ranging */
+#define OCL_DISABLED_RXIQ_EST_BTLOWAR	(1u << 8u)   /* Disabled if the bt-lo-war is active */
+#define OCL_DISABLED_IDLE_TSSICAL	(1u << 9u)   /* Disabled if TSSI Cal in progress */
+#define OCL_DISABLED_TONE		(1u << 10u)  /* Disabled if the tone is active */
+#define OCL_DISABLED_NOISECAL		(1u << 11u)  /* Disabled if the noise cal is active */
+#define OCL_DISABLED_INIT		(1u << 12u)  /* Disabled during phy init */
+#define OCL_DISABLED_AZ			(1u << 13u)  /* Disabled during 802.11az ranging */
+#define OCL_DISABLED_PHYTS		(1u << 14u)  /* Disabled during PHYTS */
+#define OCL_DISABLED_SCPEND		(1u << 15u)  /* Disabled due to scan pending */
+#define OCL_DISABLED_EMLSR		(1u << 16u)  /* Disabled due to EMLSR enabled */
+#define OCL_DISABLED_BTBPHYWAR		(1u << 17u)  /* Disabled during BT eSCO traffic */
 
 /* Bits for hw_status */
 #define OCL_HWCFG			0x01u   /* State of OCL config bit in phy HW */
@@ -16461,11 +16504,26 @@ typedef struct wl_wsec_info {
 #define AP_ALLOW_WPA2		0x00000001u	/* Allow WPA2PSK AP during join or roam */
 #define AP_ALLOW_TSN		0x00000002u	/* Allow WPA3 transition AP during join or roam  */
 #define AP_ALLOW_WPA3_ONLY	0x00000004u	/* Allow WPA3 only AP during join or roam */
+/* AP_ALLOW_WPA3_ONLY is write only
+** supports AP_ALLOW_WPA3_2G_5G_ONLY and AP_ALLOW_WPA3_6G_ONLY
+** DEPRECATED moving forward
+*/
 /* Policy when WPA2 PSK, but not SAE is configured for the BSS */
 #define AP_WPA2_PSK_NO_MIX_SEC	0x00000008u	/* Disallow Mixed WPA/WPA2 security during roam */
+
+#define AP_ALLOW_WPA3_2G_5G_ONLY 0x00000010u	/* Allow WPA3 only 2G/5G AP join or roam */
+#define AP_ALLOW_WPA3_6G_ONLY	0x00000020u	/* Allow WPA3 only 6G AP during join or roam */
 /* All flags */
 #define AP_ALLOW_MAX	(AP_ALLOW_WPA2 | AP_ALLOW_TSN | \
-	AP_ALLOW_WPA3_ONLY | AP_WPA2_PSK_NO_MIX_SEC)
+	AP_ALLOW_WPA3_ONLY | AP_WPA2_PSK_NO_MIX_SEC) /* DEPRECATED moving forward */
+/* AP_ALLOW_MAX  will be defined in the src component */
+
+/* OWE roaming policy bit definitions */
+
+#define AP_ALLOW_OPEN_ONLY		0x00010000u /* Allow roam to open APs (2G and 5G) */
+#define AP_ALLOW_OWE_TRANS_2G_5G	0x00020000u /* Allow roam to owe transition n/w */
+#define AP_ALLOW_OWE_ONLY_IN_2G_5G	0x00040000u /* Allow roam to owe only APs in 2G or 5G */
+#define AP_ALLOW_OWE_ONLY_IN_6G	0x00080000u /* Allow roam to owe only APs in 6g only */
 
 typedef struct {
 	uint32 wpa_ap_restrict; /* set WPA2 / WPA3 AP restriction policy */
@@ -18816,6 +18874,7 @@ typedef struct wl_user_roamcache {
 /* 2-bit flags to indicate AP with preferred TX power */
 #define WL_ROAM_PROF_POWER_PREF_BIT_OFFSET 13u	/* Offset for Power Pref bit */
 #define WL_ROAM_PROF_POWER_PREF_BIT_MASK   0x3u	/* Bit mask: bits 13 and 14 indicate power pref */
+#define WL_ROAM_PROF_SKIP_FILS		(1u << 15u) /* Flag to skip FILS */
 
 typedef enum wl_roam_prof_power_pref {
 	WL_NO_POWER_PREF = 0x0u,
@@ -19715,6 +19774,58 @@ typedef struct wl_txpwrcap_tbl_v2 {
 	*/
 	uint8 pwrs[][TXPWRCAP_MAX_NUM_CORES];  /* qdBm units */
 } wl_txpwrcap_tbl_v2_t;
+
+/* Supported sar modes value for sar_enable IOVAR */
+typedef enum {
+	SAR_MODE_DISABLE	= (0u),
+	SAR_MODE_HEAD		= (1u << 0u),
+	SAR_MODE_GRIP		= (1u << 1u),
+	SAR_MODE_NR_MW		= (1u << 2u),
+	SAR_MODE_NR_SUB6	= (1u << 3u),
+	SAR_MODE_BT		= (1u << 4u),
+	SAR_MODE_HS		= (1u << 5u),
+	SAR_MODE_MHS		= (1u << 6u),
+	SAR_MODE_MAX		= (1u << 7u)
+} sar_modes_new;
+
+/* sub6 bandinfo valuse for s6bandinfo iovar */
+typedef enum {
+	NR_SUB6_BAND2		= 2u,
+	NR_SUB6_BAND25		= 25u,
+	NR_SUB6_BAND41		= 41u,
+	NR_SUB6_BAND48		= 48u,
+	NR_SUB6_BAND66		= 66u,
+	NR_SUB6_BAND77		= 77u,
+	NR_SUB6_BAND_UN		= 0u
+} sar_sub6bandinfo_mode;
+
+/* sar cap states values */
+typedef enum {
+	SAR_CAP_AIR		= (1u << 0u),
+	SAR_CAP_HEAD		= (1u << 1u),
+	SAR_CAP_GRIP		= (1u << 2u),
+	SAR_CAP_NRMW		= (1u << 3u),
+	SAR_CAP_NRS6		= (1u << 4u),
+	SAR_CAP_BT		= (1u << 5u),
+	SAR_CAP_HS		= (1u << 6u),
+	SAR_CAP_RU		= (1u << 7u),
+	SAR_CAP_MHS		= (1u << 8u),
+	SAR_CAP_S6_BAND2	= (1u << 9u),
+	SAR_CAP_S6_BAND25	= (1u << 10u),
+	SAR_CAP_S6_BAND41	= (1u << 11u),
+	SAR_CAP_S6_BAND48	= (1u << 12u),
+	SAR_CAP_S6_BAND66	= (1u << 13u),
+	SAR_CAP_S6_BAND77	= (1u << 14u)
+} sar_caps;
+
+#define TXPWRCAP_SAR_STATE_SU		0u
+#define TXPWRCAP_SAR_MAX_STATES_SU_V3	1u
+
+#define TXPWRCAP_SAR_STATE_RU_26		1u
+#define TXPWRCAP_SAR_STATE_RU_56		2u
+#define TXPWRCAP_SAR_STATE_RU_106		3u
+#define TXPWRCAP_SAR_MAX_STATES_RU_V3		3u
+#define TXPWRCAP_SAR_MAX_STATES_SU_RU_V3	4u
 
 typedef struct wl_txpwrcap_tbl_v3 {
 	uint8 version;
@@ -23619,6 +23730,7 @@ typedef struct wlc_btcx_profile_v3 {
 #define SSSR_REG_INFO_VER_1	1u
 #define SSSR_REG_INFO_VER_2	2u
 #define SSSR_REG_INFO_VER_3	3u
+#define SSSR_REG_INFO_VER_4	4u
 
 typedef struct sssr_reg_info_v0 {
 	uint16 version;
@@ -23892,12 +24004,111 @@ typedef struct sssr_reg_info_v3 {
 	} hwa_regs;
 } sssr_reg_info_v3_t;
 
+typedef struct sssr_reg_info_v4 {
+	uint16 version;
+	uint16 length;  /* length of the structure validated at host */
+	struct {
+		struct {
+			uint32 pmuintmask0;
+			uint32 pmuintmask1;
+			uint32 resreqtimer;
+			uint32 macresreqtimer;
+			uint32 macresreqtimer1;
+			uint32 macresreqtimer2;
+		} base_regs;
+	} pmu_regs;
+	struct {
+		struct {
+			uint32 intmask;
+			uint32 powerctrl;
+			uint32 clockcontrolstatus;
+			uint32 powerctrl_mask;
+		} base_regs;
+	} chipcommon_regs;
+	struct {
+		struct {
+			uint32 clockcontrolstatus;
+			uint32 clockcontrolstatus_val;
+		} base_regs;
+		struct {
+			uint32 extrsrcreq;
+		} oobr_regs;
+	} arm_regs;
+	struct {
+		struct {
+			uint32 ltrstate;
+			uint32 clockcontrolstatus;
+			uint32 clockcontrolstatus_val;
+		} base_regs;
+		struct {
+			uint32 extrsrcreq;
+		} oobr_regs;
+	} pcie_regs;
+	struct {
+		struct {
+			uint32 xmtaddress;
+			uint32 xmtdata;
+			uint32 clockcontrolstatus;
+			uint32 clockcontrolstatus_val;
+		} base_regs;
+		struct {
+			uint32 extrsrcreq;
+		} oobr_regs;
+		uint32 sr_size;
+	} mac_regs[MAX_NUM_D11_CORES_WITH_SCAN];
+
+	struct {
+		struct {
+			uint32 clockcontrolstatus;
+			uint32 clockcontrolstatus_val;
+		} base_regs;
+		struct {
+			uint32 extrsrcreq;
+		} oobr_regs;
+
+		uint32 saqm_sssr_addr;
+		uint32 saqm_sssr_size;
+
+		struct {
+			uint32 digsr_srcontrol1_addr;	/* DIGSR engine sr control1 register */
+			uint32 digsr_srcontrol1_clrbit_val; /* clear these bits from srcontrol1 */
+
+			uint32 digsr_srcontrol2_addr;	/* DIGSR engine sr control2 register */
+			uint32 digsr_srcontrol2_setbit_val; /* Value to set in the above address */
+
+			uint32 pmuchip_ctl_addr_reg;
+			uint32 pmuchip_ctl_val;
+			uint32 pmuchip_ctl_data_reg;
+			uint32 pmuchip_ctl_setbit_val;
+		} sssr_config_regs;
+	} saqm_sssr_info;
+
+	struct {
+		uint32 dig_sssr_addr;
+		uint32 dig_sssr_size;
+	} dig_mem_info;
+
+	struct {
+		uint32 fis_addr;
+		uint32 fis_size;
+	} fis_mem_info;
+
+	/* Start address and end address for SSSR collection by host. */
+	struct {
+		uint32 sysmem_sssr_addr;
+		uint32 sysmem_sssr_size;
+	} sssr_all_mem_info;
+
+	uint32 fis_enab;
+} sssr_reg_info_v4_t;
+
 /* A wrapper structure for all versions of SSSR register information structures */
 typedef union sssr_reg_info {
 	sssr_reg_info_v0_t rev0;
 	sssr_reg_info_v1_t rev1;
 	sssr_reg_info_v2_t rev2;
 	sssr_reg_info_v3_t rev3;
+	sssr_reg_info_v4_t rev4;
 } sssr_reg_info_cmn_t;
 
 /* ADaptive Power Save(ADPS) structure definition */
@@ -26489,6 +26700,7 @@ typedef enum wl_rffe_cmd_type {
 	WL_RFFE_CMD_ELNABYP_MODE	= 1,
 	WL_RFFE_CMD_REG			= 2,
 	WL_RFFE_CMD_ELNA_VDD_MODE	= 3,
+	WL_RFFE_CMD_DRV_STRENGTH	= 4,
 	WL_RFFE_CMD_LAST
 } wl_rffe_cmd_type_t;
 
@@ -26499,6 +26711,11 @@ typedef struct {
 	uint32	slaveid;	/**< rFEM SlaveID */
 	uint32	value;		/**< read/write value */
 } rffe_reg_t;
+
+typedef struct {
+	uint32	slaveid;	/**< rFEM SlaveID */
+	uint32	ds_val;		/**< drive strength code */
+} rffe_drv_strength_t;
 
 #ifndef BCMUTILS_ERR_CODES
 
@@ -28741,4 +28958,13 @@ enum wl_ch6gprof_cmd_id {
 	WL_CH6GPROF_CMD_EXPIRY_TO	= 1u,
 	WL_CH6GPROF_CMD_RESET_CACHE	= 2u
 };
+
+/* scbrate iovar: txminrate  */
+#define WL_SCBRATE_TXMINRATE_VER_1	1u
+typedef struct wl_scbrate_txminrate {
+	uint16		version;
+	uint16		len;
+	struct ether_addr	peer_mac;	/* mac addrss of peer */
+	uint16		txminrate;	/* Tx min rate in 0.5mbps */
+} wl_scbrate_txminrate_t;
 #endif /* _wlioctl_h_ */

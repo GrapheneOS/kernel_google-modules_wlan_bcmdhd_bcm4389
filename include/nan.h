@@ -159,39 +159,42 @@ enum {
 	NAN_ATTR_COUNTRY_CODE	= 11,
 	NAN_ATTR_RANGING	= 12,
 	NAN_ATTR_CLUSTER_DISC	= 13,
+
 	/* nan 2.0 */
-	NAN_ATTR_SVC_DESC_EXTENSION = 14,
-	NAN_ATTR_NAN_DEV_CAP = 15,
-	NAN_ATTR_NAN_NDP = 16,
-	NAN_ATTR_NAN_NMSG = 17,
-	NAN_ATTR_NAN_AVAIL = 18,
-	NAN_ATTR_NAN_NDC = 19,
-	NAN_ATTR_NAN_NDL = 20,
-	NAN_ATTR_NAN_NDL_QOS = 21,
-	NAN_ATTR_MCAST_SCHED = 22,
-	NAN_ATTR_UNALIGN_SCHED = 23,
-	NAN_ATTR_PAGING_UCAST = 24,
-	NAN_ATTR_PAGING_MCAST = 25,
-	NAN_ATTR_RANGING_INFO = 26,
-	NAN_ATTR_RANGING_SETUP = 27,
-	NAN_ATTR_FTM_RANGE_REPORT = 28,
-	NAN_ATTR_ELEMENT_CONTAINER = 29,
-	NAN_ATTR_WLAN_INFRA_EXT = 30,
-	NAN_ATTR_EXT_P2P_OPER = 31,
-	NAN_ATTR_EXT_IBSS = 32,
-	NAN_ATTR_EXT_MESH = 33,
-	NAN_ATTR_CIPHER_SUITE_INFO = 34,
-	NAN_ATTR_SEC_CTX_ID_INFO = 35,
-	NAN_ATTR_SHARED_KEY_DESC = 36,
-	NAN_ATTR_MCAST_SCHED_CHANGE = 37,
-	NAN_ATTR_MCAST_SCHED_OWNER_CHANGE = 38,
-	NAN_ATTR_PUBLIC_AVAILABILITY = 39,
-	NAN_ATTR_SUB_SVC_ID_LIST = 40,
-	NAN_ATTR_NDPE = 41,
+	NAN_ATTR_SVC_DESC_EXTENSION		= 14,
+	NAN_ATTR_NAN_DEV_CAP			= 15,
+	NAN_ATTR_NAN_NDP			= 16,
+	NAN_ATTR_NAN_NMSG			= 17,
+	NAN_ATTR_NAN_AVAIL			= 18,
+	NAN_ATTR_NAN_NDC			= 19,
+	NAN_ATTR_NAN_NDL			= 20,
+	NAN_ATTR_NAN_NDL_QOS			= 21,
+	NAN_ATTR_MCAST_SCHED			= 22,
+	NAN_ATTR_UNALIGN_SCHED			= 23,
+	NAN_ATTR_PAGING_UCAST			= 24,
+	NAN_ATTR_PAGING_MCAST			= 25,
+	NAN_ATTR_RANGING_INFO			= 26,
+	NAN_ATTR_RANGING_SETUP			= 27,
+	NAN_ATTR_FTM_RANGE_REPORT		= 28,
+	NAN_ATTR_ELEMENT_CONTAINER		= 29,
+	NAN_ATTR_WLAN_INFRA_EXT			= 30,
+	NAN_ATTR_EXT_P2P_OPER			= 31,
+	NAN_ATTR_EXT_IBSS			= 32,
+	NAN_ATTR_EXT_MESH			= 33,
+	NAN_ATTR_CIPHER_SUITE_INFO		= 34,
+	NAN_ATTR_SEC_CTX_ID_INFO		= 35,
+	NAN_ATTR_SHARED_KEY_DESC		= 36,
+	NAN_ATTR_MCAST_SCHED_CHANGE		= 37,
+	NAN_ATTR_MCAST_SCHED_OWNER_CHANGE	= 38,
+	NAN_ATTR_PUBLIC_AVAILABILITY		= 39,
+	NAN_ATTR_SUB_SVC_ID_LIST		= 40,
+	NAN_ATTR_NDPE				= 41,
+	NAN_ATTR_DEV_CAP_EXT			= 42, /* NAN R4, Device Capability Extension */
+
 	/* change NAN_ATTR_MAX_ID to max ids + 1, excluding NAN_ATTR_VENDOR_SPECIFIC.
 	 * This is used in nan_parse.c
 	 */
-	NAN_ATTR_MAX_ID		= NAN_ATTR_NDPE + 1,
+	NAN_ATTR_MAX_ID		= NAN_ATTR_DEV_CAP_EXT + 1,
 
 	NAN_ATTR_VENDOR_SPECIFIC = 221
 };
@@ -899,6 +902,51 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_dev_cap_s {
 	uint8 capabilities;	/* DFS Master, Extended key id etc */
 } BWL_POST_PACKED_STRUCT wifi_nan_dev_cap_t;
 
+/* Regulatory info - operation types in 6G band, Table 126, NAN R4 spec.
+ * Also, see Table E-12, REVme_D1.0
+ */
+typedef enum nan_mac_6g_op_type {
+	/* Indoor AP, i.e., LPI(Low Power Indoor) AP.
+	 * AFC is not required but with some regulations to be indoor opeation.
+	 */
+	NAN_MAC_6G_OP_INDOOR_AP		= 0,
+
+	/* Standard Power AP, needs AFC coordination */
+	NAN_MAC_6G_OP_SP_AP		= 1,
+
+	/* Very Low Power AP - VLP AP
+	 * AFC is not required. Resticted with very low transmit power
+	 * This is the default mode of all P2P devices.
+	 */
+	NAN_MAC_6G_OP_VLP_AP		= 2,
+
+	/* Indoor Enabled AP.
+	 * Devices capable of receiving the "enabling signal" and configures itself to use
+	 * C2C power level which is 10dB Higher than VLP AP.
+	 */
+	NAN_MAC_6G_OP_INDOOR_ENABLED_AP	= 3,
+
+	/* This is kind of hybrid mode (AFC in indoors).
+	 * Devices opering in indoors and standard power mode with AFC.
+	 */
+	NAN_MAC_6G_OP_INDOOR_SP_AP	= 4
+} nan_mac_6g_op_type_e;
+
+/* First byte of the extended capabilities is the regulatory info */
+typedef struct nan_mac_dev_cap_ext_reg_info_s {
+	uint8 reg_info_6g_present:1;	/* bit0 */
+	uint8 reg_info_6g:3;		/* bits 1-3, see nan_mac_6g_op_type_e */
+	uint8 reserved:4;		/* bits 4-7 */
+} nan_mac_dev_cap_ext_reg_info_t;
+
+/* NAN R4 - Device Capability Extension Attribute */
+typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_dev_cap_ext_s {
+	uint8 id;		/* 0x2A */
+	uint16 len;		/* Length */
+	/* Bit field with variable length in octets as indicated in the len field */
+	uint8 data[];
+} BWL_POST_PACKED_STRUCT wifi_nan_dev_cap_ext_t;
+
 /* map id related */
 
 /* all maps */
@@ -995,6 +1043,19 @@ typedef uint8 nan_band_id_t;
 #define NAN_DEV_CAP_SUPPORTED_BANDS_2G	(1 << NAN_BAND_ID_2G)
 #define NAN_DEV_CAP_SUPPORTED_BANDS_5G	(1 << NAN_BAND_ID_5G)
 
+/* NAN Supported Band ID bitmap, Table 72 in NAN R4 spec,
+ * bitmap of supported bands in the device capability attribute.
+ */
+typedef enum nan_mac_supp_band_flags {
+	NAN_MAC_SUPP_BAND_TV_WHITE_SPACES	= (1u << 0u),	 /* bit0 */
+	NAN_MAC_SUPP_BAND_SUB_1GHZ		= (1u << 1u),
+	NAN_MAC_SUPP_BAND_2G			= (1u << 2u),
+	NAN_MAC_SUPP_BAND_3G			= (1u << 3u),
+	NAN_MAC_SUPP_BAND_5G			= (1u << 4u),
+	NAN_MAC_SUPP_BAND_60G			= (1u << 5u),
+	NAN_MAC_SUPP_BAND_45G			= (1u << 6u),
+	NAN_MAC_SUPP_BAND_6G			= (1u << 7u)	/* bit7 */
+} nan_mac_supp_band_flags_e;
 /*
  * Unaligned schedule attribute section 10.7.19.6 spec. ver r15
  */

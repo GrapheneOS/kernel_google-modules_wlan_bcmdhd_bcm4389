@@ -1467,7 +1467,7 @@ osl_systztime_us(void)
 
 	ktime_get_real_ts64(&ts);
 	/* apply timezone */
-	tzusec = (uint64)((ts.tv_sec - (sys_tz.tz_minuteswest * 60u)) * USEC_PER_SEC);
+	tzusec = (uint64)((ts.tv_sec - (sys_tz.tz_minuteswest * 60L)) * USEC_PER_SEC);
 	tzusec += ts.tv_nsec / NSEC_PER_USEC;
 
 	return tzusec;
@@ -1482,7 +1482,7 @@ osl_get_rtctime(void)
 
 	memset_s(timebuf, RTC_TIME_BUF_LEN, 0, RTC_TIME_BUF_LEN);
 	ktime_get_real_ts64(&ts);
-	rtc_time_to_tm(ts.tv_sec - (sys_tz.tz_minuteswest * 60), &tm);
+	rtc_time_to_tm(ts.tv_sec - (sys_tz.tz_minuteswest * 60L), &tm);
 	scnprintf(timebuf, RTC_TIME_BUF_LEN,
 			"%02d:%02d:%02d.%06lu",
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec/NSEC_PER_USEC);

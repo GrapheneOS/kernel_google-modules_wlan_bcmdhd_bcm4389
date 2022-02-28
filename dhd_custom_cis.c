@@ -685,7 +685,7 @@ dhd_otp_process_iov_resp_buf(void *ctx, void *iov_resp, uint16 cmd_id,
 
 	/* check for version */
 	version = dtoh16(*(uint16 *)iov_resp);
-	if (version != WL_OTP_IOV_VERSION) {
+	if (version != WL_OTP_IOV_VERSION_1_1) {
 		return BCME_VERSION;
 	}
 
@@ -731,7 +731,7 @@ dhd_otp_get_iov_resp(dhd_pub_t *dhdp, const uint16 cmd_id, void *ctx,
 	}
 
 	/* fill header portion */
-	iov_buf->version = WL_OTP_IOV_VERSION;
+	iov_buf->version = WL_OTP_IOV_VERSION_1_1;
 	iov_buf->len = (buflen_start - buflen);
 	iov_buf->id = cmd_id;
 

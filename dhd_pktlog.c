@@ -1069,6 +1069,7 @@ dhd_pktlog_filter_matched(dhd_pktlog_filter_t *filter, char *data, uint32 pktlog
 /* Ethernet Type MAC Header 12 bytes + Frame payload 10 bytes */
 #define PKTLOG_MINIMIZE_REPORT_LEN 22
 
+#ifndef DHD_PKT_LOGGING_DBGRING
 static char pktlog_minmize_mask_table[] = {
 	0xff, 0x00, 0x00, 0x00, 0xff, 0x0f, /* Ethernet Type MAC Header - Destination MAC Address */
 	0xff, 0x00, 0x00, 0x00, 0xff, 0x0f, /* Ethernet Type MAC Header - Source MAC Address */
@@ -1122,6 +1123,7 @@ dhd_pktlog_minimize_report(char *pkt, uint32 frame_len,
 	}
 	vfree(mem_buf);
 }
+#endif /* !DHD_PKT_LOGGING_DBGRING */
 
 dhd_pktlog_ring_t*
 dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf, int size)

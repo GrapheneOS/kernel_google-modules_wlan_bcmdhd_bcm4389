@@ -2161,7 +2161,7 @@ dhd_pno_set_for_gscan(dhd_pub_t *dhd, struct dhd_pno_gscan_params *gscan_params)
 		goto exit;
 	}
 
-	pfn_gscan_cfg_t->version = WL_GSCAN_CFG_VERSION;
+	pfn_gscan_cfg_t->version = WL_GSCAN_CFG_VERSION_1;
 	if (gscan_params->mscan)
 		pfn_gscan_cfg_t->buffer_threshold = gscan_params->buffer_threshold;
 	else
@@ -2530,7 +2530,7 @@ dhd_pno_enable_full_scan_result(dhd_pub_t *dhd, bool real_time_flag)
 	    if (old_flag != gscan_params->send_all_results_flag) {
 			wl_pfn_gscan_cfg_t gscan_cfg;
 
-			gscan_cfg.version = WL_GSCAN_CFG_VERSION;
+			gscan_cfg.version = WL_GSCAN_CFG_VERSION_1;
 			gscan_cfg.flags = (gscan_params->send_all_results_flag &
 			                           GSCAN_SEND_ALL_RESULTS_MASK);
 			gscan_cfg.flags |= GSCAN_CFG_FLAGS_ONLY_MASK;

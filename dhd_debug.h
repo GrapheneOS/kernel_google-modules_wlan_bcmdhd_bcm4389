@@ -845,6 +845,7 @@ int dhd_dbg_pull_single_from_ring(dhd_pub_t *dhdp, int ring_id, void *data, uint
 #ifdef DHD_PKT_LOGGING_DBGRING
 int dhd_dbg_update_to_ring(dhd_pub_t *dhdp, void *ring, uint32 w_len);
 int dhd_dbg_pull_from_pktlog(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_len);
+void dhd_os_dbg_urgent_pullreq(void *os_priv, int ring_id);
 #endif /* DHD_PKT_LOGGING_DBGRING */
 #ifdef DHD_DEBUGABILITY_DEBUG_DUMP
 int dhd_debug_dump_ring_push(dhd_pub_t *dhdp, int ring_id, uint32 len, void *data);

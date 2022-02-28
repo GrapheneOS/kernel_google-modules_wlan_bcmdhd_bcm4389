@@ -677,10 +677,6 @@ extern void event_log2(int tag, int fmtNum, uint32 t1, uint32 t2);
 extern void event_log3(int tag, int fmtNum, uint32 t1, uint32 t2, uint32 t3);
 extern void event_log4(int tag, int fmtNum, uint32 t1, uint32 t2, uint32 t3, uint32 t4);
 extern void event_logn(int num_args, int tag, int fmtNum, ...);
-#ifdef ROM_COMPAT_MSCH_PROFILER
-/* For compatibility with ROM, for old msch event log function to pass parameters in stack */
-extern void event_logv(uint num_args, int tag, int fmtNum, va_list ap);
-#endif /* ROM_COMPAT_MSCH_PROFILER */
 
 /* Use PTM based timestamping of event log records if PTM is available. */
 #if defined(GTIMER_PTM) && !defined(GTIMER_PTM_DISABLED)

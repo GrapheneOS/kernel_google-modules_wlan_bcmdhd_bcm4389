@@ -1134,31 +1134,6 @@ dhd_napi_schedule(void *info)
 	 */
 }
 
-/**
- * dhd_napi_schedule_on - API to schedule on a desired CPU core a NET_RX_SOFTIRQ
- * action after placing the dhd's rx_process napi object in the the remote CPU's
- * softnet data's poll_list.
- *
- * @dhd: dhd_info which has the rx_process napi object
- * @on_cpu: desired remote CPU id
- */
-static INLINE int
-dhd_napi_schedule_on(dhd_info_t *dhd, int on_cpu)
-{
-	int wait = 0; /* asynchronous IPI */
-	DHD_INFO(("%s dhd<%p> napi<%p> on_cpu<%d>\n",
-		__FUNCTION__, dhd, &dhd->rx_napi_struct, on_cpu));
-
-	if (smp_call_function_single(on_cpu, dhd_napi_schedule, dhd, wait)) {
-		DHD_ERROR(("%s smp_call_function_single on_cpu<%d> failed\n",
-			__FUNCTION__, on_cpu));
-	}
-
-	DHD_LB_STATS_INCR(dhd->napi_sched_cnt);
-
-	return 0;
-}
-
 /*
  * Call get_online_cpus/put_online_cpus around dhd_napi_schedule_on
  * Why should we do this?

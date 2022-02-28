@@ -5081,45 +5081,6 @@ typedef struct dot11_ranging_trigger dot11_ranging_trigger_t;
 	DOT11_FTM_ERR_SET_NOT_CONT(_err, _not_cont); \
 } while (0)
 
-#if defined(DOT11_FTM_ERR_ROM_COMPAT)
-/* incorrect defs - here for ROM compatibiity */
-#undef DOT11_FTM_ERR_NOT_CONT_OFFSET
-#undef DOT11_FTM_ERR_NOT_CONT_MASK
-#undef DOT11_FTM_ERR_NOT_CONT_SHIFT
-#undef DOT11_FTM_ERR_NOT_CONT
-#undef DOT11_FTM_ERR_SET_NOT_CONT
-
-#define DOT11_FTM_ERR_NOT_CONT_OFFSET 0
-#define DOT11_FTM_ERR_NOT_CONT_MASK 0x0001
-#define DOT11_FTM_ERR_NOT_CONT_SHIFT 0
-#define DOT11_FTM_ERR_NOT_CONT(_err) (((_err)[DOT11_FTM_ERR_NOT_CONT_OFFSET] & \
-	DOT11_FTM_ERR_NOT_CONT_MASK) >> DOT11_FTM_ERR_NOT_CONT_SHIFT)
-#define DOT11_FTM_ERR_SET_NOT_CONT(_err, _val) do {\
-	uint8 _err2 = (_err)[DOT11_FTM_ERR_NOT_CONT_OFFSET]; \
-	_err2 &= ~DOT11_FTM_ERR_NOT_CONT_MASK; \
-	_err2 |= ((_val) << DOT11_FTM_ERR_NOT_CONT_SHIFT) & DOT11_FTM_ERR_NOT_CONT_MASK; \
-	(_err)[DOT11_FTM_ERR_NOT_CONT_OFFSET] = _err2; \
-} while (0)
-
-#undef DOT11_FTM_ERR_MAX_ERR_OFFSET
-#undef DOT11_FTM_ERR_MAX_ERR_MASK
-#undef DOT11_FTM_ERR_MAX_ERR_SHIFT
-#undef DOT11_FTM_ERR_MAX_ERR
-#undef DOT11_FTM_ERR_SET_MAX_ERR
-
-#define DOT11_FTM_ERR_MAX_ERR_OFFSET 0
-#define DOT11_FTM_ERR_MAX_ERR_MASK 0xfff7
-#define DOT11_FTM_ERR_MAX_ERR_SHIFT 1
-#define DOT11_FTM_ERR_MAX_ERR(_err) ((((_err)[1] << 7) | (_err)[0]) >> 1)
-#define DOT11_FTM_ERR_SET_MAX_ERR(_err, _val) do {\
-	uint16 _val2; \
-	_val2 =  (((_val) << DOT11_FTM_ERR_MAX_ERR_SHIFT) |\
-		 ((_err)[DOT11_FTM_ERR_NOT_CONT_OFFSET] & DOT11_FTM_ERR_NOT_CONT_MASK)); \
-	(_err)[0] = _val2 & 0xff; \
-	(_err)[1] = _val2 >> 8 & 0xff; \
-} while (0)
-#endif /* DOT11_FTM_ERR_ROM_COMPAT */
-
 BWL_PRE_PACKED_STRUCT struct dot11_ftm_params {
 	uint8 id; /* DOT11_MNG_FTM_PARAM_ID 8.4.2.166 11mcd2.6/2014 - revisit */
 	uint8 len;

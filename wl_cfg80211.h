@@ -140,6 +140,23 @@ typedef sta_info_v4_t wlcfg_sta_info_t;
 #define WL_STAINFO_VER WL_STA_VER_4
 #endif /* USE_STA_INFO_V6 */
 
+/* MSCS default configuration values */
+#ifndef MSCS_CFG_DEF_STREAM_TIMEOUT
+#define MSCS_CFG_DEF_STREAM_TIMEOUT     60000u  /* TUs */
+#endif /* MSCS_CFG_DEF_STREAM_TIMEOUT */
+
+#ifndef MSCS_CFG_DEF_UP_LIMIT
+#define MSCS_CFG_DEF_UP_LIMIT           7u      /* up limit */
+#endif /* MSCS_CFG_DEF_UP_LIMIT */
+
+#ifndef MSCS_CFG_DEF_FC_MASK
+#define MSCS_CFG_DEF_FC_MASK            0xF0u   /* frame classifier mask  */
+#endif /* MSCS_CFG_DEF_FC_MASK */
+
+#ifndef MSCS_CFG_DEF_TCLAS_MASK
+#define MSCS_CFG_DEF_TCLAS_MASK         0x5Fu   /* TCLAS mask  */
+#endif /* MSCS_CFG_DEF_TCLAS_MASK */
+
 #define CH_TO_CHSPC(band, _channel) \
 	((_channel | band) | WL_CHANSPEC_BW_20 | WL_CHANSPEC_CTL_SB_NONE)
 #define CHAN2G(_channel, _freq, _flags) {			\

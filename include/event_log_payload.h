@@ -1609,9 +1609,10 @@ typedef struct phy_periodic_counters_v9 {
 	uint16	debug_08;
 	uint16	debug_09;
 	uint16	debug_10;
-	uint8	debug_11;
-	uint8	debug_12;
-	uint8	debug_13;
+
+	uint8	sc_dccal_incc_cnt;	/* scan dccal counter */
+	uint8	sc_rxiqcal_skip_cnt;	/* scan rxiqcal counter */
+	uint8	sc_noisecal_incc_cnt;	/* scan noise cal counter */
 	uint8	debug_14;
 } phy_periodic_counters_v9_t;
 

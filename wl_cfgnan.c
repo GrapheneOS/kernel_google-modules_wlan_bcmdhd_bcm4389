@@ -4693,7 +4693,6 @@ wl_cfgnan_suspend_all_geofence_rng_sessions(struct net_device *ndev,
 	WL_MEM(("Suspending all geofence sessions: "
 		"suspend_reason = %d\n", suspend_reason));
 
-	cancel_flags |= NAN_RNG_TERM_FLAG_IMMEDIATE;
 	for (i = 0; i < NAN_MAX_RANGING_INST; i++) {
 		ranging_inst = &cfg->nancfg->nan_ranging_info[i];
 		/* Cancel Ranging if in progress for rang_inst */
@@ -8882,7 +8881,8 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 #endif /* WL_NAN_DEBUG */
 
 	if (!cfg->nancfg->nan_init_state) {
-		WL_ERR(("nan is not in initialized state, dropping nan related events\n"));
+		WL_ERR(("nan is not in initialized state, dropping nan related event num: %d, "
+			"type: %d\n", event_num, event_type));
 		ret = BCME_OK;
 		goto exit;
 	}
