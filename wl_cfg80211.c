@@ -2954,6 +2954,13 @@ _wl_cfg80211_del_if(struct bcm_cfg80211 *cfg, struct net_device *primary_ndev,
 	dhd_net_del_flowrings_sta(dhd, wdev->netdev);
 #endif /* PCIE_FULL_DONGLE */
 
+#ifdef WL_CELLULAR_CHAN_AVOID
+		if (wl_iftype == WL_IF_TYPE_AP) {
+			wl_cellavoid_clear_requested_freq_bands(wdev->netdev,
+				cfg->cellavoid_info);
+		}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+
 	switch (wl_iftype) {
 		case WL_IF_TYPE_P2P_GO:
 		case WL_IF_TYPE_P2P_GC:

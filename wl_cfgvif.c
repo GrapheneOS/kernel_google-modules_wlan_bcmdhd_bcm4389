@@ -4075,7 +4075,6 @@ wl_cfg80211_stop_ap(
 		}
 #endif /* SUPPORT_AP_RADIO_PWRSAVE */
 #ifdef WL_CELLULAR_CHAN_AVOID
-		wl_cellavoid_clear_requested_freq_bands(dev, cfg->cellavoid_info);
 		wl_cellavoid_sync_lock(cfg);
 		wl_cellavoid_free_csa_info(cfg->cellavoid_info, dev);
 		wl_cellavoid_sync_unlock(cfg);

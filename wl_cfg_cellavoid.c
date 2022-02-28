@@ -1030,10 +1030,8 @@ wl_cellavoid_set_requested_freq_bands(struct net_device *ndev,
 	}
 
 	if (i == MAX_AP_INTERFACE) {
+		WL_ERR(("No empty slot, reset all slots.\n"));
 		for (i = 0; i < MAX_AP_INTERFACE; i++) {
-			WL_ERR(("No empty slot, name %s, req_band %x in slot %d\n",
-				cellavoid_info->req_band[i].ndev->name,
-				cellavoid_info->req_band[i].req_band, i));
 			cellavoid_info->req_band[i].ndev = NULL;
 			cellavoid_info->req_band[i].req_band = WLC_BAND_INVALID;
 		}
@@ -1071,11 +1069,7 @@ wl_cellavoid_clear_requested_freq_bands(struct net_device *ndev, void *cai)
 	}
 
 	if (i == MAX_AP_INTERFACE) {
-		for (i = 0; i < MAX_AP_INTERFACE; i++) {
-			WL_ERR(("No empty slot, id %d, name %s, req_band %x\n",
-				i, cellavoid_info->req_band[i].ndev->name,
-				cellavoid_info->req_band[i].req_band));
-		}
+		WL_ERR(("No matched slot, ignore.\n"));
 		return;
 	}
 
