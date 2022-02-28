@@ -41,6 +41,7 @@
 #include <dhd.h>
 #ifdef DHD_LOG_DUMP
 #include <dhd_log_dump.h>
+#include <dhd_debug.h>
 #endif
 #endif /* BCMDONGLEHOST */
 

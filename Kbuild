@@ -288,7 +288,8 @@ ifneq ($(CONFIG_FIB_RULES),)
 # Debugability
 # HAL File dump is supported only for iptable builds(brcm_wlan_iptables_defconfig)
 ifneq ($(CONFIG_SOC_GOOGLE),)
-DHDCFLAGS += -DDHD_DEBUGABILITY_DEBUG_DUMP
+DHDCFLAGS += -DDHD_FILE_DUMP_EVENT
+DHDCFLAGS += -DDHD_HAL_RING_DUMP
 # Pixel platform only, to support ring data flushing properly
 DHDCFLAGS += -DDHD_DUMP_START_COMMAND
 # Enable pktid logging

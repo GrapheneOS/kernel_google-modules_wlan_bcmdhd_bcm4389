@@ -919,7 +919,8 @@ typedef enum dhd_ring_id {
 	PACKET_LOG_RING_ID = 0x7,
 	DEBUG_DUMP_RING1_ID = 0x8,
 	DEBUG_DUMP_RING2_ID = 0x9,
-	DEBUG_RING_ID_MAX = 0xa
+	MEM_DUMP_RING_ID = 0xa,
+	DEBUG_RING_ID_MAX = 0xb
 } dhd_ring_id_t;
 
 #define HEALTH_CHK_BUF_SIZE 256

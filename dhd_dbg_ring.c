@@ -98,8 +98,11 @@ dhd_dbg_ring_init(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring, uint16 id, uint8 *name,
 	unsigned long flags = 0;
 
 	if (allocd_buf == NULL) {
-		/* DEBUG_DUMP RINGs need to be delayed allocation */
-		if (id != DEBUG_DUMP_RING1_ID && id != DEBUG_DUMP_RING2_ID) {
+		/* for DEBUG_DUMP and MEM_DUMP, buffer can be NULL
+		 * since act as delayed allocation or fake rings
+		 */
+		if (id != DEBUG_DUMP_RING1_ID && id != DEBUG_DUMP_RING2_ID &&
+				id != MEM_DUMP_RING_ID) {
 			return BCME_NOMEM;
 		}
 		buf = NULL;

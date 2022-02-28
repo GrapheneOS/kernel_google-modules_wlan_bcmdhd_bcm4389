@@ -8666,6 +8666,7 @@ static int wl_cfgvendor_dbg_get_ring_data(struct wiphy *wiphy,
 				return ret;
 		}
 	}
+	WL_MEM(("Received GET_RING_DATA ring:%s\n", ring_name));
 
 	ret = dhd_os_trigger_get_ring_data(dhd_pub, ring_name);
 	if (ret < 0) {
@@ -8674,6 +8675,54 @@ static int wl_cfgvendor_dbg_get_ring_data(struct wiphy *wiphy,
 
 	return ret;
 }
+
+#ifdef DHD_HAL_RING_DUMP
+static int wl_cfgvendor_dbg_get_buf_ring_map(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void *data, int len)
+{
+	int ret = BCME_OK;
+	struct sk_buff *skb = NULL;
+	int map_cnt = ARRAYSIZE(dhd_buf_ring_map);
+	int entry_size = sizeof(dhd_buf_ring_map_entry_t);
+	int i;
+
+	WL_MEM(("map_cnt:%d\n", map_cnt));
+	/* Alloc the SKB for vendor_event */
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy,
+		nla_total_size(sizeof(dhd_buf_ring_map)) + nla_total_size(sizeof(map_cnt)));
+	if (!skb) {
+		WL_ERR(("skb allocation is failed\n"));
+		ret = BCME_NOMEM;
+		goto fail;
+	}
+
+	ret = nla_put_u32(skb, DEBUG_ATTRIBUTE_BUF_RING_NUM, map_cnt);
+	if (unlikely(ret)) {
+		goto fail;
+	}
+
+	for (i = 0; i < map_cnt; i++) {
+		ret = nla_put(skb, DEBUG_ATTRIBUTE_BUF_RING_MAP, entry_size,
+				&dhd_buf_ring_map[i]);
+		if (unlikely(ret)) {
+			goto fail;
+		}
+	}
+
+	ret = cfg80211_vendor_cmd_reply(skb);
+	if (ret) {
+		/* kfree_skb is called if it is failed */
+		WL_ERR(("Vendor Command reply failed ret:%d \n", ret));
+	}
+	return ret;
+
+fail:
+	if (skb) {
+		kfree_skb(skb);
+	}
+	return ret;
+}
+#endif /* DHD_HAL_RING_DUMP */
 #endif /* DEBUGABILITY */
 
 static int wl_cfgvendor_dbg_get_feature(struct wiphy *wiphy,
@@ -12492,6 +12541,20 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 #endif /* LINUX_VERSION >= 5.3 */
 
 	},
+#ifdef DHD_HAL_RING_DUMP
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = DEBUG_GET_BUF_RING_MAP
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_dbg_get_buf_ring_map,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = andr_dbg_policy,
+		.maxattr = DEBUG_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+#endif /* DHD_HAL_RING_DUMP */
 #endif /* DEBUGABILITY */
 	{
 		{

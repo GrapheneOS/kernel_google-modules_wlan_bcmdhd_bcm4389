@@ -3142,7 +3142,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	}
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+#if defined(DHD_DEBUGABILITY_DEBUG_DUMP) || defined(DHD_HAL_RING_DUMP)
 	/*
 	 * delayed memory allocation. memory will be allocated when debug_dump is invoked
 	 * To prepare the ringbuffer in legacy HAL, we should initialize ring at this time
@@ -3162,7 +3162,16 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 		DHD_ERROR(("%s: Failed to init debug ring2\n", __func__));
 		goto error;
 	}
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
+#endif /* defined(DHD_DEBUGABILITY_DEBUG_DUMP) || defined(DHD_HAL_RING_DUMP) */
+
+#if defined(DHD_HAL_RING_DUMP_MEMDUMP)
+	ret = dhd_dbg_ring_init(dhdp, &dbg->dbg_rings[MEM_DUMP_RING_ID], MEM_DUMP_RING_ID,
+			(uint8 *)MEM_DUMP_RING_NAME, MEM_DUMP_RING_SIZE, NULL, FALSE);
+	if (ret) {
+		DHD_ERROR(("%s: Failed to init mem dump ring\n", __func__));
+		goto error;
+	}
+#endif /* DHD_HAL_RING_DUMP_MEMDUMP */
 
 #ifdef BTLOG
 	buf = VMALLOCZ(dhdp->osh, BT_LOG_RING_SIZE);
