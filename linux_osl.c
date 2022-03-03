@@ -823,6 +823,83 @@ osl_vmfree(osl_t *osh, void *addr, uint size)
 	vfree(addr);
 }
 
+#ifdef BCMDBG_MEM
+/* In BCMDBG_MEM configurations osl_kvmalloc is only used internally in
+ * the implementation of osl_debug_kvmalloc.  Because we are using the GCC
+ * -Wstrict-prototypes compile option, we must always have a prototype
+ * for a global/external function.  So make osl_kvmalloc static in
+ * the BCMDBG_MEM case.
+ */
+static
+#endif
+void *
+osl_kvmalloc(osl_t *osh, uint size)
+{
+	void *addr;
+	gfp_t flags;
+
+	/* only ASSERT if osh is defined */
+	if (osh)
+		ASSERT(osh->magic == OS_HANDLE_MAGIC);
+
+	flags = CAN_SLEEP() ? GFP_KERNEL: GFP_ATOMIC;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
+	if ((addr = kmalloc(size, flags)) == NULL) {
+#else
+	if ((addr = kvmalloc(size, flags)) == NULL) {
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0) */
+		if (osh)
+			osh->failed++;
+		return (NULL);
+	}
+	if (osh && osh->cmn)
+		atomic_add(size, &osh->cmn->malloced);
+
+	return (addr);
+}
+
+#ifndef BCMDBG_MEM
+void *
+osl_kvmallocz(osl_t *osh, uint size)
+{
+	void *ptr;
+
+	ptr = osl_kvmalloc(osh, size);
+
+	if (ptr != NULL) {
+		bzero(ptr, size);
+	}
+
+	return ptr;
+}
+#endif
+
+#ifdef BCMDBG_MEM
+/* In BCMDBG_MEM configurations osl_kvmfree is only used internally in
+ * the implementation of osl_debug_kvmfree.  Because we are using the GCC
+ * -Wstrict-prototypes compile option, we must always have a prototype
+ * for a global/external function.  So make osl_kvmfree static in
+ * the BCMDBG_MEM case.
+ */
+static
+#endif
+void
+osl_kvmfree(osl_t *osh, void *addr, uint size)
+{
+	if (osh && osh->cmn) {
+		ASSERT(osh->magic == OS_HANDLE_MAGIC);
+
+		ASSERT(size <= osl_malloced(osh));
+
+		atomic_sub(size, &osh->cmn->malloced);
+	}
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0))
+	kfree(addr);
+#else
+	kvfree(addr);
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0) */
+}
+
 uint
 osl_check_memleak(osl_t *osh)
 {
@@ -1081,6 +1158,118 @@ osl_debug_vmfree(osl_t *osh, void *addr, uint size, int line, const char* file)
 		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
 	}
 	osl_vmfree(osh, p, size + sizeof(bcm_mem_link_t));
+}
+
+void *
+osl_debug_kvmalloc(osl_t *osh, uint size, int line, const char* file)
+{
+	bcm_mem_link_t *p;
+	const char* basename;
+	unsigned long flags = 0;
+	if (!size) {
+		OSL_PRINT(("%s: allocating zero sized mem at %s line %d\n",
+			__FUNCTION__, file, line));
+		ASSERT(0);
+	}
+
+	if ((p = (bcm_mem_link_t*)osl_kvmalloc(osh, sizeof(bcm_mem_link_t) + size)) == NULL) {
+		return (NULL);
+	}
+
+	if (osh) {
+		OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
+	}
+
+	p->size = size;
+	p->line = line;
+	p->osh = (void *)osh;
+
+	basename = strrchr(file, '/');
+	/* skip the '/' */
+	if (basename)
+		basename++;
+
+	if (!basename)
+		basename = file;
+
+	strlcpy(p->file, basename, sizeof(p->file));
+
+	/* link this block */
+	if (osh) {
+		p->prev = NULL;
+		p->next = osh->cmn->dbgvmem_list;
+		if (p->next)
+			p->next->prev = p;
+		osh->cmn->dbgvmem_list = p;
+		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
+	}
+
+	return p + 1;
+}
+
+void *
+osl_debug_kvmallocz(osl_t *osh, uint size, int line, const char* file)
+{
+	void *ptr;
+
+	ptr = osl_debug_kvmalloc(osh, size, line, file);
+
+	if (ptr != NULL) {
+		bzero(ptr, size);
+	}
+
+	return ptr;
+}
+
+void
+osl_debug_kvmfree(osl_t *osh, void *addr, uint size, int line, const char* file)
+{
+	bcm_mem_link_t *p = (bcm_mem_link_t *)((int8*)addr - sizeof(bcm_mem_link_t));
+	unsigned long flags = 0;
+
+	ASSERT(osh == NULL || osh->magic == OS_HANDLE_MAGIC);
+
+	if (p->size == 0) {
+		OSL_PRINT(("osl_debug_mfree: double free on addr %p size %d at line %d file %s\n",
+			addr, size, line, file));
+		ASSERT(p->size);
+		return;
+	}
+
+	if (p->size != size) {
+		OSL_PRINT(("%s: dealloca size does not match alloc size\n", __FUNCTION__));
+		OSL_PRINT(("Dealloc addr %p size %d at line %d file %s\n", addr, size, line, file));
+		OSL_PRINT(("Alloc size %d line %d file %s\n", p->size, p->line, p->file));
+		ASSERT(p->size == size);
+		return;
+	}
+
+	if (osh && ((osl_t*)p->osh)->cmn != osh->cmn) {
+		OSL_PRINT(("osl_debug_mfree: alloc osh %p does not match dealloc osh %p\n",
+			((osl_t*)p->osh)->cmn, osh->cmn));
+		OSL_PRINT(("Dealloc addr %p size %d at line %d file %s\n", addr, size, line, file));
+		OSL_PRINT(("Alloc size %d line %d file %s\n", p->size, p->line, p->file));
+		ASSERT(((osl_t*)p->osh)->cmn == osh->cmn);
+		return;
+	}
+
+	/* unlink this block */
+	if (osh && osh->cmn) {
+		OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
+		if (p->prev)
+			p->prev->next = p->next;
+		if (p->next)
+			p->next->prev = p->prev;
+		if (osh->cmn->dbgvmem_list == p)
+			osh->cmn->dbgvmem_list = p->next;
+		p->next = p->prev = NULL;
+	}
+	p->size = 0;
+
+	if (osh && osh->cmn) {
+		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
+	}
+	osl_kvmfree(osh, p, size + sizeof(bcm_mem_link_t));
 }
 
 int

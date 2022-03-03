@@ -2030,9 +2030,9 @@ dhd_pktid_logging_init(dhd_pub_t *dhd, uint32 num_items)
 	uint32 log_size;
 
 	log_size = DHD_PKTID_LOG_SZ(num_items);
-	log = (dhd_pktid_log_t *)MALLOCZ(dhd->osh, log_size);
+	log = (dhd_pktid_log_t *)KVMALLOCZ(dhd->osh, log_size);
 	if (log == NULL) {
-		DHD_ERROR(("%s: MALLOC failed for size %d\n",
+		DHD_ERROR(("%s: KVMALLOC failed for size %d\n",
 			__FUNCTION__, log_size));
 		return (dhd_pktid_log_handle_t *)NULL;
 	}
@@ -2056,7 +2056,7 @@ dhd_pktid_logging_fini(dhd_pub_t *dhd, dhd_pktid_log_handle_t *handle)
 
 	log = (dhd_pktid_log_t *)handle;
 	log_size = DHD_PKTID_LOG_SZ(log->items);
-	MFREE(dhd->osh, handle, log_size);
+	KVMFREE(dhd->osh, handle, log_size);
 }
 
 static void
@@ -2099,6 +2099,9 @@ dhd_pktid_logging_dump(dhd_pub_t *dhd)
 	unmap_log = (dhd_pktid_log_t *)(prot->pktid_dma_unmap);
 	OSL_GET_LOCALTIME(&ts_sec, &ts_usec);
 	if (map_log && unmap_log) {
+		DHD_ERROR(("%s: map_log(%s), unmap_log(%s)\n", __FUNCTION__,
+			is_vmalloc_addr(map_log) ? "vmalloc" : "kmalloc",
+			is_vmalloc_addr(unmap_log) ? "vmalloc" : "kmalloc"));
 		DHD_ERROR(("%s: map_idx=%d unmap_idx=%d "
 			"current time=[%5lu.%06lu]\n", __FUNCTION__,
 			map_log->index, unmap_log->index,
@@ -2127,9 +2130,14 @@ dhd_pktid_buf_len(dhd_pub_t *dhd, bool is_map)
 		len += strlen(DHD_PKTID_UNMAP_LOG_HDR);
 	}
 
+	if (!pktlog_buf) {
+		return 0; /* len should be 0. */
+	}
+
 	/* Adding Format string + LineFeed */
 	len += strlen(PKTID_LOG_DUMP_FMT) + 2;
 	len += (uint32)PKTID_LOG_STR_SZ * pktlog_buf->items;
+
 	return len;
 }
 
