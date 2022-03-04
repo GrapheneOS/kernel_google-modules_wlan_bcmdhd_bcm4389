@@ -250,8 +250,6 @@ typedef struct dhd_bus {
 #if !defined(NDIS)
 	struct pci_dev  *rc_dev;	/* pci RC device handle */
 	struct pci_dev  *dev;		/* pci device handle */
-	uint32 aspm_enab_during_suspend;	/* aspm enab flag during suspend */
-	uint32 l1ss_enab_during_suspend;	/* l1ss enab flag during suspend */
 #endif /* !defined(NDIS) */
 #ifdef DHD_EFI
 	void *pcie_dev;

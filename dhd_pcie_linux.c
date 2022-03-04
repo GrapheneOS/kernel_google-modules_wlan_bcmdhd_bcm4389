@@ -1164,12 +1164,6 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	}
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 
-	/* Save aspm and l1ss state before doing to suspend, if they are disabled,
-	 * keep them disabled after resume.
-	 */
-	bus->aspm_enab_during_suspend = dhd_bus_is_aspm_enab_rc_ep(bus);
-	bus->l1ss_enab_during_suspend = dhd_bus_is_l1ss_enab_rc_ep(bus);
-
 #if defined(CUSTOMER_HW4_DEBUG)
 	clear_debug_dump_time(dhd_suspend_resume_time_str);
 	get_debug_dump_time(dhd_suspend_resume_time_str);
