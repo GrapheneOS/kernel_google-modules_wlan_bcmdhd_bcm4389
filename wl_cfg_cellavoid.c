@@ -815,6 +815,7 @@ wl_cellavoid_verify_avail_chan_list(struct bcm_cfg80211 *cfg, wl_cellavoid_info_
 	int i, err;
 	chanspec_t chanspec = 0;
 	char chanspec_str[CHANSPEC_STR_LEN];
+	uint32 restrict_chan, chaninfo;
 
 	/* Get chan_info_list or chanspec from FW */
 #define LOCAL_BUF_LEN 4096
@@ -858,12 +859,19 @@ wl_cellavoid_verify_avail_chan_list(struct bcm_cfg80211 *cfg, wl_cellavoid_info_
 			if (legacy_chan_info) {
 				chanspec = (chanspec_t)
 					dtoh32(((wl_uint32_list_t *)dngl_chan_list)->element[i]);
+				restrict_chan = 0x0;
 			} else {
 				chanspec = (chanspec_t)dtoh32
 				(((wl_chanspec_list_v1_t *)dngl_chan_list)->chspecs[i].chanspec);
+
+				chaninfo = dtoh32
+				(((wl_chanspec_list_v1_t *)dngl_chan_list)->chspecs[i].chaninfo);
+				restrict_chan = ((chaninfo & WL_CHAN_RADAR) ||
+					(chaninfo & WL_CHAN_PASSIVE) ||
+					(chaninfo & WL_CHAN_CLM_RESTRICTED));
 			}
 
-			if (chan_info->chanspec == chanspec) {
+			if ((!restrict_chan) && (chan_info->chanspec == chanspec)) {
 				found = TRUE;
 				break;
 			}
