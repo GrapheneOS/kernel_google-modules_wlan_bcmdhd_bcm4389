@@ -1747,6 +1747,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 
 #ifdef WL_CELLULAR_CHAN_AVOID
 	if (!CHSPEC_IS6G(chspec)) {
+		wl_cellavoid_sanity_check_chan_info_list(cfg->cellavoid_info);
 		wl_cellavoid_sync_lock(cfg);
 		cur_chspec = wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec);
 		if (cur_chspec == INVCHANSPEC) {

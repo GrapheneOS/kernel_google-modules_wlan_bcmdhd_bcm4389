@@ -693,6 +693,9 @@ DHDCFLAGS += -DWL_TWT_HAL_IF
 # RNR INCLUSION
 DHDCFLAGS += -DDHD_SCAN_INC_RNR
 
+# debug code to identify root cause of scan timeout due to syncid mismatch
+DHDCFLAGS += -DSYNCID_MISMATCH_DEBUG
+
 # MSCS OFFLOAD
 DHDCFLAGS += -DWL_RAV_MSCS_NEG_IN_ASSOC
 

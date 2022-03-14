@@ -17582,6 +17582,7 @@ static s32 __wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify)
 	s32 cur_band = -1;
 	struct ieee80211_supported_band *bands[IEEE80211_NUM_BANDS] = {NULL, };
 
+	WL_INFORM(("%s: Enter\n", __FUNCTION__));
 	bzero(bandlist, sizeof(bandlist));
 	err = wldev_ioctl_get(dev, WLC_GET_BANDLIST, bandlist,
 		sizeof(bandlist));
