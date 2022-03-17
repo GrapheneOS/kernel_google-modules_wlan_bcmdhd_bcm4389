@@ -7709,9 +7709,6 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		cur_channel_stat.channel.center_freq0,
 		cur_channel_stat.channel.center_freq1));
 
-	chan_stats_size = sizeof(wifi_channel_stat);
-	chan_stats = &cur_channel_stat;
-
 #ifdef LINKSTAT_EXT_SUPPORT
 	/* Option to get all channel statistics */
 	all_chan_req.num_of_entries = 0;
@@ -7775,6 +7772,9 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		}
 		all_chan_stats = chan_stats;
 #else
+	chan_stats_size = sizeof(wifi_channel_stat);
+	chan_stats = &cur_channel_stat;
+
 	cca_v3_req.num_of_entries = 1;
 	cca_v3_req.ver = WL_CCA_EXT_REQ_VER_V3;
 	cca_v3_req.per_chan_stats->chanspec =
