@@ -1141,7 +1141,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			if (cfg->afx_hdl->peer_chan == WL_INVALID)
 				complete(&cfg->act_frm_scan);
 		} else if ((likely(cfg->scan_request)) || (cfg->sched_scan_running)) {
-			WL_INFORM_MEM(("ESCAN ABORTED\n"));
+			WL_INFORM_MEM(("ESCAN ABORTED - reason:%d\n", status));
 
 			if (cfg->escan_info.ndev != ndev) {
 				/* Ignore events coming for older scan reqs */
@@ -3219,7 +3219,7 @@ static s32 wl_escan_without_scan_cache(struct bcm_cfg80211 *cfg,
 		if (wl_p2p_find_peer_channel(cfg, status, NULL, 0)) {
 			goto exit;
 		}
-		WL_INFORM_MEM(("ESCAN ABORTED\n"));
+		WL_INFORM_MEM(("ESCAN ABORTED - reason:%d\n", status));
 
 		/* Update escan complete status */
 		aborted = true;
