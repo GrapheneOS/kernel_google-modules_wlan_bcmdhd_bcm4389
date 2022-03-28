@@ -6380,6 +6380,9 @@ static int wl_cfgscan_acs_do_apcs(struct net_device *dev,
 			goto done2;
 		}
 
+		/* Make sure any scan is not running before ACS trigged. */
+		wl_cfgscan_cancel_scan(cfg);
+
 		ret = wldev_ioctl_set(dev, WLC_START_CHANNEL_SEL, (void *)pBuffer, buf_len);
 		if (ret) {
 			WL_ERR(("autochannel trigger failed. ret=%d\n", ret));
