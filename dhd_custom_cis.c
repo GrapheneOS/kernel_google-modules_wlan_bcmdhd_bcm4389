@@ -308,6 +308,7 @@ naming_info_t bcm4389_naming_table[] = {
 	{ {"usi_es17"}, {"_ES17"}, {""} },
 	{ {"usi_es19"}, {"_ES19"}, {""} },
 	{ {"usi_es21"}, {"_ES21"}, {""} },
+	{ {"usi_es31"}, {"_ES31"}, {""} },
 };
 
 /* select the NVRAM/FW tag naming table */
@@ -1676,6 +1677,7 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x17, 0x99, }, { "USI_WM_usi_es17" } },
 	{ 3, { 0x19, 0x99, }, { "USI_WM_usi_es19" } },
 	{ 3, { 0x21, 0x99, }, { "USI_WM_usi_es21" } },
+	{ 3, { 0x31, 0x99, }, { "USI_WM_usi_es31" } },
 #endif /* SUPPORT_MIXED_MODULES */
 };
 #else
