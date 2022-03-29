@@ -1767,8 +1767,10 @@ wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 #ifdef WL_STA_ASSOC_RAND
 	struct ether_addr primary_mac;
-	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 #endif /* WL_STA_ASSOC_RAND */
+#if defined(WL_STA_ASSOC_RAND) || defined (DHD_FILE_DUMP_EVENT)
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+#endif /* WL_STA_ASSOC_RAND || DHD_FILE_DUMP_EVENT */
 	int ret = BCME_OK;
 #if defined(WIFI_TURNON_USE_HALINIT)
 	struct net_device *ndev = wdev_to_wlc_ndev(wdev, cfg);
