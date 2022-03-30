@@ -5826,6 +5826,7 @@ dhd_del_monitor_if(dhd_info_t *dhd)
 		return;
 	}
 #ifdef WL_CFG80211_MONITOR
+	dhd->monitor_type = FALSE;
 	dev_priv = DHD_MON_DEV_PRIV(dhd->monitor_dev);
 	dev_priv->dhd = (dhd_info_t *)NULL;
 	bzero(&dev_priv->stats, sizeof(dev_priv->stats));
