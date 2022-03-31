@@ -448,18 +448,26 @@ typedef enum wlc_roam_cache_update_reason {
 #define WLC_E_STATUS_PSK_AUTH_GTK_REKEY_FAIL	6	/* GTK event status code */
 
 /* SDB transition status code */
-#define WLC_E_STATUS_SDB_START			1
-#define WLC_E_STATUS_SDB_COMPLETE		2
+#define WLC_E_STATUS_SDB_START			1u
+#define WLC_E_STATUS_SDB_COMPLETE		2u
 /* Slice-swap status code */
-#define WLC_E_STATUS_SLICE_SWAP_START		3
-#define WLC_E_STATUS_SLICE_SWAP_COMPLETE	4
+#define WLC_E_STATUS_SLICE_SWAP_START		3u
+#define WLC_E_STATUS_SLICE_SWAP_COMPLETE	4u
+#define WLC_E_STATUS_SDB_FAILED                 5u
 
 /* SDB transition reason code */
-#define WLC_E_REASON_HOST_DIRECT	0
-#define WLC_E_REASON_INFRA_ASSOC	1
-#define WLC_E_REASON_INFRA_ROAM		2
-#define WLC_E_REASON_INFRA_DISASSOC	3
-#define WLC_E_REASON_NO_MODE_CHANGE_NEEDED	4
+#define WLC_E_REASON_HOST_DIRECT			0u
+#define WLC_E_REASON_INFRA_ASSOC			1u
+#define WLC_E_REASON_INFRA_ROAM				2u
+#define WLC_E_REASON_INFRA_DISASSOC			3u
+#define WLC_E_REASON_NO_MODE_CHANGE_NEEDED		4u
+
+#define WLC_E_REASON_SDB_MODESW_SLICE_CHANGE		7u
+#define WLC_E_REASON_SDB_MODESW_CHAIN_CHANGE		8u
+#define WLC_E_REASON_SDB_MODESW_SLICE_AND_CHAIN_CHANGE	9u
+#define WLC_E_REASON_SDB_MODESW_UNKNOWN			10u
+#define WLC_E_REASON_SDB_MODESW_TIMEOUT			11u
+#define WLC_E_REASON_SDB_MODESW_FAILED			12u
 
 /* TX STAT ERROR REASON CODE */
 #define WLC_E_REASON_TXBACKOFF_NOT_DECREMENTED 0x1
@@ -1694,17 +1702,22 @@ typedef struct wl_mlo_link_info_event_v1 {
 /* ===== C2C event definitions ===== */
 #define C2C_EVENT_BUFFER_SIZE		1024u
 #define IS_C2C_EVT_ON(param, evt)	((param) & (1u << (evt)))
-#define C2C_ALLOWED_EVENT_MASK		(1u << WL_C2C_EVT_ESIG_START | \
-		(1u << WL_C2C_EVT_ESIG_END) | (1u << WL_C2C_EVT_ESIG_PRE_EXPIRY) | \
-		(1u << WL_C2C_EVT_CACHE_ADD) | (1u << WL_C2C_EVT_CACHE_DEL))
+#define C2C_ALLOWED_EVENT_MASK		(1u << WL_EVT_C2C_START | \
+		(1u << WL_EVT_C2C_END) | (1u << WL_EVT_C2C_PRE_EXPIRY) | \
+		(1u << WL_EVT_C2C_EXTN) | \
+		(1u << WL_EVT_C2C_CACHE_ADD) | (1u << WL_EVT_C2C_CACHE_DEL) | \
+		(1u << WL_EVT_C2C_MUTE_ON) | (1u << WL_EVT_C2C_MUTE_OFF))
 
 /* WLC_E_C2C subevent ID */
 typedef enum wl_c2c_events {
-	WL_C2C_EVT_ESIG_START,		/* new enabling signal */
-	WL_C2C_EVT_ESIG_END,		/* esig expired */
-	WL_C2C_EVT_ESIG_PRE_EXPIRY,	/* esig expiring soon; do scan or let expire */
-	WL_C2C_EVT_CACHE_ADD,		/* added new LPI AP to cache */
-	WL_C2C_EVT_CACHE_DEL		/* removed LPI AP from cache */
+	WL_EVT_C2C_START,		/* first enabling signal, c2c starts */
+	WL_EVT_C2C_END,			/* enabling signal expired, c2c ends */
+	WL_EVT_C2C_PRE_EXPIRY,		/* esig expiring soon; do scan or let expire */
+	WL_EVT_C2C_EXTN,		/* received new esig, c2c continues */
+	WL_EVT_C2C_CACHE_ADD,		/* added new LPI AP to cache */
+	WL_EVT_C2C_CACHE_DEL,		/* removed LPI AP from cache */
+	WL_EVT_C2C_MUTE_ON,		/* p2p tx is muted for 6GHz channels */
+	WL_EVT_C2C_MUTE_OFF		/* p2p tx unmuted for 6GHz channels */
 } wl_c2c_events_e;
 
 #endif /* _BCMEVENT_H_ */

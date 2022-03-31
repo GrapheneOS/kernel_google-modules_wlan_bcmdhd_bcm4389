@@ -5141,6 +5141,7 @@ dhdpcie_checkdied(dhd_bus_t *bus, char *data, uint size)
 		if (bus->dhd->up == 0) {
 			DHD_ERROR(("%s: socram will be collected in dhd_net_bus_devreset failure\n",
 				__FUNCTION__));
+			bus->dhd->dongle_trap_during_wifi_onoff = 1;
 		} else
 		{
 			/* save core dump or write to a file */
@@ -11767,14 +11768,27 @@ dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	}
 
 	bcm_bprintf(strbuf, "\nDAR Security Status Reg\n");
-	bcm_bprintf(strbuf, "  Jtag Disable:     %d\n", (dar_sec_val & DAR_SEC_JTAG_MASK));
-	bcm_bprintf(strbuf, "  Secure Boot:      %d\n", (dar_sec_val & DAR_SEC_SBOOT_MASK) >>
-		DAR_SEC_SBOOT_SHIFT);
-	bcm_bprintf(strbuf, "  Arm Dbg Disable:  %d\n", (dar_sec_val & DAR_SEC_ARM_DBG_MASK) >>
-		DAR_SEC_ARM_DBG_SHIFT);
-	bcm_bprintf(strbuf, "  Transient Unlock: %d\n", (dar_sec_val & DAR_SEC_UNLOCK_MASK) >>
-		DAR_SEC_UNLOCK_SHIFT);
+	bcm_bprintf(strbuf, "  Jtag Disable:     %d\n",
+		(dar_sec_val & DAR_SEC_JTAG_MASK) >> DAR_SEC_JTAG_SHIFT);
+	bcm_bprintf(strbuf, "  Secure Boot:      %d\n",
+		(dar_sec_val & DAR_SEC_SBOOT_MASK) >> DAR_SEC_SBOOT_SHIFT);
+	bcm_bprintf(strbuf, "  Arm Dbg Disable:  %d\n",
+		(dar_sec_val & DAR_SEC_ARM_DBG_MASK) >> DAR_SEC_ARM_DBG_SHIFT);
+	bcm_bprintf(strbuf, "  Transient Unlock: %d\n",
+		(dar_sec_val & DAR_SEC_UNLOCK_MASK) >> DAR_SEC_UNLOCK_SHIFT);
 
+	/* The following bits in security status register provided for pcie core
+	 * generation2 at revisions > 76 and for generation3 at revisions > 129
+	 */
+	if (((bus->sih->buscorerev > 76) && (bus->sih->buscorerev < 128)) ||
+		(bus->sih->buscorerev > 129)) {
+		bcm_bprintf(strbuf, "  Rom Protect:      %d\n",
+			(dar_sec_val & DAR_SEC_ROM_PROT_MASK) >> DAR_SEC_ROM_PROT_SHIFT);
+		bcm_bprintf(strbuf, "  Non Secure Write: %d\n",
+			(dar_sec_val & DAR_SEC_NSEC_WR_MASK) >> DAR_SEC_NSEC_WR_SHIFT);
+		bcm_bprintf(strbuf, "  Non Secure Read:  %d\n",
+			(dar_sec_val & DAR_SEC_NSEC_RD_MASK) >> DAR_SEC_NSEC_RD_SHIFT);
+	}
 	return BCME_OK;
 }
 

@@ -190,11 +190,13 @@ enum {
 	NAN_ATTR_SUB_SVC_ID_LIST		= 40,
 	NAN_ATTR_NDPE				= 41,
 	NAN_ATTR_DEV_CAP_EXT			= 42, /* NAN R4, Device Capability Extension */
+	NAN_ATTR_NIRA				= 43, /* NAN R4, Identity Resolution Attribute */
+	NAN_ATTR_NPBA				= 44, /* NAN R4, Pairing Bootstrapping Attribute */
 
 	/* change NAN_ATTR_MAX_ID to max ids + 1, excluding NAN_ATTR_VENDOR_SPECIFIC.
 	 * This is used in nan_parse.c
 	 */
-	NAN_ATTR_MAX_ID		= NAN_ATTR_DEV_CAP_EXT + 1,
+	NAN_ATTR_MAX_ID		= NAN_ATTR_NPBA + 1,
 
 	NAN_ATTR_VENDOR_SPECIFIC = 221
 };

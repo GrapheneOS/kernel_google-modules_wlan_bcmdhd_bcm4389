@@ -1157,12 +1157,19 @@ typedef volatile struct sbpcieregs {
 #define DAR_SEC_STATUS(rev)    OFFSETOF(sbpcieregs_t, u1.dar_64.dar_sec_stat)
 
 #define DAR_SEC_JTAG_MASK	0x1u
+#define DAR_SEC_JTAG_SHIFT	0u
 #define DAR_SEC_SBOOT_MASK	0x2u
 #define DAR_SEC_SBOOT_SHIFT	1u
 #define DAR_SEC_ARM_DBG_MASK	0x4u
 #define DAR_SEC_ARM_DBG_SHIFT	2u
 #define DAR_SEC_UNLOCK_MASK	0x8u
 #define DAR_SEC_UNLOCK_SHIFT	3u
+#define DAR_SEC_ROM_PROT_MASK	0x10u
+#define DAR_SEC_ROM_PROT_SHIFT	4u
+#define DAR_SEC_NSEC_WR_MASK	0x20u
+#define DAR_SEC_NSEC_WR_SHIFT	5u
+#define DAR_SEC_NSEC_RD_MASK	0x40u
+#define DAR_SEC_NSEC_RD_SHIFT	6u
 
 #define DAR_FIS_CTRL(rev)      OFFSETOF(sbpcieregs_t, u1.dar_64.fis_ctrl)
 

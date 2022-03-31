@@ -674,6 +674,45 @@ uint16 bcmhex2bin(const uint8* hex, uint hex_len, uint8 *buf, uint buf_len);
 }
 #endif	/* BCMUTILS_ERR_CODES */
 
+#ifndef STRIP_PARENS
+/* DROP Parenthesis from the ARGS
+ * if ARG=(a,b,c) including parens, then ARG is evaluated as 1 argument not 3
+ * MACRO(ARG)==MACRO((a,b,c)), but MACRO(STRIP_PARENS(ARG))==MACRO(a,b,c)
+ */
+#undef __STRIP_PARENS
+#undef _STRIP_PARENS
+#define __STRIP_PARENS(...)  __VA_ARGS__
+#define _STRIP_PARENS(X)     X
+#define STRIP_PARENS(X)      _STRIP_PARENS(__STRIP_PARENS X)
+#endif
+
+/* CONCAT 2 args to make single string that can be evaluated as MACRO */
+#ifndef CONCATENATE
+#undef __CONCATENATE
+#define __CONCATENATE(a, b)      a ## b
+#define CONCATENATE(a, b)   __CONCATENATE(a, b)
+#endif
+
+/* CONCAT as synonym to CONCATENATE */
+#ifndef CONCAT
+#define CONCAT(a, b)        CONCATENATE(a, b)
+#endif
+
+#ifndef COUNT_ARGS
+/* returns the count of argument passed to COUNT_ARGS
+ * order or arguments to COUNT_ARGS_ is dummy, __VA_ARGS__, 30..0
+ * a30 is returned if NARGS is 30 and a0 if NARGS is 0
+ * e.g. for case when
+ * 30 Args are prsent, we will have dummy, a30-a1(args passed), and a0 == 30
+ * 5 Args present, dummy, a30-a26(args passed) a25-a1==30-6, and a0 == 5
+ */
+#undef __COUNT_ARGS
+#define __COUNT_ARGS(dummy, a30, a29, a28, a27, a26, a25, a24, a23, a22, a21, a20, a19, a18, \
+	a17, a16, a15, a14, a13, a12, a11, a10, a9, a8, a7, a6, a5, a4, a3, a2, a1, a0, ...) a0
+#define COUNT_ARGS(...)  __COUNT_ARGS(dummy, ##__VA_ARGS__, 30, 29, 28, 27, 26, 25, 24, 23, 22, \
+	21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#endif
+
 #ifndef ABS
 #define	ABS(a)			(((a) < 0) ? -(a) : (a))
 #endif /* ABS */
@@ -1585,8 +1624,8 @@ void counter_printlog(counter_tbl_t *ctr_tbl);
 #define CALL_SITE ((void*) 0)
 #endif
 #ifdef SHOW_LOGTRACE
-#define TRACE_LOG_BUF_MAX_SIZE 1700
-#define RTT_LOG_BUF_MAX_SIZE 1700
+#define TRACE_LOG_BUF_MAX_SIZE 1900
+#define RTT_LOG_BUF_MAX_SIZE 1900
 #define BUF_NOT_AVAILABLE	0
 #define NEXT_BUF_NOT_AVAIL	1
 #define NEXT_BUF_AVAIL		2

@@ -2174,7 +2174,7 @@ osl_timer_del(osl_t *osh, osl_timer_t *t)
 		t->set = FALSE;
 		if (t->timer) {
 			del_timer(t->timer);
-			MFREE(NULL, t->timer, sizeof(struct timer_list));
+			MFREE(NULL, t->timer, sizeof(timer_list_compat_t));
 		}
 #ifdef BCMDBG
 		if (t->name) {

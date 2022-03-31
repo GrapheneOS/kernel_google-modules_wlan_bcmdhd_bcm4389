@@ -2817,7 +2817,8 @@ void pr_roam_scan_cmpl_v2(prcd_event_log_hdr_t *plog_hdr)
 			"rssi:%d score:%d cu :%d channel:%s TPUT:%dkbps\n",
 			i, MAC2STRDBG((uint8 *)&log->scan_list[i].addr),
 			log->scan_list[i].rssi, log->scan_list[i].score,
-			log->scan_list[i].cu * 100 / WL_MAX_CHANNEL_USAGE,
+			log->scan_list[i].cu_avail ?
+			(log->scan_list[i].cu * 100 / WL_MAX_CHANNEL_USAGE) : WL_CU_NOT_AVAIL,
 			wf_chspec_ntoa_ex(log->scan_list[i].chanspec,
 			chanspec_buf),
 			log->scan_list[i].estm_tput != ROAM_LOG_INVALID_TPUT?

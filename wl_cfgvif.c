@@ -1662,6 +1662,18 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 			WL_ERR(("DUAL AP not allowed on same band\n"));
 			return -ENOTSUPP;
 		}
+		chspec = wl_cfg80211_get_sta_chanspec(cfg);
+		if (chspec && wf_chspec_valid(chspec)) {
+			/* 5G cant be upgraded to 6G since dual band clients
+			 * wont be able able to scan 6G
+			 */
+			if (CHSPEC_IS6G(chspec) && (incoming_band == WLC_BAND_5G)) {
+				WL_ERR(("DUAL AP not allowed for"
+					" 5G band as sta in 6G chspec 0x%x\n",
+					chspec));
+				return -ENOTSUPP;
+			}
+		}
 	}
 
 #ifdef NOT_YET

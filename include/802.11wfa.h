@@ -128,8 +128,8 @@ typedef struct wme_param_ie wme_param_ie_t;
 #define WFA_OUI_TYPE_TPC	8		/* deprecated */
 
 /* ************* WFA definitions. ************* */
-#define WFA_OUI			"\x50\x6F\x9A"  /* WFA OUI */
-#define WFA_OUI_LEN		3		/* WFA OUI length */
+#define WFA_OUI			"\x50\x6F\x9A"			/* WFA OUI */
+#define WFA_OUI_LEN		(int32)(sizeof(WFA_OUI) - 1)	/* WFA OUI length */
 #define WFA_OUI_TYPE_P2P	9
 
 #define P2P_OUI         WFA_OUI

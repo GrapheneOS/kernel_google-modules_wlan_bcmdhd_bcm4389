@@ -151,27 +151,6 @@ bool wl_cfgp2p_is_gas_action(void *frame, u32 frame_len)
 		return true;
 	}
 
-#ifdef WL11U
-	/* Hotspot2.0 STA mode can receive only response
-	*  SoftAP mode cannot run Hotspot2.0 compliant Ap because
-	*  Hotspot2.0 support only Enterprise mode
-	*/
-	if (sd_act_frm->action == P2PSD_ACTION_ID_GAS_IRESP) {
-		return wl_cfg80211_find_gas_subtype(P2PSD_GAS_OUI_SUBTYPE, P2PSD_GAS_NQP_INFOID,
-			(u8 *)sd_act_frm->query_data + GAS_RESP_OFFSET,
-			frame_len - (P2P_GAS_ACT_FRAME_FIXED_SIZE + GAS_RESP_OFFSET));
-
-	} else if (sd_act_frm->action == P2PSD_ACTION_ID_GAS_CRESP) {
-		return wl_cfg80211_find_gas_subtype(P2PSD_GAS_OUI_SUBTYPE, P2PSD_GAS_NQP_INFOID,
-			(u8 *)sd_act_frm->query_data + GAS_CRESP_OFFSET,
-			frame_len - (P2P_GAS_ACT_FRAME_FIXED_SIZE + GAS_CRESP_OFFSET));
-	} else if (sd_act_frm->action == P2PSD_ACTION_ID_GAS_IREQ ||
-		sd_act_frm->action == P2PSD_ACTION_ID_GAS_CREQ) {
-		return true;
-	} else {
-		return false;
-	}
-#else
 	if (sd_act_frm->action == P2PSD_ACTION_ID_GAS_IREQ ||
 		sd_act_frm->action == P2PSD_ACTION_ID_GAS_IRESP ||
 		sd_act_frm->action == P2PSD_ACTION_ID_GAS_CREQ ||
@@ -179,7 +158,6 @@ bool wl_cfgp2p_is_gas_action(void *frame, u32 frame_len)
 		return true;
 	else
 		return false;
-#endif /* WL11U */
 }
 
 bool wl_cfgp2p_is_p2p_gas_action(void *frame, u32 frame_len)

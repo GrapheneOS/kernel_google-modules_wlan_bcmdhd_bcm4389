@@ -8668,8 +8668,8 @@ static int wl_cfgvendor_dbg_get_ring_data(struct wiphy *wiphy,
 				return ret;
 		}
 	}
-	WL_MEM(("Received GET_RING_DATA ring:%s\n", ring_name));
 
+	WL_MEM(("Received GET_RING_DATA ring:%s\n", ring_name));
 	ret = dhd_os_trigger_get_ring_data(dhd_pub, ring_name);
 	if (ret < 0) {
 		WL_ERR(("trigger_get_data failed ret:%d\n", ret));
@@ -11599,6 +11599,7 @@ wl_cfgvendor_get_radio_combo_matrix(struct wiphy *wiphy,
 	total_len += size = sizeof(u32) + sizeof(radio5_2x2);
 	rc->num_combinations++;
 
+#ifdef WL_6G_BAND
 	if (cfg->band_6g_supported) {
 		radio_combinations = (wifi_radio_combination *)((u8 *)radio_combinations + size);
 		radio_combinations->num_radio_combinations = 1;
@@ -11607,6 +11608,7 @@ wl_cfgvendor_get_radio_combo_matrix(struct wiphy *wiphy,
 		total_len += size = sizeof(u32) + sizeof(radio6_2x2);
 		rc->num_combinations++;
 	}
+#endif /* WL_6G_BAND */
 
 	if (FW_SUPPORTED(dhdp, rsdb)) {
 		radio_combinations = (wifi_radio_combination *)((u8 *)radio_combinations + size);
@@ -11616,6 +11618,7 @@ wl_cfgvendor_get_radio_combo_matrix(struct wiphy *wiphy,
 		total_len += size = sizeof(u32) + sizeof(radio25_2x2);
 		rc->num_combinations++;
 
+#ifdef WL_6G_BAND
 		if (cfg->band_6g_supported) {
 			radio_combinations =
 				(wifi_radio_combination *)((u8 *)radio_combinations + size);
@@ -11625,6 +11628,7 @@ wl_cfgvendor_get_radio_combo_matrix(struct wiphy *wiphy,
 			total_len += size = sizeof(u32) + sizeof(radio26_2x2);
 			rc->num_combinations++;
 		}
+#endif /* WL_6G_BAND */
 	}
 
 	mem_needed = VENDOR_REPLY_OVERHEAD + total_len;

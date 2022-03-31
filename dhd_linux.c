@@ -5783,7 +5783,7 @@ dhd_add_monitor_if(dhd_info_t *dhd)
 	if (FW_SUPPORTED((&dhd->pub), monitor)) {
 #ifdef DHD_PCIE_RUNTIMEPM
 		/* Disable RuntimePM in monitor mode */
-		DHD_DISABLE_RUNTIME_PM(&dhd->pub);
+		DHD_STOP_RPM_TIMER(&dhd->pub);
 		DHD_ERROR(("%s : disable runtime PM in monitor mode\n", __FUNCTION__));
 #endif /* DHD_PCIE_RUNTIME_PM */
 		scan_suppress = TRUE;
@@ -5835,7 +5835,7 @@ dhd_del_monitor_if(dhd_info_t *dhd)
 	if (FW_SUPPORTED((&dhd->pub), monitor)) {
 #ifdef DHD_PCIE_RUNTIMEPM
 		/* Enable RuntimePM */
-		DHD_ENABLE_RUNTIME_PM(&dhd->pub);
+		DHD_START_RPM_TIMER(&dhd->pub);
 		DHD_ERROR(("%s : enabled runtime PM\n", __FUNCTION__));
 #endif /* DHD_PCIE_RUNTIME_PM */
 		scan_suppress = FALSE;
@@ -6380,6 +6380,20 @@ dhd_ctrl_tcp_limit_output_bytes(int level)
 }
 #endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
 
+void
+dhd_force_collect_socram_during_wifi_onoff(dhd_pub_t *dhdp)
+{
+#ifdef DHD_FW_COREDUMP
+	if (dhdp->memdump_enabled && (dhdp->busstate != DHD_BUS_DOWN)) {
+#ifdef DHD_SSSR_DUMP
+		dhdp->collect_sssr = TRUE;
+#endif /* DHD_SSSR_DUMP */
+		dhdp->memdump_type = DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF;
+		dhd_bus_mem_dump(dhdp);
+	}
+#endif /* DHD_FW_COREDUMP */
+}
+
 int
 dhd_stop(struct net_device *net)
 {
@@ -6600,6 +6614,13 @@ exit:
 #if defined(WL_CFG80211)
 		if (ifidx == 0 && !dhd_download_fw_on_driverload) {
 #if defined(WLAN_ACCEL_BOOT)
+			if (dhd->pub.dongle_trap_during_wifi_onoff) {
+				DHD_ERROR(("%s: force collect socram due to trap "
+					"during wifi on/off.\n", __FUNCTION__));
+				dhd_force_collect_socram_during_wifi_onoff(&dhd->pub);
+				dhd->pub.dongle_trap_during_wifi_onoff = 0;
+			}
+
 			wl_android_wifi_accel_off(net, dhd->wl_accel_force_reg_on);
 #else
 #if defined(BT_OVER_SDIO)
@@ -6789,7 +6810,7 @@ dhd_open(struct net_device *net)
 
 	if (dhd->pub.up == 1) {
 		/* already up */
-		DHD_INFO(("Primary net_device is already up \n"));
+		DHD_ERROR(("Primary net_device is already up \n"));
 		mutex_unlock(&dhd->pub.ndev_op_sync);
 		return BCME_OK;
 	}
@@ -6845,6 +6866,7 @@ dhd_open(struct net_device *net)
 
 	DHD_OS_WAKE_LOCK(&dhd->pub);
 	dhd->pub.dongle_trap_occured = 0;
+	dhd->pub.dongle_trap_during_wifi_onoff = 0;
 	dhd->pub.hang_was_sent = 0;
 	dhd->pub.hang_was_pending = 0;
 	dhd->pub.hang_reason = 0;
@@ -9827,6 +9849,7 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	DHD_TRACE(("Enter %s:\n", __FUNCTION__));
 	dhdp->memdump_type = 0;
 	dhdp->dongle_trap_occured = 0;
+	dhdp->dongle_trap_during_wifi_onoff = 0;
 #ifdef DHD_SSSR_DUMP
 	dhdp->collect_sssr = FALSE;
 #endif /* DHD_SSSR_DUMP */
@@ -18925,12 +18948,14 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 
 	if ((dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) ||
 		(dhdp->memdump_type == DUMP_TYPE_DUE_TO_BT) ||
-		(dhdp->memdump_type == DUMP_TYPE_SMMU_FAULT))
+		(dhdp->memdump_type == DUMP_TYPE_SMMU_FAULT) ||
+		(dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF))
 	{
 		dhd_info->scheduled_memdump = FALSE;
 		dhd_mem_dump((void *)dhdp->info, (void *)dump, 0);
 		/* No need to collect debug dump for init failure */
-		if (dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
+		if (dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE ||
+			dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF) {
 			return;
 		}
 #ifdef DHD_LOG_DUMP
@@ -21126,10 +21151,6 @@ int dhd_check_valid_ie(dhd_pub_t *dhdp, uint8* buf, int len)
 			return BCME_ERROR;
 		}
 		i++;
-	}
-	if (bcm_atoi((char*)buf) > 255) {
-		DHD_ERROR(("error: element id cannot be greater than 255 \n"));
-		return BCME_ERROR;
 	}
 
 	return BCME_OK;

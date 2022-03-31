@@ -717,6 +717,22 @@ extern int dhd_log_level;
 extern int log_print_threshold;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
 
+#ifdef DHD_IOVAR_LOG_FILTER_DUMP
+#define DHD_IOVAR_LOG_CHECK(dhd_pub, ioc_cmd, ioc_msg) \
+	dhd_iovar_log_dump_check(dhd_pub, ioc_cmd, ioc_msg)
+#else
+#define DHD_IOVAR_LOG_CHECK(dhd_pub, ioc_cmd, ioc_msg) TRUE
+#endif /* DHD_IOVAR_LOG_FILTER_DUMP */
+
+#define DHD_IOVAR_LOG(dhd_pub, ioc_cmd, ioc_msg, fmt) \
+	do { \
+		if (DHD_IOVAR_LOG_CHECK(dhd_pub, ioc_cmd, ioc_msg)) { \
+			DHD_IOVAR_MEM(fmt); \
+		} else { \
+			DHD_TRACE(fmt); \
+		} \
+	} while (0)
+
 /* Defines msg bits */
 #include <dhdioctl.h>
 

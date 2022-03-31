@@ -889,6 +889,8 @@ enum {
 	/* TPE cache in the FW has expired */
 	BCME_6G_SCAN_TPE_CACHE_EXPIRED	= -12289,
 	/* Wild card directed scan requested */
-	BCME_6G_SCAN_DIRECTED_WILDCARD	= -12290
+	BCME_6G_SCAN_DIRECTED_WILDCARD	= -12290,
+	/* TPE cache in the FW is invalid */
+	BCME_6G_SCAN_TPE_CACHE_INVALID  = -12291
 };
 #endif	/* _bcmerror_h_ */

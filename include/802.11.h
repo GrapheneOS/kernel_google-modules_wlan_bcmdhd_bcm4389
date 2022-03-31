@@ -1460,23 +1460,33 @@ typedef struct ti_ie ti_ie_t;
 #define DOT11_SC_PASN_BASE_AKM_FAILED	131u /* Failure from Base AKM processing during PASN */
 #define DOT11_SC_OCI_MISMATCH		132u /* OCI does not match received */
 
-/* Draft P802.11be D1.2 Table 9-50 Status codes */
-#define DOT11_SC_DENIED_EXIST_MLD_ASSOC	130u	/* Association denied because the requesting STA
-						 * is affiliated with a non-AP MLD that is
-						 * associated with the AP MLD.
-						 */
-#define DOT11_SC_NSEP_DENIED_UNAUTH	131u	/* NSEP priority access denied because
-						 * the non-AP STA is not authorized
-						 * to use the service.
-						 */
-#define DOT11_SC_NSEP_DENIED_O_REASON	132u	/* NSEP priority access denied due to
-						 * reason outside the scope of
-						 * this standard.
-						 */
-#define DOT11_SC_DENIED_TID_MAP		133u	/* Request denied because the requested
-						 * TID-to-Link mapping is unacceptable.
-						 */
-#define DOT11_SC_PREFER_TID_MAP		134u	/* Preferred TID-to-Link mapping suggested. */
+/* Draft P802.11be D1.4 Table 9-78 Status codes */
+/* DENIED_STA_AFFILIATED_WITH_MLD_WITH_EXISTING_MLD_ASSOCIATION
+ * Association denied because the requesting STA is affiliated with a non-AP MLD
+ * that is associated with the AP MLD.
+ */
+#define DOT11_SC_DENIED_EXIST_MLD_ASSOC	130u
+/* EPCS_DENIED_UNAUTHO- RIZED
+ * EPCS priority access denied because the non-AP MLD or non-AP EHT STA is not authorized
+ * to use the service.
+ */
+#define DOT11_SC_EPCS_DENIED_UNAUTH	131u
+/* EPCS_DENIED- _OTHER_REASON
+ * EPCS priority access denied due to reason out- side the scope of this standard.
+ */
+#define DOT11_SC_EPCS_DENIED_O_REASON	132u
+/* DENIED_TID_TO_LINK_MAPPING
+ * Request denied because the requested TID-to-link map- ping is unacceptable.
+ */
+#define DOT11_SC_DENIED_TID_MAP		133u
+/* PREFERRED_TID_TO_LINK_MAP- PING_SUGGESTED
+ * Preferred TID-to-link mapping suggested.
+ */
+#define DOT11_SC_PREFER_TID_MAP		134u
+/* DENIED_EHT_NOT_SUPPORTED
+ * Association denied because the requesting STA does not support EHT features.
+ */
+#define DOT11_SC_DENIED_EHT_UNSUPPORTED	135u	/* TBD */
 
 /* Info Elts, length of INFORMATION portion of Info Elts */
 #define DOT11_MNG_DS_PARAM_LEN			1	/* d11 management DS parameter length */
@@ -1738,6 +1748,9 @@ enum dot11_tag_ids {
 #define DOT11_MNG_TID_MAP_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_TID_MAP_ID)
 #define EXT_MNG_ML_TRAFFIC_ID			110u	/* Multi-Link Traffic */
 #define DOT11_MNG_ML_TRAFFIC_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_ML_TRAFFIC_ID)
+/* Draft P802.11be D1.4 Table 9-128 Element IDs - TBD */
+#define EXT_MNG_QOS_CHAR_ID			111u	/* QoS Characteristics */
+#define DOT11_MNG_QOS_CHAR_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_QOS_CHAR_ID)
 
 /* deprecated definitions, do not use, to be deleted later */
 #define FILS_HLP_CONTAINER_EXT_ID		FILS_EXTID_MNG_HLP_CONTAINER_ID

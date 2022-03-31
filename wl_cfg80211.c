@@ -6964,6 +6964,8 @@ wl_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 				 in all exit paths
 				 */
 				wl_set_drv_status(cfg, DISCONNECTING, dev);
+				/* clear connecting state */
+				wl_clr_drv_status(cfg, CONNECTING, dev);
 
 #ifdef WL_CFGVENDOR_CUST_ADVLOG
 				/* get rssi before sending DISASSOC to avoid getting zero */
@@ -8803,7 +8805,7 @@ wl_cfg80211_set_suspend_bcn_li_dtim(struct bcm_cfg80211 *cfg,
 	}
 
 	err = wldev_iovar_setint_no_wl(dev, "lpas", lpas);
-	if (err < 0) {
+	if ((err < 0) && (err != BCME_UNSUPPORTED)) {
 		WL_ERR(("set lpas failed %d\n", err));
 	}
 
@@ -11326,6 +11328,7 @@ static void wl_notify_regd(struct wiphy *wiphy, char *country_code)
 		}
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
 	if (rtnl_is_locked()) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0))
 		wiphy_lock(wiphy);
@@ -11333,10 +11336,14 @@ static void wl_notify_regd(struct wiphy *wiphy, char *country_code)
 		wiphy_unlock(wiphy);
 #else
 		regulatory_set_wiphy_regd_sync_rtnl(wiphy, regd_copy);
-#endif /* LINUX_VERSION > 5.12.0 */
+#endif /* LINUX_VERSION >= 5.12.0 */
 	} else {
 		regulatory_set_wiphy_regd(wiphy, regd_copy);
 	}
+#else
+	/* for 3.10 OEM_HW40 build */
+	wiphy_apply_custom_regulatory(wiphy, regd_copy);
+#endif /* LINUX_VERSION >= 4.0.0 */
 
 exit:
 	MFREE(cfg->osh, regd_copy, regd_len);
@@ -13235,6 +13242,38 @@ wl_cfgvendor_advlog_disassoc_tx(struct bcm_cfg80211 *cfg, struct net_device *nde
 	as.reason = reason;
 	wl_cfgvendor_advlog_connect_event(&as, FALSE, rssi);
 }
+
+static s32
+wl_cfgvendor_advlog_get_target_rssi(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	int *rssi)
+{
+	s32 err = BCME_OK;
+	wl_bss_info_v109_t *bi;
+	char *buf = NULL;
+
+	buf = (char *)MALLOCZ(cfg->osh, WL_EXTRA_BUF_MAX);
+	if (!buf) {
+		WL_ERR(("buffer alloc failed.\n"));
+		return BCME_NOMEM;
+	}
+
+	*(u32 *)buf = htod32(WL_EXTRA_BUF_MAX);
+	err = wldev_iovar_getbuf(ndev, "target_bss_info", NULL, 0,
+			buf, WL_EXTRA_BUF_MAX, NULL);
+	if (unlikely(err)) {
+		WL_ERR(("Could not get bss info %d\n", err));
+		err = BCME_ERROR;
+		goto exit;
+	}
+
+	bi = (wl_bss_info_v109_t *)(buf + sizeof(uint32));
+	*rssi = bi->RSSI;
+
+exit:
+	MFREE(cfg->osh, buf, WL_EXTRA_BUF_MAX);
+	return err;
+}
+
 #endif /* WL_CFGVENDOR_CUST_ADVLOG */
 
 static s32
@@ -13244,6 +13283,13 @@ wl_handle_assoc_events(struct bcm_cfg80211 *cfg,
 {
 	s32 err = BCME_OK;
 	wl_assoc_status_t as;
+	s32 advlog_err = BCME_OK;
+	int target_rssi = WLC_RSSI_INVALID;
+	bool query_rssi = TRUE;
+
+	BCM_REFERENCE(advlog_err);
+	BCM_REFERENCE(target_rssi);
+	BCM_REFERENCE(query_rssi);
 
 	if (!wdev || !e) {
 		WL_ERR(("wrong input\n"));
@@ -13268,7 +13314,19 @@ wl_handle_assoc_events(struct bcm_cfg80211 *cfg,
 		cfg->eidx.in_progress, MAC2STRDBG((const u8*)(&e->addr))));
 
 #ifdef WL_CFGVENDOR_CUST_ADVLOG
-	wl_cfgvendor_advlog_connect_event(&as, TRUE, WLC_RSSI_INVALID);
+	if (as.event_type == WLC_E_AUTH || as.event_type == WLC_E_ASSOC) {
+		/* In AUTH/ASSOC REQ, FW doesn't have rssi in moving average windows
+		 * so, WLC_GET_RSSI(IOVAR) result will return zero
+		 * Try to get rssi from target_bss when state is not ASSOCIATED
+		 * If it failed, allow to get rssi from WLC_GET_RSSI
+		 */
+		advlog_err = wl_cfgvendor_advlog_get_target_rssi(cfg, wdev->netdev,
+				&target_rssi);
+		if (advlog_err == BCME_OK) {
+			query_rssi = FALSE;
+		}
+	}
+	wl_cfgvendor_advlog_connect_event(&as, query_rssi, target_rssi);
 #endif /* WL_CFGVENDOR_CUST_ADVLOG */
 
 	/* Handle FW events */
@@ -24205,6 +24263,20 @@ wl_cfg80211_debug_data_dump(struct net_device *dev, u8 *buf, u32 buf_len)
 	return len;
 }
 
+void
+wl_cfg80211_wdev_lock(struct wireless_dev *wdev)
+{
+	mutex_lock(&wdev->mtx);
+	__acquire(wdev->mtx);
+}
+
+void
+wl_cfg80211_wdev_unlock(struct wireless_dev *wdev)
+{
+	__release(wdev->mtx);
+	mutex_unlock(&wdev->mtx);
+}
+
 #ifdef WL_CLIENT_SAE
 static bool
 wl_is_pmkid_available(struct net_device *dev, const u8 *bssid)
@@ -24234,7 +24306,6 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 	wl_auth_start_evt_t *evt_data = (wl_auth_start_evt_t *)data;
 	wl_assoc_mgr_cmd_t cmd;
 	struct wireless_dev *wdev = ndev->ieee80211_ptr;
-	int retry = 3;
 	int err = BCME_OK;
 
 	WL_DBG(("Enter \n"));
@@ -24263,16 +24334,9 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 	WL_INFORM_MEM(("call cfg80211_external_auth_request, BSSID:"MACDBG"\n",
 		MAC2STRDBG(&evt_data->bssid)));
 
-	/* Wait for conn_owner_nlportid been assigned in nl80211_connect */
-	for (retry = 3; retry > 0; retry--) {
-		if (wdev->conn_owner_nlportid) {
-			break;
-		}
-
-		wl_delay(10);
-	}
-
+	wl_cfg80211_wdev_lock(wdev);
 	err = cfg80211_external_auth_request(ndev, &ext_auth_param, GFP_KERNEL);
+	wl_cfg80211_wdev_unlock(wdev);
 	if (err) {
 		WL_ERR(("Send external auth request failed, ret %d\n", err));
 		err = BCME_ERROR;
@@ -25508,7 +25572,7 @@ wl_cfgvendor_custom_advlog_conn(struct bcm_cfg80211 *cfg, struct net_device *dev
 			"freq_hint=%d ", sme->channel_hint->center_freq);
 	}
 	buf_pos += snprintf(&advlog[buf_pos], SUPP_LOG_LEN - buf_pos,
-		"pairwise=0x%x qroup=0x%x akm=0x%x auth_type=%d ",
+		"pairwise=0x%x group=0x%x akm=0x%x auth_type=%d ",
 		sec->cipher_pairwise, sec->cipher_group, sec->wpa_auth, sec->auth_type);
 	if (sec->fw_mfp == WL_MFP_REQUIRED) {
 		buf_pos += snprintf(&advlog[buf_pos], SUPP_LOG_LEN - buf_pos,
