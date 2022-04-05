@@ -1895,6 +1895,7 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	if (!cfg || !request) {
 		err = -EINVAL;
+		WL_ERR(("invalid escan parameter\n"));
 		goto exit;
 	}
 
@@ -1985,6 +1986,7 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		params = MALLOCZ(cfg->osh, params_size);
 		if (params == NULL) {
 			err = -ENOMEM;
+			WL_ERR(("malloc failure for escan params\n"));
 			goto exit;
 		}
 
@@ -2105,6 +2107,11 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			cfg->p2p->search_state = search_state;
 
 		MFREE(cfg->osh, default_chan_list, chan_mem);
+	} else {
+		WL_ERR(("escan not triggered - p2p_supported=%d, p2p_scan=%d, p2p_is_on=%d\n",
+			cfg->p2p_supported, p2p_scan(cfg), p2p_is_on(cfg)));
+		err = -EINVAL;
+		goto exit;
 	}
 exit:
 	if (unlikely(err)) {
@@ -2168,6 +2175,10 @@ wl_do_escan(struct bcm_cfg80211 *cfg, struct wiphy *wiphy, struct net_device *nd
 	}
 
 	err = wl_run_escan(cfg, ndev, request, WL_SCAN_ACTION_START);
+	if (unlikely(err)) {
+		WL_ERR(("escan failed (%d)\n", err));
+		goto exit;
+	}
 
 	if (passive_channel_skip) {
 		err = wldev_ioctl_set(ndev, WLC_SET_SCAN_PASSIVE_TIME,
