@@ -14413,6 +14413,10 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	memcpy(&cfg->last_roamed_addr, &e->addr, ETHER_ADDR_LEN);
 	wl_set_drv_status(cfg, CONNECTED, ndev);
 
+	/* clear time stamp for DS timeout */
+	CLR_TS(cfg, conn_start);
+	CLR_TS(cfg, authorize_start);
+
 #ifdef DHD_POST_EAPOL_M1_AFTER_ROAM_EVT
 	ifp = dhd_get_ifp(dhdp, e->ifidx);
 	if (ifp) {
