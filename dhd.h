@@ -3024,6 +3024,14 @@ typedef enum tcm_test_status {
 } tcm_test_status_t;
 extern tcm_test_status_t dhd_tcm_test_status;
 
+/* TCM test mode */
+typedef enum tcm_test_mode {
+	TCM_TEST_MODE_DISABLE = 0,
+	TCM_TEST_MODE_ONCE = 1,
+	TCM_TEST_MODE_ALWAYS = 2
+} tcm_test_mode_t;
+extern tcm_test_mode_t dhd_tcm_test_mode;
+
 /* Initial idletime ticks (may be -1 for immediate idle, 0 for no idle) */
 extern int dhd_idletime;
 #ifdef DHD_USE_IDLECOUNT

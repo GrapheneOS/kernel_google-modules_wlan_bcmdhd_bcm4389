@@ -936,6 +936,7 @@ uint dhd_tcm_test_enable = FALSE;
 module_param(dhd_tcm_test_enable, uint, 0644);
 
 tcm_test_status_t dhd_tcm_test_status = TCM_TEST_NOT_RUN;
+tcm_test_mode_t dhd_tcm_test_mode = TCM_TEST_MODE_ALWAYS;
 
 extern char dhd_version[];
 extern char fw_version[];
@@ -6804,7 +6805,11 @@ dhd_open(struct net_device *net)
 	}
 #endif /* PREVENT_REOPEN_DURING_HANG */
 
-	dhd_tcm_test_status = TCM_TEST_NOT_RUN;	/* clear to run TCM test once per dhd_open() */
+
+	/* clear to run TCM test once per dhd_open() */
+	if (dhd_tcm_test_mode != TCM_TEST_MODE_ONCE) {
+		dhd_tcm_test_status = TCM_TEST_NOT_RUN;
+	}
 
 	mutex_lock(&dhd->pub.ndev_op_sync);
 

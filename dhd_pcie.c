@@ -3891,17 +3891,23 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 		dhd_tcm_test_enable = FALSE;
 	}
 #endif /* DHD_FW_MEM_CORRUPTION */
-	DHD_ERROR(("%s: dhd_tcm_test_enable %u, dhd_tcm_test_status %u\n", __FUNCTION__,
-		dhd_tcm_test_enable, dhd_tcm_test_status));
-	/* run TCM test if not passed yet */
-	if (dhd_tcm_test_enable && dhd_tcm_test_status != TCM_TEST_PASSED) {
-		if (dhd_bus_tcm_test(bus) == FALSE) {
-			DHD_ERROR(("dhd_bus_tcm_test failed\n"));
-			dhd_tcm_test_status = TCM_TEST_FAILED;
-			bcmerror = BCME_ERROR;
-			goto err;
-		} else {
-			dhd_tcm_test_status = TCM_TEST_PASSED;
+	DHD_ERROR(("%s: dhd_tcm_test_enable %u, dhd_tcm_test_status %u, dhd_tcm_test_mode %u\n",
+		__FUNCTION__, dhd_tcm_test_enable, dhd_tcm_test_status, dhd_tcm_test_mode));
+
+	if (dhd_tcm_test_enable && dhd_tcm_test_mode != TCM_TEST_MODE_DISABLE) {
+		if (((dhd_tcm_test_mode == TCM_TEST_MODE_ONCE) &&
+				(dhd_tcm_test_status == TCM_TEST_NOT_RUN)) ||
+				(dhd_tcm_test_mode == TCM_TEST_MODE_ALWAYS)) {
+			if (dhd_tcm_test_status != TCM_TEST_PASSED) {
+				if (dhd_bus_tcm_test(bus) == FALSE) {
+					DHD_ERROR(("dhd_bus_tcm_test failed\n"));
+					dhd_tcm_test_status = TCM_TEST_FAILED;
+					bcmerror = BCME_ERROR;
+					goto err;
+				} else {
+					dhd_tcm_test_status = TCM_TEST_PASSED;
+				}
+			}
 		}
 	}
 
