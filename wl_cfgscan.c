@@ -210,7 +210,7 @@ static void wl_rst_ie(struct bcm_cfg80211 *cfg)
 }
 
 static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, u32 *ie_size,
-	bool update_ssid)
+	bool update_ssid, u32 *ssid_len_from_ie)
 {
 	u8 *ssidie;
 	int32 ssid_len = MIN(bi->SSID_len, DOT11_MAX_SSID_LEN);
@@ -231,6 +231,8 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 	if (!ssidie) {
 		return;
 	}
+	*ssid_len_from_ie = (u32)ssidie[1];
+
 	available_buffer_len = ((int)(*ie_size)) - (ssidie + 2 - ie_stream);
 	remaining_ie_buf_len = available_buffer_len - (int)ssidie[1];
 	unused_buf_len = WL_EXTRA_BUF_MAX - (4 + bi->length + *ie_size);
@@ -330,6 +332,7 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	s32 err = 0;
 	gfp_t aflags;
 	u8 tmp_buf[IEEE80211_MAX_SSID_LEN + 1];
+	u32 ssid_len_from_ie = 0;
 
 	if (unlikely(dtoh32(bi->length) > WL_BSS_INFO_MAX)) {
 		WL_DBG(("Beacon is larger than buffer. Discarding\n"));
@@ -378,7 +381,13 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	beacon_proberesp->beacon_int = cpu_to_le16(bi->beacon_period);
 	beacon_proberesp->capab_info = cpu_to_le16(bi->capability);
 	wl_rst_ie(cfg);
-	wl_update_hidden_ap_ie(bi, ((u8 *) bi) + bi->ie_offset, &bi->ie_length, update_ssid);
+	wl_update_hidden_ap_ie(bi, ((u8 *) bi) + bi->ie_offset, &bi->ie_length,
+		update_ssid, &ssid_len_from_ie);
+	if (ssid_len_from_ie > IEEE80211_MAX_SSID_LEN) {
+		WL_ERR(("wrong SSID len from ie: %d\n", ssid_len_from_ie));
+		err = -EINVAL;
+		goto out_err;
+	}
 	wl_mrg_ie(cfg, ((u8 *) bi) + bi->ie_offset, bi->ie_length);
 	wl_cp_ie(cfg, beacon_proberesp->variable, WL_BSS_INFO_MAX -
 		offsetof(struct wl_cfg80211_bss_info, frame_buf));
