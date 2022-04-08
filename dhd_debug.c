@@ -3196,12 +3196,14 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 
 	if (!pktlog_ring) {
 		DHD_ERROR(("%s: pktlog_ring is NULL. return.\n", __FUNCTION__));
+		ret = BCME_NOMEM;
 		goto error;
 	}
 
 	buf = pktlog_ring->ring_info_mem;
 	if (!buf) {
 		DHD_ERROR(("%s: ring_info_mem is NULL. return.\n", __FUNCTION__));
+		ret = BCME_NOMEM;
 		goto error;
 	}
 

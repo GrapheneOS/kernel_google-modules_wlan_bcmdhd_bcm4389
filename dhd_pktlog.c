@@ -168,7 +168,7 @@ dhd_os_attach_pktlog(dhd_pub_t *dhdp)
 		return -EINVAL;
 	}
 
-	pktlog = (dhd_pktlog_t *)MALLOCZ(dhdp->osh, sizeof(dhd_pktlog_t));
+	pktlog = (dhd_pktlog_t *)VMALLOCZ(dhdp->osh, sizeof(dhd_pktlog_t));
 	if (unlikely(!pktlog)) {
 		DHD_ERROR(("%s(): could not allocate memory for - "
 					"dhd_pktlog_t\n", __FUNCTION__));
@@ -222,7 +222,7 @@ dhd_os_detach_pktlog(dhd_pub_t *dhdp)
 
 	DHD_INFO(("%s(): dhd_os_attach_pktlog detach\n", __FUNCTION__));
 
-	MFREE(dhdp->osh, dhdp->pktlog, sizeof(dhd_pktlog_t));
+	VMFREE(dhdp->osh, dhdp->pktlog, sizeof(dhd_pktlog_t));
 
 	return BCME_OK;
 }
@@ -305,7 +305,7 @@ dhd_pktlog_ring_init(dhd_pub_t *dhdp, int size)
 		return NULL;
 	}
 
-	ring = (dhd_pktlog_ring_t *)MALLOCZ(dhdp->osh, sizeof(dhd_pktlog_ring_t));
+	ring = (dhd_pktlog_ring_t *)VMALLOCZ(dhdp->osh, sizeof(dhd_pktlog_ring_t));
 	if (unlikely(!ring)) {
 		DHD_ERROR(("%s(): could not allocate memory for - "
 					"dhd_pktlog_ring_t\n", __FUNCTION__));
@@ -315,7 +315,7 @@ dhd_pktlog_ring_init(dhd_pub_t *dhdp, int size)
 	dll_init(&ring->ring_info_head);
 	dll_init(&ring->ring_info_free);
 
-	ring->ring_info_mem = (dhd_pktlog_ring_info_t *)MALLOCZ(dhdp->osh,
+	ring->ring_info_mem = (dhd_pktlog_ring_info_t *)VMALLOCZ(dhdp->osh,
 		sizeof(dhd_pktlog_ring_info_t) * size);
 	if (unlikely(!ring->ring_info_mem)) {
 		DHD_ERROR(("%s(): could not allocate memory for - "
@@ -343,7 +343,7 @@ dhd_pktlog_ring_init(dhd_pub_t *dhdp, int size)
 	return ring;
 fail:
 	if (ring) {
-		MFREE(dhdp->osh, ring, sizeof(dhd_pktlog_ring_t));
+		VMFREE(dhdp->osh, ring, sizeof(dhd_pktlog_ring_t));
 	}
 
 	return NULL;
@@ -402,7 +402,7 @@ dhd_pktlog_ring_deinit(dhd_pub_t *dhdp, dhd_pktlog_ring_t *ring)
 	}
 
 	if (ring->ring_info_mem) {
-		MFREE(ring->dhdp->osh, ring->ring_info_mem,
+		VMFREE(ring->dhdp->osh, ring->ring_info_mem,
 			sizeof(dhd_pktlog_ring_info_t) * ring->pktlog_len);
 	}
 
@@ -410,7 +410,7 @@ dhd_pktlog_ring_deinit(dhd_pub_t *dhdp, dhd_pktlog_ring_t *ring)
 		osl_spin_lock_deinit(ring->dhdp->osh, ring->pktlog_ring_lock);
 	}
 
-	MFREE(dhdp->osh, ring, sizeof(dhd_pktlog_ring_t));
+	VMFREE(dhdp->osh, ring, sizeof(dhd_pktlog_ring_t));
 
 	DHD_INFO(("%s(): pktlog ring deinit\n", __FUNCTION__));
 
