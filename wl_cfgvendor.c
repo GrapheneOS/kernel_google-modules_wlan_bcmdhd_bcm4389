@@ -1925,6 +1925,12 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 		return;
 	}
 	rtt_cache_list = (struct list_head *)rtt_data;
+
+	if (!wiphy) {
+		WL_ERR(("wiphy is NULL\n"));
+		return;
+	}
+
 	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 	if (list_empty(rtt_cache_list)) {
 #if (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || \
