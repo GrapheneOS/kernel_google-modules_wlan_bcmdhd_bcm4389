@@ -513,14 +513,15 @@ wl_cellavoid_get_chan_info_from_avail_chan_list(wl_cellavoid_info_t *cellavoid_i
 {
 	wl_cellavoid_chan_info_t *chan_info, *next;
 	wl_cellavoid_chan_info_t *ret = NULL;
+	char chanspec_str[CHANSPEC_STR_LEN];
 
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	list_for_each_entry_safe(chan_info, next, &cellavoid_info->avail_chan_info_list, list) {
 		GCC_DIAGNOSTIC_POP();
 		if (chan_info->chanspec == chanspec) {
 			list_del(&chan_info->list);
-			WL_INFORM_MEM(("%s: removed in list, chanspec: %x\n",
-				__FUNCTION__, chanspec));
+			wf_chspec_ntoa(chanspec, chanspec_str);
+			WL_INFORM(("removed %s (0x%x) in avail list\n", chanspec_str, chanspec));
 			ret = chan_info;
 			break;
 		}
@@ -546,12 +547,41 @@ wl_cellavoid_get_chan_info(wl_cellavoid_info_t *cellavoid_info, chanspec_t chans
 	return CELLAVOID_STATE_CH_SAFE;
 }
 
+static cellavoid_ch_state_t
+wl_cellavoid_get_chan_info_overlap(wl_cellavoid_info_t *cellavoid_info, chanspec_t chanspec)
+{
+	wl_cellavoid_chan_info_t *chan_info, *next;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	list_for_each_entry_safe(chan_info, next, &cellavoid_info->cell_chan_info_list, list) {
+		GCC_DIAGNOSTIC_POP();
+		if (wf_chspec_overlap(chan_info->chanspec, chanspec)) {
+			return CELLAVOID_STATE_CH_UNSAFE;
+		}
+	}
+
+	return CELLAVOID_STATE_CH_SAFE;
+}
+
 bool
 wl_cellavoid_is_safe(void *cai, chanspec_t chanspec)
 {
 	wl_cellavoid_info_t *cellavoid_info = cai;
 
 	if (wl_cellavoid_get_chan_info(cellavoid_info, chanspec) == CELLAVOID_STATE_CH_UNSAFE) {
+		return FALSE;
+	} else {
+		return TRUE;
+	}
+}
+
+bool
+wl_cellavoid_is_safe_overlap(void *cai, chanspec_t chanspec)
+{
+	wl_cellavoid_info_t *cellavoid_info = cai;
+
+	if (wl_cellavoid_get_chan_info_overlap(cellavoid_info, chanspec)
+			== CELLAVOID_STATE_CH_UNSAFE) {
 		return FALSE;
 	} else {
 		return TRUE;
@@ -1229,9 +1259,13 @@ wl_cellavoid_find_chinfo_fromchspec(wl_cellavoid_info_t *cellavoid_info,
 		 * so the first one is the widest one
 		 */
 		if (wf_chspec_ctlchan(chan_info->chanspec) == wf_chspec_ctlchan(chanspec)) {
-			ret = chan_info;
-			WL_INFORM_MEM(("chanspec %x found in avail list\n", chan_info->chanspec));
-			goto exit;
+			if (wl_cellavoid_is_safe_overlap(cellavoid_info, chan_info->chanspec)) {
+				ret = chan_info;
+				WL_INFORM_MEM(("ctrl channel %d (0x%x) found in avail list\n",
+					wf_chspec_ctlchan(chan_info->chanspec),
+					chan_info->chanspec));
+				goto exit;
+			}
 		}
 	}
 
@@ -1252,8 +1286,8 @@ wl_cellavoid_find_chinfo_fromchspec(wl_cellavoid_info_t *cellavoid_info,
 		 */
 		if (wf_chspec_ctlchan(chan_info->chanspec) == wf_chspec_ctlchan(chanspec)) {
 			ret = chan_info;
-			WL_INFORM_MEM(("chanspec %x found in cellular list\n",
-				chan_info->chanspec));
+			WL_INFORM_MEM(("ctrl channel %d (0x%x) found in cellular list\n",
+				wf_chspec_ctlchan(chan_info->chanspec), chan_info->chanspec));
 			goto exit;
 		}
 	}
@@ -1632,62 +1666,6 @@ wl_cellavoid_save_input_params(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *p
 	return BCME_OK;
 }
 
-static chanspec_bw_t
-wl_cellavoid_next_bw(chanspec_bw_t bw)
-{
-	/* cell avoidance supports upto bw80 */
-	switch (bw) {
-	case WL_CHANSPEC_BW_20:
-		bw = WL_CHANSPEC_BW_40;
-		break;
-	case WL_CHANSPEC_BW_40:
-		bw = WL_CHANSPEC_BW_80;
-		break;
-	default:
-		bw = INVCHANSPEC;
-		break;
-	}
-	return bw;
-}
-
-static void
-wl_cellavoid_update_cell_channels(wl_cellavoid_info_t *cellavoid_info,
-	chanspec_band_t band, int ch, chanspec_bw_t start_bw, int8 pwr_cap)
-{
-	chanspec_bw_t bw;
-	chanspec_t chspec_upper;
-	wl_cellavoid_chan_info_t *chan_info;
-
-	if (band == WL_CHANSPEC_BAND_5G && ch != 165) {
-		for (bw = start_bw; bw != INVCHANSPEC; bw = wl_cellavoid_next_bw(bw)) {
-			chspec_upper = wf_create_chspec_from_primary(ch, bw, band);
-			if (!wf_chspec_valid(chspec_upper)) {
-				continue;
-			}
-			if (wl_cellavoid_get_chan_info(cellavoid_info, chspec_upper)
-					== CELLAVOID_STATE_CH_SAFE) {
-				/* get chan_info for moving to cell list from avail list */
-				chan_info =
-					wl_cellavoid_get_chan_info_from_avail_chan_list(
-					cellavoid_info, chspec_upper);
-				if (chan_info == NULL) {
-					/* create new one if the chan_info doesn't exist */
-					chan_info =
-						wl_cellavoid_alloc_chan_info(
-						cellavoid_info, chspec_upper);
-				}
-				if (chan_info != NULL) {
-					chan_info->pwr_cap = pwr_cap;
-					wl_cellavoid_move_chan_info_to_cell_chan_list(
-						cellavoid_info, chan_info);
-					WL_INFORM_MEM(("added chanspec 0x%x to cell list\n",
-						chspec_upper));
-				}
-			}
-		}
-	}
-}
-
 static int
 wl_cellavoid_set_cell_channels(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *param)
 {
@@ -1754,10 +1732,6 @@ wl_cellavoid_set_cell_channels(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *p
 
 			/* Move this chan info to the unsafe channel list(cellular channel list */
 			wl_cellavoid_move_chan_info_to_cell_chan_list(cellavoid_info, chan_info);
-
-			/* update all possible channels if there is missing channel from host */
-			wl_cellavoid_update_cell_channels(cellavoid_info,
-				param_band, param_ch, param_bw, param->chan_param[i].pwr_cap);
 		}
 	}
 

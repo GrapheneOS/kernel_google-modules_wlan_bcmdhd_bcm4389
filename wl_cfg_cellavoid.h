@@ -50,6 +50,7 @@ extern chanspec_t wl_cellavoid_find_widechspec_fromchspec(void *cai, chanspec_t 
 extern void wl_cellavoid_set_csa_done(void *cai);
 extern bool wl_cellavoid_mandatory_isset(void *cai, enum nl80211_iftype type);
 extern bool wl_cellavoid_is_safe(void *cai, chanspec_t chanspec);
+extern bool wl_cellavoid_is_safe_overlap(void *cai, chanspec_t chanspec);
 extern wifi_interface_mode wl_cellavoid_mandatory_to_usable_channel_filter(void *cai);
 #ifdef WL_CELLULAR_CHAN_AVOID_DUMP
 extern void wl_cellavoid_sanity_check_chan_info_list(void *cai);

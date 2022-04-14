@@ -6145,39 +6145,21 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			return 0;
 		}
 
-		/* bw160 */
-		if ((bw == 160) && (pParameter->he_enabled)) {
-			chspec = wf_create_chspec_from_primary(channel,
-				WL_CHANSPEC_BW_160, chspec_band);
-#ifdef WL_CELLULAR_CHAN_AVOID
-			if (!wl_cellavoid_is_safe(cfg->cellavoid_info, chspec)) {
-				chspec = INVCHANSPEC;
-			}
-#endif /* WL_CELLULAR_CHAN_AVOID */
-			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("added %d/160 (0x%x)\n", channel, chspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
-			} else {
-				WL_INFORM_MEM(("failed %d/160 (0x%x)\n", channel, chspec));
-				bw = 80;	/* downgrade if not found proper chanspec */
-			}
-		}
-
+		/* Handle 5G band (from bw20 to bw80) */
 		/* bw80 */
 		if ((bw == 80) &&
 				(pParameter->vht_enabled || pParameter->he_enabled)) {
 			chspec = wf_create_chspec_from_primary(channel,
 				WL_CHANSPEC_BW_80, chspec_band);
 #ifdef WL_CELLULAR_CHAN_AVOID
-			if (!wl_cellavoid_is_safe(cfg->cellavoid_info, chspec)) {
+			if (!wl_cellavoid_is_safe_overlap(cfg->cellavoid_info, chspec)) {
 				chspec = INVCHANSPEC;
 			}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("added %d/80 (0x%x)\n", channel, chspec));
+				WL_INFORM_MEM(("set %d/80 (0x%x)\n", channel, chspec));
 				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			} else {
-				WL_INFORM_MEM(("failed %d/80 (0x%x)\n", channel, chspec));
 				bw = 40;	/* downgrade if not found proper chanspec */
 			}
 		}
@@ -6189,15 +6171,14 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			chspec = wf_create_chspec_from_primary(channel,
 				WL_CHANSPEC_BW_40, chspec_band);
 #ifdef WL_CELLULAR_CHAN_AVOID
-			if (!wl_cellavoid_is_safe(cfg->cellavoid_info, chspec)) {
+			if (!wl_cellavoid_is_safe_overlap(cfg->cellavoid_info, chspec)) {
 				chspec = INVCHANSPEC;
 			}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("added %d/40 (0x%x)\n", channel, chspec));
+				WL_INFORM_MEM(("set %d/40 (0x%x)\n", channel, chspec));
 				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			} else {
-				WL_INFORM_MEM(("failed %d/40 (0x%x)\n", channel, chspec));
 				bw = 20;	/* downgrade if not found proper chanspec */
 			}
 		}
@@ -6209,15 +6190,13 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			chspec = wf_create_chspec_from_primary(channel,
 				WL_CHANSPEC_BW_20, chspec_band);
 #ifdef WL_CELLULAR_CHAN_AVOID
-			if (!wl_cellavoid_is_safe(cfg->cellavoid_info, chspec)) {
+			if (!wl_cellavoid_is_safe_overlap(cfg->cellavoid_info, chspec)) {
 				chspec = INVCHANSPEC;
 			}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("added %d/20 (0x%x)\n", channel, chspec));
+				WL_INFORM_MEM(("set %d/20 (0x%x)\n", channel, chspec));
 				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
-			} else {
-				WL_INFORM_MEM(("failed %d/20 (0x%x)\n", channel, chspec));
 			}
 		}
 
