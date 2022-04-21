@@ -13329,6 +13329,9 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 		int timeleft = 0;
 
 		DHD_ERROR(("[DUMP] %s: HAL started. send urgent event\n", __FUNCTION__));
+#ifdef DHD_MAP_PKTID_LOGGING
+		dhd_pktid_logging_dump(dhdp);
+#endif /* DHD_MAP_PKTID_LOGGING */
 		dhd_dbg_send_urgent_evt(dhdp, NULL, 0);
 
 		DHD_ERROR(("%s: wait to clear dhd_bus_busy_state: 0x%x\n",
