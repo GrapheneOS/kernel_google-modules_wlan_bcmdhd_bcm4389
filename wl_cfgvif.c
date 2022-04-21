@@ -6232,7 +6232,7 @@ wl_cfg80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
 	if (chspec == cfg->ap_oper_channel) {
 		WL_ERR(("Channel %d is same as current operating channel,"
 			" so skip\n", CHSPEC_CHANNEL(chspec)));
-		return BCME_OK;
+		return -EINVAL;
 	}
 
 	if (
