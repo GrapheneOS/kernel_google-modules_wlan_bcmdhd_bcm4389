@@ -8145,6 +8145,7 @@ wl_cfgvendor_dbg_file_dump(struct wiphy *wiphy,
 	struct buf_data data_from_hal;
 	int pos = 0;
 
+	RETURN_EIO_IF_NOT_UP(cfg);
 	/* Alloc the SKB for vendor_event */
 	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, CFG80211_VENDOR_CMD_REPLY_SKB_SZ);
 	if (!skb) {
@@ -8152,7 +8153,6 @@ wl_cfgvendor_dbg_file_dump(struct wiphy *wiphy,
 		ret = BCME_NOMEM;
 		goto exit;
 	}
-	WL_ERR(("%s\n", __FUNCTION__));
 
 	memset_s(&data_from_hal, sizeof(data_from_hal),  0, sizeof(data_from_hal));
 	buf = &data_from_hal;
@@ -8161,6 +8161,8 @@ wl_cfgvendor_dbg_file_dump(struct wiphy *wiphy,
 		ret = wl_cfgvendor_get_buf_data(iter, buf);
 		if (ret)
 			goto exit;
+
+		WL_DBG_MEM(("%s: type %d\n", __FUNCTION__, type));
 		switch (type) {
 			case DUMP_BUF_ATTR_MEMDUMP:
 				ret = dhd_os_get_socram_dump(bcmcfg_to_prmry_ndev(cfg), &mem_buf,

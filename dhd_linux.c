@@ -6407,6 +6407,8 @@ dhd_stop(struct net_device *net)
 #endif /* WL_STATIC_IF */
 #endif /* WL_CFG80211 */
 	dhd_info_t *dhd = DHD_DEV_INFO(net);
+	int timeleft = 0;
+	uint32 bitmask = (uint32)-1;
 
 	DHD_ERROR(("%s: ENTER\n", __FUNCTION__));
 	DHD_OS_WAKE_LOCK(&dhd->pub);
@@ -6420,7 +6422,21 @@ dhd_stop(struct net_device *net)
 	/* Synchronize between the stop and rx path */
 	dhd->pub.stop_in_progress = true;
 	OSL_SMP_WMB();
-	dhd_os_busbusy_wait_negation(&dhd->pub, &dhd->pub.dhd_bus_busy_state);
+
+#ifdef DHD_COREDUMP
+	if (DHD_BUS_BUSY_CHECK_IN_HALDUMP(&dhd->pub)) {
+		DHD_ERROR(("%s: Cancel the triggerd HAL dump.\n", __FUNCTION__));
+		DHD_BUS_BUSY_CLEAR_IN_HALDUMP(&dhd->pub);
+	}
+	bitmask = ~(DHD_BUS_BUSY_IN_HALDUMP);
+#endif /* DHD_COREDUMP */
+	timeleft = dhd_os_busbusy_wait_bitmask(&dhd->pub,
+		&dhd->pub.dhd_bus_busy_state,
+		bitmask, 0);
+	if (dhd->pub.dhd_bus_busy_state & bitmask) {
+		DHD_ERROR(("%s: Timed out(%d) dhd_bus_busy_state=0x%x\n",
+			__FUNCTION__, timeleft, dhd->pub.dhd_bus_busy_state));
+	}
 
 	mutex_lock(&dhd->pub.ndev_op_sync);
 	if (dhd->pub.up == 0) {
@@ -13309,6 +13325,11 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 
 	if (!cfg) {
 		DHD_ERROR(("%s: Cannot find cfg\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	if (dhdp->stop_in_progress) {
+		DHD_ERROR(("%s: dhd_stop in progress\n", __FUNCTION__));
 		return BCME_ERROR;
 	}
 
