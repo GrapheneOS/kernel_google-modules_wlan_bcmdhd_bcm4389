@@ -954,6 +954,7 @@ int dhd_plat_pcie_resume(void *plat_info)
 {
 	int ret = 0;
 	ret = exynos_pcie_pm_resume(pcie_ch_num);
+	is_irq_on_big_core = true;
 	return ret;
 }
 
