@@ -1951,6 +1951,28 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 		dhdpcie_runtime_bus_wake(dhd_pub, TRUE, dhd_wl_ioctl);
 #endif /* DHD_PCIE_RUNTIMEPM */
 
+#ifdef OEM_ANDROID
+		/*
+		 * If system suspend started before ioctl, after getting d3 ack,
+		 * it will check for wakelock and as ioctl will hold wakelock,
+		 * it will put bus back to d0 and bail out.
+		 * So the current ioctl should wait till it is bailed out.
+		 */
+		if (DHD_BUS_BUSY_CHECK_SUSPEND_IN_PROGRESS(dhd_pub)) {
+			int timeleft = 0;
+			DHD_PRINT(("%s: wait till system suspend bails out\n", __FUNCTION__));
+			/* wait till SUSPEND_IN_PROGRESS bit is cleared */
+			timeleft = dhd_os_busbusy_wait_bitmask(dhd_pub,
+					&dhd_pub->dhd_bus_busy_state,
+					DHD_BUS_BUSY_SUSPEND_IN_PROGRESS, 0);
+			if ((dhd_pub->dhd_bus_busy_state & DHD_BUS_BUSY_SUSPEND_IN_PROGRESS) != 0) {
+				DHD_ERROR(("%s: system suspend wait timed out(%d)"
+					" dhd_bus_busy_state=0x%x\n", __FUNCTION__, timeleft,
+					dhd_pub->dhd_bus_busy_state));
+			}
+		}
+#endif /* OEM_ANDROID */
+
 		DHD_LINUX_GENERAL_LOCK(dhd_pub, flags);
 		if (DHD_BUS_CHECK_SUSPEND_OR_ANY_SUSPEND_IN_PROGRESS(dhd_pub) ||
 			dhd_pub->dhd_induce_error == DHD_INDUCE_IOCTL_SUSPEND_ERROR) {
