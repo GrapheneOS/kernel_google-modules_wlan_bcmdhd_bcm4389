@@ -2133,15 +2133,16 @@ typedef struct _pmkid_list_v2 {
 	pmkid_v2_t	pmkid[BCM_FLEX_ARRAY];
 } pmkid_list_v2_t;
 
-#define PMKDB_SET_IOVAR 1u
-#define PMKDB_GET_IOVAR 2u
-#define PMKDB_CLEAR_IOVAR 4u
+#define PMKDB_SET_IOVAR		0x0001u
+#define PMKDB_GET_IOVAR		0x0002u
+#define PMKDB_CLEAR_IOVAR	0x0004u
+#define PMKDB_ALL_CFGS		0x0008u /* option for PMKDB_GET_IOVAR */
 
 typedef struct _pmkid_list_v3 {
 	uint16		version;
 	uint16		length;
 	uint16		count;
-	uint16          flag;
+	uint16		flag;
 	pmkid_v3_t	pmkid[];
 } pmkid_list_v3_t;
 
@@ -4377,11 +4378,6 @@ typedef struct wl_bsstrans_roamthrottle {
 	uint16 scans_allowed;
 } wl_bsstrans_roamthrottle_t;
 
-typedef struct wl_peak_curr_pwrlimit {
-	int8 peak_curr_txpwrcap[MAXBANDS];	/**< cap in qdbm */
-	uint8 ver;
-} wl_peak_curr_pwrlimit_t;
-
 #define	NFIFO			6	/**< # tx/rx fifopairs */
 
 #ifndef NFIFO_EXT
@@ -5934,7 +5930,9 @@ typedef struct {
 	uint32	bferpt_drop_cnt2;		/**< bfe rpt drop cnt 2 */
 	uint32	bferot_txcrs_high;		/**< bfe rpt tx crs high */
 	uint32	txbfm_errcnt;			/**< TX bfm error cnt */
-	uint32	PAD[23];			/**< PAD GAP */
+	uint32	tx_murts_cnt;			/**< Tx MURTS Count */
+	uint32	tx_noavail_cnt;			/**< Tx Not avail Count */
+	uint32	tx_null_link_pref;		/**< Null Link Pref */
 	uint32	btcx_rfact_ctr_l;		/**< btcx rxfact counter low */
 	uint32	btcx_rfact_ctr_h;		/**< btcx rxfact counter high */
 	uint32	btcx_txconf_ctr_l;		/**< btcx txconf counter low */
@@ -5946,6 +5944,8 @@ typedef struct {
 	uint32	macsusp_cnt;			/**< # of macsuspends */
 	uint32	prs_timeout;			/**< # of pre wds */
 	uint32	emlsr_tx_nosrt;			/**< # of no TX starts for eMLSR */
+	uint32	rts_to_self_cnt;		/**< # of RTS to self */
+	uint32	saqm_sendfrm_agg_cnt;		/**< # SAQM Send frame aggregation */
 } wl_cnt_ge88mcst_tx_v2_t;
 
 /* Rev Ge88 RX specific macstats - version 2 */
@@ -6000,7 +6000,7 @@ typedef struct {
 					 * the PRQ fifo
 					 */
 	uint32	rx_fp_shm_corrupt_cnt;	/**< SHM corrupt count */
-	uint32	PAD[11];		/**< PAD Gap */
+	uint32	PAD[18];		/**< PAD Gap */
 	uint32	rxbadplcp;		/**< parity check of the PLCP header failed */
 	uint32	rxcrsglitch;		/**< PHY able to correlate the plcp but not the hdr */
 	uint32	rxfrmtoolong;		/**< rx'd frame longer than legal limit (2346 bytes) */
@@ -6017,8 +6017,8 @@ typedef struct {
 	uint32	rxf0ovfl;		/**< number of rx fifo 0 overflows */
 	uint32	rxf1ovfl;		/**< number of rx fifo 1 overflows */
 	uint32	lenfovfl;		/**< number of length overflows */
+	uint32	weppeof;		/**< number of weppeof  */
 	uint32	badplcp;		/**< parity check of the PLCP header failed */
-	uint32	rxerr_stat;		/**< rx error statistics */
 	uint32	stsfifofull;		/**< status fifo full */
 	uint32	stsfifoerr;		/**< status fifo error */
 	uint32	ctx_fifo_full;		/**< fw not draining frames fast enough */
@@ -6055,6 +6055,9 @@ typedef struct {
 	uint32	rxfrmtoolong2_cnt;	/**< # of Rx'd too long pkts */
 	uint32	hwaci_status;		/**< HW ACI status */
 	uint32	pmqovfl;		/**< number of PMQ overflows */
+	uint32	sctrg_rxcrs_drop_cnt;	/**< Number of scan trigger dropped due to rxcrs */
+	uint32	inv_punc_usig_cnt;	/**< Number of invalid punctured USIG */
+	uint32	sctrg_drop_cnt;		/**< Number of scan trigger drop */
 } wl_cnt_ge88mcst_rx_v2_t;
 
 /* Rev GE88 per ML link supportive wl counters (macstats) - version 1 */
@@ -11229,6 +11232,23 @@ typedef struct phy_ecounter_log_core_v2 {
 	int8	phylog_noise_pwr_array[8];	/* noise buffer array */
 } phy_ecounter_log_core_v2_t;
 
+typedef struct phy_ecounter_log_core_v3 {
+	uint16	bad_txbaseidx_cnt;	/* cntr for tx_baseidx=127 in healthcheck */
+	uint16	curr_tssival;		/* TxPwrCtrlInit_path[01].TSSIVal */
+	uint16	pwridx_init;		/* TxPwrCtrlInit_path[01].pwrIndex_init_path[01] */
+	uint16	auxphystats;		/* Indicates the PHY stats for aux slice */
+	uint16	phystatsgaininfo;	/* Indicates the gain stats */
+	uint16	flexgaininfo_A;		/* Indicates the gain settings */
+	uint8	crsmin_pwr_idx;		/* Index to the crsminpower threshold array */
+	uint8	baseindxval;		/* TPC Base index */
+	int8	crsmin_pwr;		/* Noise level for applied desense */
+	int8	noise_level_inst;	/* Instantaneous noise cal pwr */
+	int8	tgt_pwr;		/* Programmed Target power */
+	int8	estpwradj;		/* Current Est Power Adjust value */
+	uint8	PAD1[2];
+} phy_ecounter_log_core_v3_t;
+
+/* Do not remove phy_ecounter_v1_t parameters */
 typedef struct phy_ecounter_v2 {
 	chanspec_t	chanspec;
 	uint8		slice;
@@ -11271,50 +11291,8 @@ typedef struct phy_ecounter_v2 {
 	phy_ecounter_log_core_v2_t phy_ecounter_core[2];
 } phy_ecounter_v2_t;
 
+/* Do not remove phy_ecounter_v1_t parameters */
 typedef struct phy_ecounter_v3 {
-	chanspec_t	chanspec;
-	uint16		phy_wdg;	/* Count of times watchdog happened. */
-	uint16		noise_req;	/* Count of phy noise sample requests. */
-	uint16		noise_crsbit;	/* Count of CRS high during noisecal request. */
-	uint16		noise_apply;	/* Count of applying noisecal result to crsmin. */
-	uint16		cal_counter;	/* Count of performing single and multi phase cal. */
-	uint8		crsmin_pwr_idx;	/* Index to the crsminpower threshold array */
-	uint8		slice;		/* Slice # 0 - MAIN, 1 - AUX, 2 - SCAN */
-	uint8		rxchain;		/* Status of active RX chains */
-	uint8		txchain;		/* Status of active TX chains */
-	uint8		gbd_bphy_sleep_counter;	/* Sleep count for bphy GBD */
-	uint8		gbd_ofdm_sleep_counter;	/* Sleep count for ofdm GBD */
-	uint8		curr_home_channel;	/* Current home channel */
-	uint8		gbd_ofdm_desense;	/* Glitch based desense level for ofdm reception */
-	uint8		gbd_bphy_desense;	/* Glitch based desense level for bphy reception */
-	int8		chiptemp;		/* Chip temperature */
-	int8		femtemp;		/* Fem temperature */
-	int8		btcx_mode;		/* BT coex desense mode */
-	int8		ltecx_mode;		/* LTE coex desense mode */
-	int8		weakest_rssi;		/* Weakest link RSSI */
-	int8		ed_threshold;		/* Threshold applied for ED */
-	uint8		chan_switch_cnt;	/* Count to track channel change */
-	bool		phycal_disable;		/* Status of phy calibration */
-	bool		PAD1[1];		/* Padding */
-	uint16		featureflag;		/* Currently active feature flags */
-	uint16		deaf_count;		/* Count for RX stay in carrier search state */
-	uint16		noise_mmt_overdue;	/* Noise measurement overdue status */
-	uint16		crsmin_pwr_apply_cnt;	/* Count for desense updates */
-	uint16		ed_crs_status;		/* Status of ED and CRS during noise cal */
-	uint16		preempt_status1;	/* status of preemption */
-	uint16		preempt_status2;	/* status of preemption */
-	uint16		preempt_status3;	/* status of preemption */
-	uint16		preempt_status4;	/* status of preemption */
-	uint32		cca_stats_total_glitch;	/* ccastats: count of total glitches */
-	uint32		cca_stats_bphy_glitch;	/* ccastats: count of bphy glitches */
-	uint32		cca_stats_total_badplcp; /* ccastats: count of total badplcp */
-	uint32		cca_stats_bphy_badplcp;	/* ccastats: count of bphy badplcp */
-	uint32		cca_stats_mbsstime;	/* ccastats: monitor duration in msec */
-	uint32		cca_stats_ed_duration;	/* ccastats: ed_duration */
-	phy_ecounter_log_core_v1_t phy_ecounter_core[2];
-} phy_ecounter_v3_t;
-
-typedef struct phy_ecounter_v4 {
 	chanspec_t	chanspec;
 	uint16		phy_wdg;	/* Count of times watchdog happened. */
 	uint16		noise_req;	/* Count of phy noise sample requests. */
@@ -11355,6 +11333,113 @@ typedef struct phy_ecounter_v4 {
 	uint32		cca_stats_mbsstime;	/* ccastats: monitor duration in msec */
 	uint32		cca_stats_ed_duration;	/* ccastats: ed_duration */
 	phy_ecounter_log_core_v1_t phy_ecounter_core[2];
+} phy_ecounter_v3_t;
+
+#define ACPHY_OBSS_SUBBAND_CNT		8u	/* Max sub band counts i.e., 160Mhz = 8 * 20MHZ */
+
+/* Do not remove phy_ecounter_v1_t parameters */
+typedef struct phy_ecounter_v4 {
+	chanspec_t	chanspec;
+	uint16		phy_wdg;	/* Count of times watchdog happened. */
+	uint16		noise_req;	/* Count of phy noise sample requests. */
+	uint16		noise_crsbit;	/* Count of CRS high during noisecal request. */
+	uint16		noise_apply;	/* Count of applying noisecal result to crsmin. */
+	uint16		cal_counter;	/* Count of performing single and multi phase cal. */
+	uint8		slice;		/* Slice # 0 - MAIN, 1 - AUX, 2 - SCAN */
+	uint8		rxchain;		/* Status of active RX chains */
+	uint8		txchain;		/* Status of active TX chains */
+	uint8		gbd_bphy_sleep_counter;	/* Sleep count for bphy GBD */
+	uint8		gbd_ofdm_sleep_counter;	/* Sleep count for ofdm GBD */
+	uint8		curr_home_channel;	/* Current home channel */
+	uint8		gbd_ofdm_desense;	/* Glitch based desense level for ofdm reception */
+	uint8		gbd_bphy_desense;	/* Glitch based desense level for bphy reception */
+	int8		chiptemp;		/* Chip temperature */
+	int8		femtemp;		/* Fem temperature */
+	int8		weakest_rssi;		/* Weakest link RSSI */
+	int8		ltecx_mode;		/* LTE coex desense mode */
+	int32		btcx_mode;		/* BT coex desense mode */
+	int8		ed_threshold;		/* Threshold applied for ED */
+	uint8		chan_switch_cnt;	/* Count to track channel change */
+	uint8		phycal_disable;		/* Status of phy calibration */
+	uint8		scca_txstall_precondition;	/* SmartCCA TX stall precondition */
+	uint16		featureflag;		/* Currently active feature flags */
+	uint16		deaf_count;		/* Count for RX stay in carrier search state */
+	uint16		noise_mmt_overdue;	/* Noise measurement overdue status */
+	uint16		crsmin_pwr_apply_cnt;	/* Count for desense updates */
+	uint16		ed_crs_status;		/* Status of ED and CRS during noise cal */
+	uint16		preempt_status1;	/* status of preemption */
+	uint16		preempt_status2;	/* status of preemption */
+	uint16		preempt_status3;	/* status of preemption */
+	uint16		preempt_status4;	/* status of preemption */
+	uint16		counter_noise_iqest_to;	/* count of IQ_Est time out */
+	uint32		cca_stats_total_glitch;	/* ccastats: count of total glitches */
+	uint32		cca_stats_bphy_glitch;	/* ccastats: count of bphy glitches */
+	uint32		cca_stats_total_badplcp; /* ccastats: count of total badplcp */
+	uint32		cca_stats_bphy_badplcp;	/* ccastats: count of bphy badplcp */
+	uint32		cca_stats_mbsstime;	/* ccastats: monitor duration in msec */
+	uint32		cca_stats_ed_duration;	/* ccastats: ed_duration */
+	uint32		measurehold;		/* PHY hold activities */
+	uint32		rxsense_disable_req_ch;	/* channel disable requests */
+	uint32		ocl_disable_reqs;	/* OCL disable bitmap */
+	uint32		interference_mode;	/* interference mitigation mode */
+	uint32		power_mode;		/* power mode */
+	uint32		obss_last_read_time;	/* last stats read time */
+	int32		asym_intf_ed_thresh;	/* smartcca ed threshold %d */
+	uint16		obss_mit_bw;		/* selected mitigation BW */
+	uint16		obss_stats_cnt;		/* stats count */
+	uint16		dynbw_init_reducebw_cnt;	/* BW reduction cnt of initiator */
+	uint16		dynbw_resp_reducebw_cnt;	/* BW reduction cnt of responder */
+	uint16		dynbw_rxdata_reducebw_cnt;	/* rx data cnt with reduced BW */
+	uint16		obss_mmt_skip_cnt;	/* mmt skipped due to powersave */
+	uint16		obss_mmt_no_result_cnt;	/* mmt with no result */
+	uint16		obss_mmt_intr_err_cnt;	/* obss reg mismatch between ucode and fw */
+	uint16		gci_lst_inv_ctr;	/* last gci invalid */
+	uint16		gci_lst_rst_ctr;	/* last gci restore 0x%04x */
+	uint16		gci_lst_sem_ctr;	/* last gci seq number 0x%04x */
+	uint16		gci_lst_rb_st;		/* last gci status */
+	uint16		gci_dbg01;		/* gci dbg1 readback */
+	uint16		gci_dbg02;		/* gci dbg2 readback */
+	uint16		gci_dbg03;		/* gci dbg3 readback */
+	uint16		gci_dbg04;		/* gci dbg4 readback */
+	uint16		gci_dbg05;		/* gci dbg5 readback */
+	uint16		gci_lst_st_msk;		/* gci last status mask */
+	uint16		gci_inv_tx;		/* invalid gci during tx */
+	uint16		gci_inv_rx;		/* invalid gci during rx */
+	uint16		gci_rst_tx;		/* gci restore during tx */
+	uint16		gci_rst_rx;		/* gci restore during rx */
+	uint16		gci_sem_ctr;		/* gci seq number ctr */
+	uint16		gci_invstate;		/* gci status 0x%04x */
+	uint16		gci_ctl2;		/* gci ctrl 2 */
+	uint16		gci_chan;		/* channel during gci read 0x%04x */
+	uint16		gci_cm;			/* channel during gci read */
+	uint16		gci_sc;			/* gci read during scan */
+	uint16		gci_rst_sc;		/* gci restore during scan */
+	uint16		gci_prdc_rx;		/* periodic gci hc */
+	uint16		gci_wk_rx;		/* gci hc during wake */
+	uint16		gci_rmac_rx;		/* gci hc during mac read */
+	uint16		gci_tx_rx;		/* gci hc during tx/rx */
+	uint16		asym_intf_stats;	/* smartCCA status 0x%04x */
+	uint16		asym_intf_ncal_crs_stat;	/* noise cal and crs status %d */
+	int16		ed_crsEn;		/* ed enable 0x%04x */
+	int16		nvcfg0;			/* noise update to hw 0x%04x */
+	uint8		cal_suppressed_cntr_ed;	/* cnt including ss, mp cals, MSB is cur state */
+	uint8		sc_dccal_incc_cnt;	/* scan dccal counter */
+	uint8		sc_noisecal_incc_cnt;	/* scan noise cal counter */
+	uint8		obss_need_updt;		/* BW update needed flag */
+	uint8		obss_mit_status;	/* obss mitigation status */
+	uint8		obss_final_rec_bw;	/* final recommended bw to wlc-Sent to SW */
+	uint8		btc_mode;		/* btc mode */
+	uint8		asym_intf_ant_noise_idx;		/* current noise storage index */
+	uint8		asym_intf_pending_host_req_type;	/* usb plugin request */
+	uint8		asym_intf_ncal_crs_stat_idx;		/* crs status storage index %d */
+	int8		rxsense_noise_idx;			/* rxsense det thresh desense idx */
+	int8		rxsense_offset;				/* rxsense min power desense idx */
+	int8		asym_intf_tx_smartcca_cm;		/* smartCCA tx coremask %d */
+	int8		asym_intf_rx_noise_mit_cm;		/* smartCCA rx coremask %d */
+	int8		asym_intf_avg_noise[2];			/* average noise %d */
+	int8		asym_intf_latest_noise[2];		/* current noise %d */
+	uint8		obss_curr_det[ACPHY_OBSS_SUBBAND_CNT];	/* obss curr detection */
+	phy_ecounter_log_core_v3_t phy_ecounter_core[2];
 } phy_ecounter_v4_t;
 
 typedef struct phy_ecounter_phycal_core_v1 {
@@ -15154,6 +15239,11 @@ typedef int8 wl_nan_sd_optional_field_types_t;
 /* If set, host wont rec event "terminated" */
 #define WL_NAN_SVC_CTRL_SUPPRESS_EVT_TERMINATED   0x8000000
 
+/* NAN rekey types */
+#define NAN_REKEY_PTK	0x01
+#define NAN_REKEY_GTK	0x02
+#define NAN_REKEY_MAX	(NAN_REKEY_PTK | NAN_REKEY_GTK)
+
 /*
  * WL_NAN_CMD_SD_PARAMS
  */
@@ -15205,6 +15295,12 @@ typedef uint16 wl_nan_stop_bcn_tx_t;
  * WL_NAN_CMD_CFG_FSM_TIMEOUT
  */
 typedef uint32 wl_nan_fsm_timeout_t;
+
+// nan rekey cfg iovar
+typedef struct wl_nan_rekey {
+	struct ether_addr ndi_addr;
+	uint8 rekey_ctrl;
+} wl_nan_rekey_t;
 
 /*
  * WL_NAN_CMD_CFG_SID_BEACON
@@ -25617,6 +25713,18 @@ typedef struct wl_filter_ie_iov_v1 {
 	uint8	tlvs[];		/* variable data (zero in for list ,clearall) */
 } wl_filter_ie_iov_v1_t;
 
+#define  WL_ASSOC_RESP_PARAMS_V1 (1u)
+typedef struct wl_assoc_resp_params_v1 {
+	uint16	version;			/* Structure version */
+	uint16	len;				/* Total length of the structure */
+	uint16	fixed_length;			/* Total length of fixed fields */
+	uint8	mac_addr[ETHER_ADDR_LEN];	/* peer MAC address */
+	uint8	resp_ie_len;			/* Assoc_resp IE's length */
+	uint8	pad;				/* Pad for alignment */
+	uint16	status;				/* AREQ status code from Host */
+	uint8	ies[];				/* Variable data (resp_ies) */
+} wl_assoc_resp_params_v1_t;
+
 /* Event aggregation config */
 #define EVENT_AGGR_CFG_VERSION		1
 #define EVENT_AGGR_DISABLED		0x0
@@ -25868,6 +25976,7 @@ enum wl_rxsig_iov_v1 {
 	WL_RXSIG_CMD_DUMP =      0xb,
 	WL_RXSIG_CMD_DUMPWIN =   0xc,
 	WL_RXSIG_CMD_RSSI_EXP =  0xd,
+	WL_RXSIG_CMD_RSSI_COMP = 0xe,
 	WL_RXSIG_CMD_TOTAL
 };
 
@@ -26055,6 +26164,7 @@ typedef struct wl_avs_info_v1 {
 #define WL_CLM_NO_80_80MHZ         0x8000u /**< Flag for NO_80_80MHZ */
 #define WL_CLM_NO_320MHZ           0x200000u /**< Flag for NO_320MHZ */
 #define WL_CLM_NO_160_160MHZ       0x400000u /**< Flag for NO_160_160MHZ */
+#define WL_CLM_CBP_FCC             0x800000u /**< Flag for CBP_FCC */
 #define WL_CLM_DFS_FCC             WL_CLM_DFS_TPC /**< Flag for DFS FCC */
 #define WL_CLM_DFS_EU              (WL_CLM_DFS_TPC | WL_CLM_RADAR_TYPE_EU) /**< Flag for DFS EU */
 
@@ -27328,7 +27438,6 @@ typedef struct wlc_rc1cx_status_v2 {
 
 #define WL_OBSS_ANT_MAX			2u	/* Max Antennas */
 #define ACPHY_OBSS_STATS_BIN_CNT	8u	/* min 1 for default */
-#define ACPHY_OBSS_SUBBAND_CNT		8u	/* Max sub band counts i.e., 160Mhz = 8 * 20MHZ */
 
 enum wlc_obss_hw_cmd_id {
 	WLC_OBSS_HW_CMD_VER		= 1u,
@@ -27507,7 +27616,10 @@ enum wl_sdtc_iov_id {
 	SDTC_ID_MAINMAC_AXL	= 0x8, /* AXL between booker interconnect and MAIN MAC */
 	SDTC_ID_SCANMAC_HWL	= 0x9, /* HWL inside SCAN MAC */
 	SDTC_ID_SCANMAC_AXL	= 0xa, /* AXL between booker interconnect and SCAN MAC */
-	SDTC_ID_LAST		= 0xb
+	SDTC_ID_SAQM_AXL	= 0xb, /* AXL between booker interconnect and  SAQM */
+	SDTC_ID_SAQM_HWL	= 0xc, /* HWL inside SAQM */
+	SDTC_ID_WL_AXL		= 0xd, /* AXL for WL_SDTC */
+	SDTC_ID_LAST		= 0xe
 };
 
 /* SDTC Iovars */
@@ -28992,6 +29104,8 @@ enum wlc_capext_feature_bitpos {
 	WLC_CAPEXT_FEATURE_BITPOS_CSI			= 117,
 	WLC_CAPEXT_FEATURE_BITPOS_SAE_H2E		= 118,
 	WLC_CAPEXT_FEATURE_BITPOS_SAE_PK		= 119,
+	WLC_CAPEXT_FEATURE_BITPOS_OBSS_HW		= 120,
+	WLC_CAPEXT_FEATURE_BITPOS_DYN_BW		= 121,
 	WLC_CAPEXT_FEATURE_BITPOS_MAX
 };
 

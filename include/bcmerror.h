@@ -134,8 +134,9 @@ typedef int bcmerror_t;
 #define BCME_RESP_PENDING		-75	/* Command response is pending */
 #define BCME_ACTIVE			-76	/* Command/context is already active */
 #define BCME_IN_PROGRESS		-77	/* Command/context is in progress */
+#define BCME_NOP			-78	/* No action taken i.e. NOP */
 
-#define BCME_LAST			BCME_IN_PROGRESS
+#define BCME_LAST			BCME_NOP
 
 #define BCME_NOTENABLED BCME_DISABLED
 
@@ -229,6 +230,7 @@ typedef int bcmerror_t;
 	"Command response pending",	\
 	"Command/context already active", \
 	"Command/context is in progress", \
+	"No action taken i.e. NOP",	\
 }
 
 /* FTM error codes [-1024, -2047] */

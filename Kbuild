@@ -291,6 +291,7 @@ ifneq ($(CONFIG_FIB_RULES),)
 ifneq ($(CONFIG_SOC_GOOGLE),)
 DHDCFLAGS += -DDHD_FILE_DUMP_EVENT
 DHDCFLAGS += -DDHD_HAL_RING_DUMP
+DHDCFLAGS += -DDHD_HAL_RING_DUMP_MEMDUMP
 # Pixel platform only, to support ring data flushing properly
 DHDCFLAGS += -DDHD_DUMP_START_COMMAND
 # Enable pktid logging

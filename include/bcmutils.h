@@ -1128,6 +1128,7 @@ typedef  uint32 (*bcmutl_rdreg_rtn)(void *arg0, uint arg1, uint32 offset);
 extern uint bcmdumpfields(bcmutl_rdreg_rtn func_ptr, void *arg0, uint arg1, struct fielddesc *str,
                           char *buf, uint32 bufsize);
 extern uint bcm_bitcount(const uint8 *bitmap, uint bytelength);
+uint bcm_count_bits(const uint8 *buf, uint buf_len, uint from_bit, uint to_bit, bool val_1);
 
 /* power conversion */
 extern uint16 bcm_qdbm_to_mw(uint8 qdbm);

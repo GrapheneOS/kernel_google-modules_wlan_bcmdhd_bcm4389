@@ -1240,7 +1240,7 @@ typedef uint32 ratespec_t;
 #define WLC_BW_40MHZ_BIT		(1<<1)
 #define WLC_BW_80MHZ_BIT		(1<<2)
 #define WLC_BW_160MHZ_BIT		(1<<3)
-#define WLC_BW_320MHZ_BIT		(1u<<5u)
+#define WLC_BW_320MHZ_BIT		(1u<<4u)
 
 /* Bandwidth capabilities */
 #define WLC_BW_CAP_20MHZ		(WLC_BW_20MHZ_BIT)
@@ -1252,16 +1252,12 @@ typedef uint32 ratespec_t;
 #define WLC_BW_CAP_320MHZ		(WLC_BW_320MHZ_BIT| \
 					 WLC_BW_160MHZ_BIT|WLC_BW_80MHZ_BIT| \
 					 WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
-#define WLC_BW_CAP_240MHZ		(WLC_BW_240MHZ_BIT| \
-					WLC_BW_160MHZ_BIT|WLC_BW_80MHZ_BIT| \
-					WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
 #define WLC_BW_CAP_UNRESTRICTED		0xFF
 
 #define WL_BW_CAP_20MHZ(bw_cap)		(((bw_cap) & WLC_BW_20MHZ_BIT) ? TRUE : FALSE)
 #define WL_BW_CAP_40MHZ(bw_cap)		(((bw_cap) & WLC_BW_40MHZ_BIT) ? TRUE : FALSE)
 #define WL_BW_CAP_80MHZ(bw_cap)		(((bw_cap) & WLC_BW_80MHZ_BIT) ? TRUE : FALSE)
 #define WL_BW_CAP_160MHZ(bw_cap)	(((bw_cap) & WLC_BW_160MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_240MHZ(bw_cap)	(((bw_cap) & WLC_BW_240MHZ_BIT) ? TRUE : FALSE)
 #define WL_BW_CAP_320MHZ(bw_cap)	(((bw_cap) & WLC_BW_320MHZ_BIT) ? TRUE : FALSE)
 
 /* values to force tx/rx chain */
@@ -1506,6 +1502,12 @@ typedef uint32 ratespec_t;
 #define WL_JOIN_PREF_RSN_PRIO		6u	/* by RSNE/RSNXE related security priority */
 #define WL_JOIN_PREF_RSSI_PER_BAND	7u	/* RSSI boost value per band */
 #define WL_JOIN_PREF_SKIP_PSC		8u	/* Used to set flag to filter PSC channel scan */
+#define WL_JOIN_PREF_6G_DISABLE		9u	/* Used to disable join/roam 6G BSS target */
+
+/* Join preference 6G disable Flag definition */
+#define WL_JP_6G_DISABLE_ROAM	(1u << 0u)	/* Used to set flag to disable join/roam to
+						   6G BSS target
+						*/
 
 /* Join preference skip PSC Flag definition */
 #define WL_JP_SKIP_PSC_ROAM	(1u << 0u)	/* Used to set flag to filter PSC channel
@@ -1553,6 +1555,7 @@ typedef uint32 ratespec_t;
 #define WL_CHAN_BAND_6G_VLP        (1u << 10u)   /* 6GHz VLP channel */
 #define WL_CHAN_BAND_6G_PSC        (1u << 11u)   /* 6GHz PSC channel */
 #define WL_CHAN_BAND_6G_LPI        (1u << 12u)   /* 6GHz LPI channel */
+#define WL_CHAN_BAND_6G_SP         (1u << 13u)   /* 6GHz SP channel */
 
 #define WL_CHAN_OOS_SHIFT          24u           /* shift for OOS field */
 #define WL_CHAN_OOS_MASK           0xFF000000u   /* field specifying minutes remaining for this

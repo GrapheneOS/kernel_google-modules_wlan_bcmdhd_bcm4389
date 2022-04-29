@@ -1821,13 +1821,17 @@ set_channel:
 #ifdef DISABLE_WL_FRAMEBURST_SOFTAP
 			else {
 				/* Disable Frameburst only for stand-alone 2GHz SoftAP */
-				if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP &&
-					DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_HOSTAP_MODE) &&
-					(CHSPEC_IS2G(chspec)) &&
-					!wl_is_sta_connected(cfg)) {
-					WL_DBG(("Disabling frameburst on "
-						"stand-alone 2GHz SoftAP\n"));
-					wl_cfg80211_set_frameburst(cfg, FALSE);
+				if ((wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) &&
+					DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_HOSTAP_MODE)) {
+					if (CHSPEC_IS2G(chspec) && !wl_is_sta_connected(cfg)) {
+						WL_DBG(("Disabling frameburst on "
+							"stand-alone 2GHz SoftAP\n"));
+						wl_cfg80211_set_frameburst(cfg, FALSE);
+					} else if (!CHSPEC_IS2G(chspec) &&
+						cfg->frameburst_disabled) {
+						WL_INFORM(("Enable back frameburst\n"));
+						wl_cfg80211_set_frameburst(cfg, TRUE);
+					}
 				}
 			}
 #endif /* DISABLE_WL_FRAMEBURST_SOFTAP */

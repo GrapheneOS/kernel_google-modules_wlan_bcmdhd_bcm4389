@@ -261,26 +261,16 @@ extern pktpool_t *pktpool_shared;
 #ifdef BCMFRAGPOOL
 #define SHARED_FRAG_POOL	(pktpool_shared_lfrag)
 extern pktpool_t *pktpool_shared_lfrag;
-#endif
-
-#ifdef BCMALFRAGPOOL
 #define SHARED_ALFRAG_POOL	(pktpool_shared_alfrag)
 extern pktpool_t *pktpool_shared_alfrag;
-
 #define SHARED_ALFRAG_DATA_POOL	(pktpool_shared_alfrag_data)
 extern pktpool_t *pktpool_shared_alfrag_data;
-#endif
+#endif /* BCMFRAGPOOL */
 
 #ifdef BCMRESVFRAGPOOL
-#ifdef APP
 #define RESV_FRAG_POOL		(NULL)
 #define RESV_ALFRAG_POOL	(pktpool_resv_alfrag)
 #define RESV_ALFRAG_DATA_POOL	(pktpool_resv_alfrag_data)
-#else
-#define RESV_FRAG_POOL		(pktpool_resv_lfrag)
-#define RESV_ALFRAG_POOL	(NULL)
-#define RESV_ALFRAG_DATA_POOL	(NULL)
-#endif /* APP */
 #define RESV_POOL_INFO		(resv_pool_info)
 #else
 #define RESV_FRAG_POOL		((struct pktpool *)NULL)
@@ -300,12 +290,8 @@ int hnd_pktpool_fill(pktpool_t *pktpool, bool minimal);
 void hnd_pktpool_refill(bool minimal);
 
 #ifdef BCMRESVFRAGPOOL
-#ifdef APP
 extern pktpool_t *pktpool_resv_alfrag;
 extern pktpool_t *pktpool_resv_alfrag_data;
-#else
-extern pktpool_t *pktpool_resv_lfrag;
-#endif /* APP */
 extern struct resv_info *resv_pool_info;
 #endif /* BCMRESVFRAGPOOL */
 

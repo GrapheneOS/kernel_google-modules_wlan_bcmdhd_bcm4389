@@ -1242,7 +1242,7 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 			if (!ecntr_pushed && dhd_log_dump_ecntr_enabled()) {
 				if (dhd_dbg_send_evtlog_to_ring(plog_hdr, &msg_hdr,
 					dhdp->ecntr_dbg_ring,
-					PAYLOAD_ECNTR_MAX_LEN, logbuf) != BCME_OK) {
+					EVENT_LOG_MAX_BLOCK_SIZE, logbuf) != BCME_OK) {
 					goto exit;
 				}
 				ecntr_pushed = TRUE;

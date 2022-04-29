@@ -937,6 +937,23 @@ typedef struct wl_dpp_pub_act_frame wl_dpp_pa_frame_t;
 
 typedef wifi_p2psd_gas_pub_act_frame_t wl_dpp_gas_af_t;
 
+#define DEFAULT_ASSOC_LISTEN 0xau
+#define DEFAULT_ROAM_SCAN_PRD 10u
+#define DEFAULT_FULL_ROAM_PRD 0x78u
+#define DEFAULT_ASSOC_RETRY 0x3u
+#define DEFAULT_WNM_CONF 0x505u
+#define DEFAULT_RECREATE_BI_TIMEOUT 20u
+
+struct preinit_iov;
+typedef int (*wl_iov_fn) (struct bcm_cfg80211 *cfg, struct net_device *dev, struct preinit_iov *v);
+
+typedef struct preinit_iov {
+	wl_iov_fn fn;
+	uint16 cmd_id;	/* preinit iovar/ioctl cmd id */
+	int32 value;	/* preinit iovar input value */
+	s8  *cmd_name;	/* preinit ioctl cmd name */
+} preinit_iov_t;
+
 /* driver status */
 enum wl_status {
 	WL_STATUS_READY = 0,
@@ -2221,6 +2238,7 @@ struct bcm_cfg80211 {
 	uint8 num_radios;		/* number of active radios */
 	uint32 ap_bw_limit;
 	uint32 ap_bw_chspec;
+	bool frameburst_disabled;
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for

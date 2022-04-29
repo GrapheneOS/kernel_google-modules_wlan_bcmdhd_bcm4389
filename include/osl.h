@@ -511,5 +511,4 @@ do { \
 #else
 #define ASSERT_NULL(expr) // do nothing
 #endif /* ENABLE_ASSERT_NULL */
-
 #endif	/* _osl_h_ */

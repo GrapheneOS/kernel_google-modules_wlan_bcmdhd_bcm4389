@@ -564,6 +564,7 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_PRUNE_INVALID_CHAN	33u	/* Prune AP due to invalid channel */
 #define WLC_E_PRUNE_MESH_CFG_MISMATCH	34u	/* Prune due to Mesh AP config mismatch */
 #define WLC_E_PRUNE_6G_RNR_INVALID_CHAN 35u	/* Prune RNR due to invalid channel reporting */
+#define WLC_E_PRUNE_BY_OWE		36u	/* Pruned by OWE */
 
 /* WPA failure reason codes carried in the WLC_E_PSK_SUP event */
 #define WLC_E_SUP_OTHER			0	/* Other reason */

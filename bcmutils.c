@@ -5035,6 +5035,61 @@ BCMPOSTTRAPFN(bcm_bitcount)(const uint8 *bitmap, uint length)
 	return bitcount;
 }
 
+/* Count 0s or 1s in an octets list from 'from_bit' to 'to_bit' inclusively */
+uint
+bcm_count_bits(const uint8 *buf, uint buf_len, uint from_bit, uint to_bit, bool val_1)
+{
+	uint from;
+	uint to;
+	uint len;
+	uint8 tmp;
+	uint bits;
+
+	/* sanity check */
+	if (to_bit < from_bit) {
+		return 0u;
+	}
+
+	/* byte offset */
+	from = from_bit >> 3u;
+	to = to_bit >> 3u;
+	if (from >= buf_len || to >= buf_len) {
+		return 0u;
+	}
+
+	/* count 1s always */
+	len = to - from + 1u;
+	if (len == 1u) {
+		/* the only octet */
+		ASSERT(from == to);
+		tmp = buf[from];
+		tmp &= (0xffu << (from_bit & 7u));
+		tmp &= ~(0xffu << ((to_bit & 7u) + 1u));
+		bits = bcm_bitcount(&tmp, 1u);
+	} else {
+		ASSERT(len >= 2u);
+		/* the first octet */
+		tmp = buf[from];
+		tmp &= (0xffu << (from_bit & 7u));
+		bits = bcm_bitcount(&tmp, 1u);
+		/* the middle octet(s) */
+		if (len > 2u) {
+			bits += bcm_bitcount(&buf[from + 1u], len - 2u);
+		}
+		/* the last octet */
+		tmp = buf[to];
+		tmp &= ~(0xffu << ((to_bit & 7u) + 1u));
+		bits += bcm_bitcount(&tmp, 1u);
+	}
+
+	/* calc 0s if requested */
+	if (!val_1) {
+		bits = to_bit - from_bit + 1u - bits;
+	}
+
+	return bits;
+}
+
 /*
  * ProcessVars:Takes a buffer of "<var>=<value>\n" lines read from a file and ending in a NUL.
  * also accepts nvram files which are already in the format of <var1>=<value>\0\<var2>=<value2>\0

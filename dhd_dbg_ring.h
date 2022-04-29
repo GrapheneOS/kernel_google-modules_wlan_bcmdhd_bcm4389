@@ -113,7 +113,6 @@ typedef struct dhd_dbg_ring {
 #define DBG_RING_ENTRY_SIZE (sizeof(dhd_dbg_ring_entry_t))
 #define ENTRY_LENGTH(hdr) ((hdr)->len + DBG_RING_ENTRY_SIZE)
 #define PAYLOAD_MAX_LEN 65535
-#define PAYLOAD_ECNTR_MAX_LEN 1648u
 #define PAYLOAD_RTT_MAX_LEN 1648u
 #define PAYLOAD_BCM_TRACE_MAX_LEN 1648u
 #define PENDING_LEN_MAX 0xFFFFFFFF

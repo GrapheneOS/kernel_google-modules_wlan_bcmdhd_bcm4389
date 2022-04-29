@@ -300,6 +300,7 @@ enum andr_vendor_subcmd {
 	WIFI_SUBCMD_USABLE_CHAN = ANDROID_NL80211_SUBCMD_USABLE_CHAN_RANGE_START,
 	WIFI_SUBCMD_TRIGGER_SSR = ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_START,
 	WIFI_SUBCMD_GET_RADIO_COMBO_MATRIX,
+	WIFI_SUBCMD_SET_TX_POWER_LIMITS,
 	/* Add more sub commands here */
 	VENDOR_SUBCMD_MAX
 };
@@ -1067,6 +1068,13 @@ typedef enum {
 	/* WLAN MAC Operates in 60 GHz Band */
 	WLAN_MAC_60_0_BAND = 1 << 3
 } wlan_mac_band;
+
+typedef enum {
+	TX_POWER_CAP_ATTRIBUTE_INVALID    = 0,
+	TX_POWER_CAP_ENABLE_ATTRIBUTE	  = 1,
+	/* Add more attributes here */
+	TX_POWER_ATTRIBUTE_MAX
+} wifi_tx_power_limits;
 
 typedef enum {
 	ANDR_WIFI_ATTRIBUTE_RADIO_COMBO_INVALID     = 0,

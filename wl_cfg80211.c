@@ -464,8 +464,8 @@ static const uchar disco_bcnloss_vsie[] = {
 #endif /* WL_ANALYTICS */
 
 #ifdef WL_RAV_MSCS_NEG_IN_ASSOC
-static s32 wl_cfg80211_enable_rav_mscs_params(struct bcm_cfg80211 *cfg, bool mscs_offload);
-static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg);
+static s32 wl_cfg80211_enable_rav_mscs_params(struct bcm_cfg80211 *cfg,
+		struct net_device *ndev, bool mscs_offload);
 #endif /* WL_RAV_MSCS_NEG_IN_ASSOC */
 static void wl_cfg80211_recovery_handler(struct work_struct *work);
 static int wl_vndr_ies_get_vendor_oui(struct bcm_cfg80211 *cfg,
@@ -2265,6 +2265,64 @@ fail:
 	return NULL;
 }
 
+static int
+wl_iovar_fn(struct bcm_cfg80211 *cfg, struct net_device *ndev, struct preinit_iov *data)
+{
+	preinit_iov_t *vi = (preinit_iov_t *)data;
+
+	return wldev_iovar_setint(ndev, vi->cmd_name, vi->value);
+}
+
+static int
+wl_ioctl_fn(struct bcm_cfg80211 *cfg, struct net_device *ndev, struct preinit_iov *data)
+{
+	preinit_iov_t *vi = (preinit_iov_t *)data;
+
+	return wldev_ioctl_set(ndev, vi->cmd_id, &(vi->value), sizeof(int));
+}
+
+static preinit_iov_t init_sta_role_iovars[] = {
+	{wl_iovar_fn, WLC_SET_VAR, DEFAULT_ASSOC_LISTEN, "assoc_listen"},
+	{wl_iovar_fn, WLC_SET_VAR, 0, "roam_off"},
+	{wl_ioctl_fn, WLC_SET_ROAM_SCAN_PERIOD, DEFAULT_ROAM_SCAN_PRD, ""},
+	{wl_iovar_fn, WLC_SET_VAR, DEFAULT_FULL_ROAM_PRD, "fullroamperiod"},
+	{wl_iovar_fn, WLC_SET_VAR, AP_ENV_INDETERMINATE, "roam_env_detection"},
+	{wl_iovar_fn, WLC_SET_PM, 0x2, ""},
+	{wl_iovar_fn, WLC_SET_VAR, DEFAULT_BCN_TIMEOUT, "bcn_timeout"},
+	{wl_iovar_fn, WLC_SET_VAR, DEFAULT_ASSOC_RETRY, "assoc_retry_max"},
+	{wl_ioctl_fn, WLC_SET_FAKEFRAG, 0x1, ""},
+	{wl_iovar_fn, WLC_SET_VAR, 0x1, "buf_key_b4_m4"},
+	{wl_iovar_fn, WLC_SET_VAR, 0x1, "interworking"},
+	{wl_iovar_fn, WLC_SET_VAR, DEFAULT_WNM_CONF, "wnm"},
+	{wl_iovar_fn, WLC_SET_VAR, DEFAULT_RECREATE_BI_TIMEOUT, "recreate_bi_timeout"},
+	{wl_iovar_fn, WLC_SET_VAR, 0, "wnm_btmdelta"},
+	{NULL, 0, 0, NULL}
+};
+
+static void
+wl_apply_vif_sta_config(struct bcm_cfg80211 *cfg,
+		struct net_device *ndev)
+{
+	s32 ret;
+	preinit_iov_t *vi;
+
+#ifdef WL_RAV_MSCS_NEG_IN_ASSOC
+	ret = wl_cfg80211_enable_rav_mscs_params(cfg, ndev, mscs_offload);
+	if (ret) {
+		WL_INFORM(("enable rav_mscs failed ,err(%d)\n", ret));
+	}
+#endif /* WL_RAV_MSCS_NEG_IN_ASSOC */
+
+	for (vi = init_sta_role_iovars; vi->fn != NULL; vi++) {
+		ret = vi->fn(cfg, ndev, vi);
+		if ((ret != BCME_OK) && (ret != BCME_UNSUPPORTED)) {
+			WL_ERR(("dualsta_exec_initiovars: iov %s status %d\n",
+				vi->cmd_name, ret));
+		}
+		WL_DBG(("iov: %s ret: %d\n", vi->cmd_name, ret));
+	}
+}
+
 void
 wl_cfg80211_iface_state_ops(struct wireless_dev *wdev,
 	wl_interface_state_t state,
@@ -2348,6 +2406,9 @@ wl_cfg80211_iface_state_ops(struct wireless_dev *wdev,
 				/* Common code for sta type interfaces - STA, GC */
 				/* Enable firmware key buffering before sent 4-way M4 */
 				wldev_iovar_setint(ndev, "buf_key_b4_m4", 1);
+			}
+			if (wl_iftype == WL_IF_TYPE_STA) {
+				wl_apply_vif_sta_config(cfg, ndev);
 			}
 			if (wl_iftype == WL_IF_TYPE_P2P_GC) {
 				/* Disable firmware roaming for P2P interface  */
@@ -5923,7 +5984,7 @@ wl_config_roam_env_detection(struct bcm_cfg80211 *cfg, struct net_device *dev)
 	s32 roam_trigger[2] = {0, 0};
 	s32 err = BCME_OK;
 
-	if (dhdp->roam_env_detection && (dev == bcmcfg_to_prmry_ndev(cfg))) {
+	if (dhdp->roam_env_detection && (IS_STA_IFACE(ndev_to_wdev(dev)))) {
 		bool is_roamtrig_reset = TRUE;
 		bool is_roam_env_ok = (wldev_iovar_setint(dev, "roam_env_detection",
 				AP_ENV_DETECT_NOT_USED) == BCME_OK);
@@ -14471,10 +14532,6 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	memcpy(&cfg->last_roamed_addr, &e->addr, ETHER_ADDR_LEN);
 	wl_set_drv_status(cfg, CONNECTED, ndev);
 
-	/* clear time stamp for DS timeout */
-	CLR_TS(cfg, conn_start);
-	CLR_TS(cfg, authorize_start);
-
 #ifdef DHD_POST_EAPOL_M1_AFTER_ROAM_EVT
 	ifp = dhd_get_ifp(dhdp, e->ifidx);
 	if (ifp) {
@@ -17979,73 +18036,10 @@ s32 wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify)
 }
 
 #ifdef WL_RAV_MSCS_NEG_IN_ASSOC
-static s32 wl_cfg80211_enable_rav_mscs_params(struct bcm_cfg80211 *cfg, bool mscs_offload)
-{
-	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
-	s32 err = BCME_OK;
-	bcm_iov_buf_t *iov_buf = NULL;
-	char *ioctl_buf = NULL;
-	uint16 buflen = 0, buflen_start = 0;
-	uint16 iovlen = 0;
-	uint8 *data;
-
-	if (!cfg) {
-		return BCME_ERROR;
-	}
-
-	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
-	if (!ioctl_buf) {
-		WL_ERR(("ioctl memory alloc failed\n"));
-		err = BCME_NOMEM;
-		goto exit;
-	}
-
-	iov_buf = (bcm_iov_buf_t *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
-	if (!iov_buf) {
-		WL_ERR(("No memory"));
-		err = BCME_NOMEM;
-		goto exit;
-	}
-
-	/* fill header */
-	iov_buf->version = WL_QOS_VERSION_1;
-	iov_buf->id = WL_QOS_CMD_ENABLE;
-
-	data = (uint8 *)&iov_buf->data[0];
-	buflen = buflen_start = WLC_IOCTL_MEDLEN - sizeof(bcm_iov_buf_t);
-	*((uint16 *)data) = WL_QOS_CMD_ENABLE_FLAG_RAV_MSCS;
-
-	if (mscs_offload) {
-		*((uint16 *)data) |=  WL_QOS_CMD_ENABLE_FLAG_RAV_MSCS_NEG_IN_ASSOC;
-	}
-
-	buflen -= sizeof(uint16);
-
-	iov_buf->len = buflen_start - buflen;
-	iovlen = sizeof(bcm_iov_buf_t) + iov_buf->len;
-
-	err = wldev_iovar_setbuf(ndev, "qos_mgmt", iov_buf, iovlen,
-			ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-	if (unlikely(err)) {
-		WL_ERR(("set qos_mgmt failed ,err(%d)\n", err));
-	}
-
-exit:
-	if (ioctl_buf) {
-		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-	}
-
-	if (iov_buf) {
-		MFREE(cfg->osh, iov_buf, WLC_IOCTL_MEDLEN);
-	}
-
-	return err;
-}
-
-static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg)
+static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg,
+		struct net_device *ndev)
 {
 	int err = BCME_OK;
-	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
 	bcm_iov_buf_t *iov_buf = NULL;
 	uint16 buflen = 0, buflen_start = 0;
 	char *ioctl_buf = NULL;
@@ -18097,6 +18091,77 @@ static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg)
 		WL_ERR(("set qos_mgmt failed ,err(%d)\n", err));
 	}
 fail:
+	if (ioctl_buf) {
+		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
+	}
+
+	if (iov_buf) {
+		MFREE(cfg->osh, iov_buf, WLC_IOCTL_MEDLEN);
+	}
+
+	return err;
+}
+
+static s32 wl_cfg80211_enable_rav_mscs_params(struct bcm_cfg80211 *cfg,
+		struct net_device *ndev, bool mscs_offload)
+{
+	s32 err = BCME_OK;
+	bcm_iov_buf_t *iov_buf = NULL;
+	char *ioctl_buf = NULL;
+	uint16 buflen = 0, buflen_start = 0;
+	uint16 iovlen = 0;
+	uint8 *data;
+
+	if (!cfg) {
+		return BCME_ERROR;
+	}
+
+	if (mscs_offload) {
+		err = wl_cfg80211_config_rav_mscs_params(cfg, ndev);
+		if (err) {
+			WL_INFORM(("config rav_mscs failed ,err(%d)\n", err));
+			return err;
+		}
+	}
+
+	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (!ioctl_buf) {
+		WL_ERR(("ioctl memory alloc failed\n"));
+		err = BCME_NOMEM;
+		goto exit;
+	}
+
+	iov_buf = (bcm_iov_buf_t *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (!iov_buf) {
+		WL_ERR(("No memory"));
+		err = BCME_NOMEM;
+		goto exit;
+	}
+
+	/* fill header */
+	iov_buf->version = WL_QOS_VERSION_1;
+	iov_buf->id = WL_QOS_CMD_ENABLE;
+
+	data = (uint8 *)&iov_buf->data[0];
+	buflen = buflen_start = WLC_IOCTL_MEDLEN - sizeof(bcm_iov_buf_t);
+	*((uint16 *)data) = WL_QOS_CMD_ENABLE_FLAG_RAV_MSCS;
+
+	if (mscs_offload) {
+		*((uint16 *)data) |=  WL_QOS_CMD_ENABLE_FLAG_RAV_MSCS_NEG_IN_ASSOC;
+	}
+
+	buflen -= sizeof(uint16);
+
+	iov_buf->len = buflen_start - buflen;
+	iovlen = sizeof(bcm_iov_buf_t) + iov_buf->len;
+
+	err = wldev_iovar_setbuf(ndev, "qos_mgmt", iov_buf, iovlen,
+			ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
+	if (unlikely(err)) {
+		WL_ERR(("set qos_mgmt failed ,err(%d)\n", err));
+	}
+
+exit:
 	if (ioctl_buf) {
 		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
 	}
@@ -18282,13 +18347,7 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 	}
 
 #ifdef WL_RAV_MSCS_NEG_IN_ASSOC
-	if (mscs_offload) {
-		ret = wl_cfg80211_config_rav_mscs_params(cfg);
-		if (ret) {
-			WL_INFORM(("config rav_mscs failed ,err(%d)\n", ret));
-		}
-	}
-	ret = wl_cfg80211_enable_rav_mscs_params(cfg, mscs_offload);
+	ret = wl_cfg80211_enable_rav_mscs_params(cfg, ndev, mscs_offload);
 	if (ret) {
 		WL_INFORM(("enable rav_mscs failed ,err(%d)\n", ret));
 	}
@@ -21743,6 +21802,8 @@ wl_cfg80211_set_frameburst(struct bcm_cfg80211 *cfg, bool enable)
 		WL_ERR(("Failed set frameburst, ret=%d\n", ret));
 	} else {
 		WL_INFORM_MEM(("frameburst is %s\n", enable ? "enabled" : "disabled"));
+		/* Track disabled state */
+		cfg->frameburst_disabled = (enable ? FALSE : TRUE);
 	}
 
 	return ret;

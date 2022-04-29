@@ -157,12 +157,13 @@ static int16 linuxbcmerrormap[] =
 	-EOPNOTSUPP,		/* BCME_RESP_PENDING */
 	-EINVAL,		/* BCME_ACTIVE */
 	-EINVAL,		/* BCME_IN_PROGRESS */
+	-EINVAL,		/* BCME_NOP */
 
 /* When an new error code is added to bcmutils.h, add os
  * specific error translation here as well
  */
 /* check if BCME_LAST changed since the last time this function was updated */
-#if BCME_LAST != BCME_IN_PROGRESS
+#if BCME_LAST != BCME_NOP
 #error "You need to add a OS error translation in the linuxbcmerrormap \
 	for new error code defined in bcmutils.h"
 #endif
@@ -318,8 +319,10 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 	atomic_add(1, &osh->cmn->refcount);
 
 	bcm_object_trace_init();
+
 	/* Check that error map has the right number of entries in it */
 	ASSERT(ABS(BCME_LAST) == (ARRAYSIZE(linuxbcmerrormap) - 1));
+
 	osh->failed = 0;
 	osh->pdev = pdev;
 	osh->pub.pkttag = pkttag;

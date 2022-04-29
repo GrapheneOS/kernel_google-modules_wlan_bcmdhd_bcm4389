@@ -1247,8 +1247,16 @@ s32 wl_cfgscan_pfn_handler(struct bcm_cfg80211 *cfg, wl_pfn_scanresult_v3_1_t *p
 			"or invalid bss_info length\n"));
 		goto exit;
 	}
-
+	preempt_disable();
+#ifdef ESCAN_CHANNEL_CACHE
+	add_roam_cache(cfg, bi);
+#endif /* ESCAN_CHANNEL_CACHE */
 	err = wl_inform_single_bss(cfg, bi, false);
+	if (unlikely(err)) {
+		WL_ERR(("bss inform failed\n"));
+	}
+	preempt_enable();
+	WL_MEM(("cfg80211 scan cache updated\n"));
 exit:
 	return err;
 }
@@ -6493,6 +6501,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	s32 ret = -EINVAL;
 	u32 *chspeclist = NULL;
 	u32 *p_chspec_list = NULL;
+	char chanspec_str[CHANSPEC_STR_LEN];
 #ifdef WL_CELLULAR_CHAN_AVOID
 	int safe_chspec_cnt = 0;
 	u32 *safe_chspeclist = NULL;
@@ -6544,7 +6553,9 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		if (wl_cellavoid_is_safe(cfg->cellavoid_info, chspeclist[j])) {
 			safe_chspeclist[safe_chspec_cnt++] = chspeclist[j];
 			safe_param.freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chspeclist[j]));
-			WL_INFORM_MEM(("Adding safe chanspec %x to the list\n", chspeclist[j]));
+			wf_chspec_ntoa(chspeclist[j], chanspec_str);
+			WL_INFORM_MEM(("Adding %s (0x%x) to the safe list\n",
+				chanspec_str, chspeclist[j]));
 		}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 
@@ -6642,7 +6653,8 @@ success:
 			continue;
 		}
 
-		WL_INFORM_MEM(("ACS chanspec:0x%x\n", p_chspec_list[i]));
+		wf_chspec_ntoa(p_chspec_list[i], chanspec_str);
+		WL_INFORM_MEM(("ACS : %s (0x%x)\n", chanspec_str, p_chspec_list[i]));
 		wl_cfgscan_acs_parse_parameter(cfg, req_len, pList,
 			p_chspec_list[i], parameter);
 	}

@@ -6431,11 +6431,11 @@ dhd_stop(struct net_device *net)
 	bitmask = ~(DHD_BUS_BUSY_IN_HALDUMP);
 #endif /* DHD_COREDUMP */
 	timeleft = dhd_os_busbusy_wait_bitmask(&dhd->pub,
-		&dhd->pub.dhd_bus_busy_state,
-		bitmask, 0);
+			&dhd->pub.dhd_bus_busy_state,
+			bitmask, 0);
 	if (dhd->pub.dhd_bus_busy_state & bitmask) {
 		DHD_ERROR(("%s: Timed out(%d) dhd_bus_busy_state=0x%x\n",
-			__FUNCTION__, timeleft, dhd->pub.dhd_bus_busy_state));
+				__FUNCTION__, timeleft, dhd->pub.dhd_bus_busy_state));
 	}
 
 	mutex_lock(&dhd->pub.ndev_op_sync);
@@ -6820,7 +6820,6 @@ dhd_open(struct net_device *net)
 		}
 	}
 #endif /* PREVENT_REOPEN_DURING_HANG */
-
 
 	/* clear to run TCM test once per dhd_open() */
 	if (dhd_tcm_test_mode != TCM_TEST_MODE_ONCE) {

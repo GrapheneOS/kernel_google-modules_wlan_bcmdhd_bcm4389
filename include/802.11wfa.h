@@ -128,8 +128,8 @@ typedef struct wme_param_ie wme_param_ie_t;
 #define WFA_OUI_TYPE_TPC	8		/* deprecated */
 
 /* ************* WFA definitions. ************* */
-#define WFA_OUI			"\x50\x6F\x9A"			/* WFA OUI */
-#define WFA_OUI_LEN		(int32)(sizeof(WFA_OUI) - 1)	/* WFA OUI length */
+#define WFA_OUI			"\x50\x6F\x9A"	/* WFA OUI */
+#define WFA_OUI_LEN		3		/* WFA OUI length */
 #define WFA_OUI_TYPE_P2P	9
 
 #define P2P_OUI         WFA_OUI
@@ -187,6 +187,18 @@ typedef struct dot11_sae_pk_element dot11_sae_pk_element_t;
 	TRANSITION_MODE_SAE_PK | \
 	TRANSITION_MODE_WPA3_ENTERPRISE | \
 	TRANSITION_MODE_ENHANCED_OPEN)
+
+/** Transition Disable Indication element */
+BWL_PRE_PACKED_STRUCT struct dot11_tdi_element {
+	uint8 id;	/* DOT11_MNG_VS_ID */
+	uint8 len;	/* IE length */
+	uint8 oui[3];	/* WFA_OUI */
+	uint8 type;	/* WFA_OUI_TYPE_TD_INDICATION */
+	uint8 tdi;	/* Transition Disable Indication bitmap */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_tdi_element dot11_tdi_element_t;
+
+#define DOT11_TDI_ELEM_LENGTH	sizeof(dot11_tdi_element_t)
 
 /* WiFi OWE transition OUI values */
 #define OWE_TRANS_OUI       WFA_OUI         /* WiFi OUI 50:6F:9A */

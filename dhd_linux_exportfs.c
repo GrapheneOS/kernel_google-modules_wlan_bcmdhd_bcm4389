@@ -824,7 +824,7 @@ set_tcm_test_mode(struct dhd_info *dev, const char *buf, size_t count)
 	mode = bcm_strtoul(buf, NULL, 10);
 
 	sscanf(buf, "%lu", &mode);
-	if (mode > TCM_TEST_MODE_ALWAYS ) {
+	if (mode > TCM_TEST_MODE_ALWAYS) {
 		return -EINVAL;
 	}
 

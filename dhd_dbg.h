@@ -733,6 +733,9 @@ extern int log_print_threshold;
 		} \
 	} while (0)
 
+/* DHD_PRINT - informational non-error messages which need to be always printed */
+#define DHD_PRINT	DHD_ERROR
+
 /* Defines msg bits */
 #include <dhdioctl.h>
 
