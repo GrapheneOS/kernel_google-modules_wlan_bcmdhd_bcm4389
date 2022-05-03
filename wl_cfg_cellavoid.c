@@ -1259,7 +1259,10 @@ wl_cellavoid_find_chinfo_fromchspec(wl_cellavoid_info_t *cellavoid_info,
 		 * so the first one is the widest one
 		 */
 		if (wf_chspec_ctlchan(chan_info->chanspec) == wf_chspec_ctlchan(chanspec)) {
-			if (wl_cellavoid_is_safe_overlap(cellavoid_info, chan_info->chanspec)) {
+			/* check the overlap for 5G band only */
+			if (CHSPEC_IS2G(chan_info->chanspec) ||
+					wl_cellavoid_is_safe_overlap(cellavoid_info,
+					chan_info->chanspec)) {
 				ret = chan_info;
 				WL_INFORM_MEM(("ctrl channel %d (0x%x) found in avail list\n",
 					wf_chspec_ctlchan(chan_info->chanspec),
