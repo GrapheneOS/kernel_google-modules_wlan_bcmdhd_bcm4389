@@ -13480,7 +13480,11 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 #endif /* LIMIT_AP_BW */
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
+#ifdef CUSTOMER_HW4_DEBUG
 		bytes_written = BCME_UNSUPPORTED;
+#else
+		bytes_written = scnprintf(command, sizeof("FAIL"), "FAIL");
+#endif /* CUSTOMER_HW4_DEBUG */
 	}
 
 	return bytes_written;

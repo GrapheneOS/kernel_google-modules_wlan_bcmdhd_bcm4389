@@ -1649,6 +1649,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	}
 
 	if (ap_oper_data.count == 1) {
+		chanspec_t sta_chspec;
 		chanspec_t ch = ap_oper_data.iface[0].chspec;
 		u16 ap_band, incoming_band;
 
@@ -1661,6 +1662,22 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 		if (ap_band == incoming_band) {
 			WL_ERR(("DUAL AP not allowed on same band\n"));
 			return -ENOTSUPP;
+		}
+		sta_chspec = wl_cfg80211_get_sta_chanspec(cfg);
+		if (sta_chspec && wf_chspec_valid(sta_chspec)) {
+			/* 5G cant be upgraded to 6G since dual band clients
+			 * wont be able able to scan 6G
+			 */
+			if (CHSPEC_IS6G(sta_chspec) && (incoming_band == WLC_BAND_5G)) {
+				WL_ERR(("DUAL AP not allowed for"
+					" 5G band as sta in 6G chspec 0x%x\n",
+					chspec));
+				return -ENOTSUPP;
+			}
+			if (incoming_band == CHSPEC_TO_WLC_BAND(sta_chspec)) {
+				/* use sta chanspec for SCC */
+				chspec = sta_chspec;
+			}
 		}
 	}
 
@@ -1747,6 +1764,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 
 #ifdef WL_CELLULAR_CHAN_AVOID
 	if (!CHSPEC_IS6G(chspec)) {
+		wl_cellavoid_sanity_check_chan_info_list(cfg->cellavoid_info);
 		wl_cellavoid_sync_lock(cfg);
 		cur_chspec = wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec);
 		if (cur_chspec == INVCHANSPEC) {
@@ -1803,13 +1821,17 @@ set_channel:
 #ifdef DISABLE_WL_FRAMEBURST_SOFTAP
 			else {
 				/* Disable Frameburst only for stand-alone 2GHz SoftAP */
-				if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP &&
-					DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_HOSTAP_MODE) &&
-					(CHSPEC_IS2G(chspec)) &&
-					!wl_is_sta_connected(cfg)) {
-					WL_DBG(("Disabling frameburst on "
-						"stand-alone 2GHz SoftAP\n"));
-					wl_cfg80211_set_frameburst(cfg, FALSE);
+				if ((wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) &&
+					DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_HOSTAP_MODE)) {
+					if (CHSPEC_IS2G(chspec) && !wl_is_sta_connected(cfg)) {
+						WL_DBG(("Disabling frameburst on "
+							"stand-alone 2GHz SoftAP\n"));
+						wl_cfg80211_set_frameburst(cfg, FALSE);
+					} else if (!CHSPEC_IS2G(chspec) &&
+						cfg->frameburst_disabled) {
+						WL_INFORM(("Enable back frameburst\n"));
+						wl_cfg80211_set_frameburst(cfg, TRUE);
+					}
 				}
 			}
 #endif /* DISABLE_WL_FRAMEBURST_SOFTAP */
@@ -4075,7 +4097,6 @@ wl_cfg80211_stop_ap(
 		}
 #endif /* SUPPORT_AP_RADIO_PWRSAVE */
 #ifdef WL_CELLULAR_CHAN_AVOID
-		wl_cellavoid_clear_requested_freq_bands(dev, cfg->cellavoid_info);
 		wl_cellavoid_sync_lock(cfg);
 		wl_cellavoid_free_csa_info(cfg->cellavoid_info, dev);
 		wl_cellavoid_sync_unlock(cfg);
@@ -6215,7 +6236,7 @@ wl_cfg80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
 	if (chspec == cfg->ap_oper_channel) {
 		WL_ERR(("Channel %d is same as current operating channel,"
 			" so skip\n", CHSPEC_CHANNEL(chspec)));
-		return BCME_OK;
+		return -EINVAL;
 	}
 
 	if (

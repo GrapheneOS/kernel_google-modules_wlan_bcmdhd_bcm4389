@@ -250,8 +250,6 @@ typedef struct dhd_bus {
 #if !defined(NDIS)
 	struct pci_dev  *rc_dev;	/* pci RC device handle */
 	struct pci_dev  *dev;		/* pci device handle */
-	uint32 aspm_enab_during_suspend;	/* aspm enab flag during suspend */
-	uint32 l1ss_enab_during_suspend;	/* l1ss enab flag during suspend */
 #endif /* !defined(NDIS) */
 #ifdef DHD_EFI
 	void *pcie_dev;
@@ -574,7 +572,14 @@ typedef struct dhd_bus {
 	bool lpm_keep_in_reset; /* during LPM keep in FLR, if FLR force is enabled */
 	bool lpm_mem_kill; /* kill WLAN memories in LPM */
 	bool lpm_force_flr; /* Force F0 FLR on WLAN  when in LPM */
+	uint32 lpbk_xfer_data_pattern_type; /*  data Pattern type DMA lpbk */
 } dhd_bus_t;
+
+#define LPBK_DMA_XFER_DTPTRN_DEFAULT	0
+#define LPBK_DMA_XFER_DTPTRN_0x00	1
+#define LPBK_DMA_XFER_DTPTRN_0xFF	2
+#define LPBK_DMA_XFER_DTPTRN_0x55	3
+#define LPBK_DMA_XFER_DTPTRN_0xAA	4
 
 #define LPM_MODE_LPM_ALL	0x1
 #define LPM_MODE_NO_MEMKILL	0x010

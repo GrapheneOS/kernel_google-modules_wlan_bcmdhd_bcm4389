@@ -1298,8 +1298,9 @@ wl_cfgnan_config_eventmask(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	nan_buf->count = 1;
 
 	if (disable_events) {
-		WL_DBG(("Disabling all nan events..except stop event\n"));
+		WL_DBG(("Disabling all nan events..except start/stop events\n"));
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_STOP));
+		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_START));
 	} else {
 		/*
 		 * Android framework event mask configuration.
@@ -1336,6 +1337,7 @@ wl_cfgnan_config_eventmask(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_RECEIVE));
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_TERMINATED));
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_STOP));
+		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_START));
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_TXS));
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_PEER_DATAPATH_IND));
 		setbit(event_mask, NAN_EVENT_MAP(WL_NAN_EVENT_DATAPATH_ESTB));
@@ -3320,7 +3322,8 @@ wl_cfgnan_start_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	}
 
 	/* enable events */
-	ret = wl_cfgnan_config_eventmask(ndev, cfg, cmd_data->disc_ind_cfg, false);
+	ret = wl_cfgnan_config_eventmask(ndev, cfg, cmd_data->disc_ind_cfg,
+		cmd_data->chre_req ? true : false);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to config disc ind flag in event_mask, ret = %d\n", ret));
 		goto fail;
@@ -4693,7 +4696,6 @@ wl_cfgnan_suspend_all_geofence_rng_sessions(struct net_device *ndev,
 	WL_MEM(("Suspending all geofence sessions: "
 		"suspend_reason = %d\n", suspend_reason));
 
-	cancel_flags |= NAN_RNG_TERM_FLAG_IMMEDIATE;
 	for (i = 0; i < NAN_MAX_RANGING_INST; i++) {
 		ranging_inst = &cfg->nancfg->nan_ranging_info[i];
 		/* Cancel Ranging if in progress for rang_inst */
@@ -8882,7 +8884,8 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 #endif /* WL_NAN_DEBUG */
 
 	if (!cfg->nancfg->nan_init_state) {
-		WL_ERR(("nan is not in initialized state, dropping nan related events\n"));
+		WL_ERR(("nan is not in initialized state, dropping nan related event num: %d, "
+				"type: %d\n", event_num, event_type));
 		ret = BCME_OK;
 		goto exit;
 	}

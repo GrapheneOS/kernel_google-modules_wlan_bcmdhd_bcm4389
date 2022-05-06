@@ -619,7 +619,7 @@ BCMFASTPATH(dhd_start_xmit)(struct sk_buff *skb, struct net_device *net)
 
 	DHD_GENERAL_LOCK(&dhd->pub, flags);
 	if (DHD_BUS_CHECK_SUSPEND_OR_SUSPEND_IN_PROGRESS(&dhd->pub)) {
-		DHD_ERROR(("%s: bus is in suspend(%d) or suspending(0x%x) state!!\n",
+		DHD_ERROR_RLMT(("%s: bus is in suspend(%d) or suspending(0x%x) state!!\n",
 			__FUNCTION__, dhd->pub.busstate, dhd->pub.dhd_bus_busy_state));
 		DHD_BUS_BUSY_CLEAR_IN_TX(&dhd->pub);
 #ifdef PCIE_FULL_DONGLE
@@ -1121,9 +1121,6 @@ dhd_eap_txcomplete(dhd_pub_t *dhdp, void *txp, bool success, int ifidx)
 }
 #endif /* DHD_4WAYM4_FAIL_DISCONNECT */
 
-#ifdef DHD_PKT_LOGGING_DBGRING
-extern void dhd_os_dbg_urgent_pullreq(void *os_priv, int ring_id);
-#endif /* DHD_PKT_LOGGING_DBGRING */
 void
 dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uint8 *pktdata, uint32 pktid,
 	uint32 pktlen, uint16 *pktfate, uint8 *dhd_udr, uint8 *dhd_igmp,

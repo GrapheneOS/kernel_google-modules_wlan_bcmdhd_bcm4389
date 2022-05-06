@@ -804,6 +804,40 @@ done:
 }
 #endif /* PWRSTATS_SYSFS */
 
+static ssize_t
+show_tcm_test_mode(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long mode;
+
+	mode = dhd_tcm_test_mode;
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n",
+		mode);
+	return ret;
+}
+
+static ssize_t
+set_tcm_test_mode(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long mode;
+
+	mode = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &mode);
+	if (mode > TCM_TEST_MODE_ALWAYS) {
+		return -EINVAL;
+	}
+
+	/* reset with the mode change */
+	if (dhd_tcm_test_mode != mode) {
+		dhd_tcm_test_status = TCM_TEST_NOT_RUN;
+	}
+
+	dhd_tcm_test_mode = (uint)mode;
+
+	return count;
+}
+
 /*
  * Generic Attribute Structure for DHD.
  * If we have to add a new sysfs entry under /sys/bcm-dhd/, we have
@@ -856,6 +890,9 @@ static struct dhd_attr dhd_attr_sig_path =
 static struct dhd_attr dhd_attr_pwrstats_path =
 	__ATTR(power_stats, 0664, show_pwrstats_path, NULL);
 #endif /* PWRSTATS_SYSFS */
+
+static struct dhd_attr dhd_attr_tcm_test_mode =
+	__ATTR(tcm_test_mode, 0660, show_tcm_test_mode, set_tcm_test_mode);
 
 #define to_dhd(k) container_of(k, struct dhd_info, dhd_kobj)
 #define to_attr(a) container_of(a, struct dhd_attr, attr)
@@ -2249,6 +2286,7 @@ static struct attribute *default_file_attrs[] = {
 	&dhd_attr_fast_rpm_thresh.attr,
 #endif /* RPM_FAST_TRIGGER */
 	&dhd_attr_sig_path.attr,
+	&dhd_attr_tcm_test_mode.attr,
 	NULL
 };
 

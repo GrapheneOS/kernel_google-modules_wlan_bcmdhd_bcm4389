@@ -646,7 +646,8 @@ enum dhd_dongledump_type {
 	DUMP_TYPE_ESCAN_SYNCID_MISMATCH		= 32,
 	DUMP_TYPE_INVALID_SHINFO_NRFRAGS	= 33,
 	DUMP_TYPE_P2P_DISC_BUSY			= 34,
-	DUMP_TYPE_CONT_EXCESS_PM_AWAKE		= 35
+	DUMP_TYPE_CONT_EXCESS_PM_AWAKE		= 35,
+	DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF	= 36
 };
 
 enum dhd_hang_reason {
@@ -919,7 +920,8 @@ typedef enum dhd_ring_id {
 	PACKET_LOG_RING_ID = 0x7,
 	DEBUG_DUMP_RING1_ID = 0x8,
 	DEBUG_DUMP_RING2_ID = 0x9,
-	DEBUG_RING_ID_MAX = 0xa
+	MEM_DUMP_RING_ID = 0xa,
+	DEBUG_RING_ID_MAX = 0xb
 } dhd_ring_id_t;
 
 #define HEALTH_CHK_BUF_SIZE 256
@@ -1368,6 +1370,7 @@ typedef struct dhd_pub {
 #endif
 	bool	smmu_fault_occurred;	/* flag to indicate SMMU Fault */
 	bool	p2p_disc_busy_occurred;
+	bool	dongle_trap_during_wifi_onoff;	/* flag to indicate trap during wifi on/off */
 /*
  * Add any new variables to track Bus errors above
  * this line. Also ensure that the variable is
@@ -2251,10 +2254,14 @@ extern void dhd_os_oob_irq_wake_unlock(dhd_pub_t *pub);
 #define DHD_OS_OOB_IRQ_WAKE_UNLOCK(pub)			dhd_os_oob_irq_wake_unlock(pub)
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 
-#define DHD_PACKET_TIMEOUT_MS	500
+/* The DHD_PACKET_TIMEOUT_MS & MAX_TX_TIMEOUT are used for wake_lock timeout
+ * to prevent the system from entering suspend during TX/RX frame processing.
+ * It can be adjusted depending on the host platform.
+ */
+#define DHD_PACKET_TIMEOUT_MS	100
 #define DHD_EVENT_TIMEOUT_MS	1500
 #define SCAN_WAKE_LOCK_TIMEOUT	10000
-#define MAX_TX_TIMEOUT			500
+#define MAX_TX_TIMEOUT			100
 
 /* Enum for IOCTL recieved status */
 typedef enum dhd_ioctl_recieved_status
@@ -3016,6 +3023,14 @@ typedef enum tcm_test_status {
 	TCM_TEST_PASSED = 2
 } tcm_test_status_t;
 extern tcm_test_status_t dhd_tcm_test_status;
+
+/* TCM test mode */
+typedef enum tcm_test_mode {
+	TCM_TEST_MODE_DISABLE = 0,
+	TCM_TEST_MODE_ONCE = 1,
+	TCM_TEST_MODE_ALWAYS = 2
+} tcm_test_mode_t;
+extern tcm_test_mode_t dhd_tcm_test_mode;
 
 /* Initial idletime ticks (may be -1 for immediate idle, 0 for no idle) */
 extern int dhd_idletime;

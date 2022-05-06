@@ -255,6 +255,7 @@ typedef struct xtlv_uc_txs {
 #define SCAN_SUM_WLC_CORE1	0x8
 #define HOME_CHAN		0x10
 #define SCAN_SUM_SCAN_CORE	0x20
+#define FILS_SCAN_SCN_SUM	0x40	/* The 6G channels was dwelled only for FILS dur 25ms */
 
 typedef struct wl_scan_ssid_info
 {
@@ -265,11 +266,11 @@ typedef struct wl_scan_ssid_info
 typedef struct wl_scan_channel_info {
 	uint16 chanspec;	/* chanspec scanned */
 	uint16 reserv;
-	uint32 start_time;		/* Scan start time in
+	uint32 start_time;	/* Scan start time in
 				* milliseconds for the chanspec
 				* or home_dwell time start
 				*/
-	uint32 end_time;		/* Scan end time in
+	uint32 end_time;	/* Scan end time in
 				* milliseconds for the chanspec
 				* or home_dwell time end
 				*/
@@ -280,14 +281,52 @@ typedef struct wl_scan_channel_info {
 				*/
 } wl_scan_channel_info_t;
 
+typedef struct wl_scan_channel_info_v2 {
+	uint16 chanspec;			/* chanspec scanned */
+	uint16 reserv;
+	uint32 start_time;			/* Scan start time in
+						* milliseconds for the chanspec
+						* or home_dwell time start
+						*/
+	uint32 end_time;			/* Scan end time in
+						* milliseconds for the chanspec
+						* or home_dwell time end
+						*/
+	uint32 chan_6g_act_scn_strt_time;	/* 6G active scan start, valid for 6G chan only */
+	uint16 probe_count;			/* No of probes sent out. For future use
+						*/
+	uint16 scn_res_count;			/* Count of scan_results found per
+						* channel. For future use
+						*/
+} wl_scan_channel_info_v2_t;
+
 typedef struct wl_scan_summary_info {
-	uint32 total_chan_num;	/* Total number of channels scanned */
-	uint32 scan_start_time;	/* Scan start time in milliseconds */
-	uint32 scan_end_time;	/* Scan end time in milliseconds */
+	uint32 total_chan_num;				/* Total number of channels scanned */
+	uint32 scan_start_time;				/* Scan start time in milliseconds */
+	uint32 scan_end_time;				/* Scan end time in milliseconds */
 	wl_scan_ssid_info_t ssid[BCM_FLEX_ARRAY];	/* SSID being scanned in current
-				* channel. For future use
-				*/
+							* channel. For future use
+							*/
 } wl_scan_summary_info_t;
+
+typedef struct wl_scan_summary_info_v2 {
+	uint32 scan_start_time;			/* Scan start time in milliseconds */
+	uint32 scan_end_time;			/* Scan end time in milliseconds */
+	uint32 scan_dur_2g;			/* 2g Scan duartion time in milliseconds */
+	uint32 scan_dur_5g;			/* 5g Scan duartion time in milliseconds */
+	uint32 scan_dur_6g;			/* 6g Scan duartion time in milliseconds */
+	uint8 total_chan_num;			/* Total number of channels scanned */
+	/* scan_channel_ctx_t chan_cnt; */
+	uint8 channel_cnt_2g;			/* Number of 2g channels to be scanned */
+	uint8 channel_cnt_5g;			/* Number of 5g channels to be scanned */
+	uint8 channel_cnt_6g;			/* Number of 6g channels to be scanned */
+	uint8 channel_cnt_sc_2g;		/* Number of channels to be scanned on Scan core */
+	uint8 channel_cnt_sc_5g;		/* Number of channels to be scanned on Scan core */
+	uint8 channel_cnt_sc_6g;		/* Number of channels to be scanned on Scan core */
+	uint8 active_channel_cnt;		/* Number of active channels to be scanned */
+	uint8 passive_channel_cnt;		/* Number of passive channels to be scanned */
+	uint8 pad[3];				/* Pad to keep it 32 bit aligned */
+} wl_scan_summary_info_v2_t;
 
 struct wl_scan_summary {
 	uint8 version;		/* Version */
@@ -394,6 +433,61 @@ struct wl_scan_summary_v2 {
 							* for each channel scanned
 							*/
 		wl_scan_summary_info_t scan_sum_info;	/* Cumulative scan related
+							* information.
+							*/
+	} u;
+};
+
+#define SCAN_SUMMARY_VERSION_3	3u
+struct wl_scan_summary_v3 {
+	uint8 version;		/* Version */
+	uint8 reserved;
+	uint16 len;		/* Length of the data buffer including SSID
+				 * list.
+				 */
+	uint16 sync_id;		/* Scan Sync ID */
+	uint16 scan_flags;		/* flags [0] or SCAN_SUM_CHAN_INFO = */
+				/* channel_info, if not set */
+				/* it is scan_summary_info */
+				/* when channel_info is used, */
+				/* the following flag bits are overridden: */
+				/* flags[1] or ACTIVE_SCAN_SCN_SUM = active channel if set */
+				/* passive if not set */
+				/* flags[2] or WLC_CORE0 = if set, represents wlc_core0 */
+				/* flags[3] or WLC_CORE1 = if set, represents wlc_core1 */
+				/* flags[4] or HOME_CHAN = if set, represents home-channel */
+				/* flags[5] or SCAN_SUM_SCAN_CORE = if set,
+				 * represents chan_info from scan core.
+				 */
+				/* flags[6] or FILS_SCAN_SCN_SUM = if set,
+				 * 6G channels was dwelled only for FILS duration.
+				 */
+				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
+				/* flags[7:11, 13:15] = reserved */
+				/* when scan_summary_info is used, */
+				/* the following flag bits are used: */
+				/* flags[1] or BAND5G_SIB_ENAB = */
+				/* allowSIBParallelPassiveScan on 5G band */
+				/* flags[2] or BAND2G_SIB_ENAB = */
+				/* allowSIBParallelPassiveScan on 2G band */
+				/* flags[3] or PARALLEL_SCAN = Parallel scan enabled or not */
+				/* flags[4] or SCAN_ABORT = SCAN_ABORTED scenario */
+				/* flags[5] = reserved */
+				/* flags[6:8] is used as count value to identify SCAN CLIENT
+				 * WL_SSUM_CLIENT_ASSOCSCAN 0x0u, WL_SSUM_CLIENT_ROAMSCAN 0x1u,
+				 * WL_SSUM_CLIENT_FWSCAN	0x2u, WL_SSUM_CLIENT_HOSTSCAN 0x3u
+				 */
+				/* flags[9:11] is used as count value to identify SCAN MODE
+				 * WL_SCAN_MODE_HIGH_ACC 0u, WL_SCAN_MODE_LOW_SPAN 1u,
+				 * WL_SCAN_MODE_LOW_POWER 2u
+				 */
+				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
+				/* flags[13:15] = reserved */
+	union {
+		wl_scan_channel_info_v2_t scan_chan_info;	/* scan related information
+							* for each channel scanned
+							*/
+		wl_scan_summary_info_v2_t scan_sum_info;	/* Cumulative scan related
 							* information.
 							*/
 	} u;
@@ -1609,9 +1703,10 @@ typedef struct phy_periodic_counters_v9 {
 	uint16	debug_08;
 	uint16	debug_09;
 	uint16	debug_10;
-	uint8	debug_11;
-	uint8	debug_12;
-	uint8	debug_13;
+
+	uint8	sc_dccal_incc_cnt;	/* scan dccal counter */
+	uint8	sc_rxiqcal_skip_cnt;	/* scan rxiqcal counter */
+	uint8	sc_noisecal_incc_cnt;	/* scan noise cal counter */
 	uint8	debug_14;
 } phy_periodic_counters_v9_t;
 
@@ -2662,9 +2757,9 @@ typedef struct phy_periodic_log_cmn_v10 {
 	uint16	log_event_id;		/* logging event id */
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
-	uint16	debug_01;
-	uint16	debug_02;
-	uint16	debug_03;
+	uint16	pktprocdebug;
+	uint16	pktprocdebug2;
+	uint16	timeoutstatus;
 	uint16	debug_04;
 	uint16	debug_05;
 
@@ -2752,7 +2847,7 @@ typedef struct phy_periodic_log_cmn_v10 {
 	uint16	gci_invtxs;		/* timestamp for TXCRS assertion */
 	uint16	gci_invtxdur;		/* IFS_TX_DUR */
 	uint16	gci_invifs;		/* IFS status */
-	uint16	gci_pad01;		/* For additional ucode data */
+	uint16	gci_chan;		/* For additional ucode data */
 	uint16	gci_pad02;		/* For additional ucode data */
 	uint16	gci_pad03;		/* For additional ucode data */
 	uint16	gci_pad04;		/* For additional ucode data */
@@ -2769,13 +2864,13 @@ typedef struct phy_periodic_log_cmn_v10 {
 
 	int16	last_cal_temp;
 	uint8	cal_reason;		/* reason for the cal */
-	uint8	debug_06;
-	uint8	debug_07;
+	uint8	cal_suppressed_cntr_ed;	/* counter including ss, mp cals, MSB is current state */
+	uint8	phylog_noise_mode;	/* Noise mode used */
 	uint8	debug_08;
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
-	uint32	debug_09;
-	uint32	debug_10;
+	uint32	interference_mode;	/* interference mitigation mode */
+	uint32	power_mode;		/* LP/VLP logging */
 	uint32	debug_11;
 	uint32	debug_12;
 } phy_periodic_log_cmn_v10_t;
@@ -3030,7 +3125,7 @@ typedef struct phy_periodic_log_core_v7 {
 	int16	txcap;		/* Txcap value */
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
-	uint16	debug_01;
+	uint16	bad_txbaseidx_cnt;	/* cntr for tx_baseidx=127 in healthcheck */
 	uint16	debug_02;
 	uint16	debug_03;
 	uint16	debug_04;
@@ -3214,6 +3309,34 @@ typedef struct phy_periodic_obss_stats_v1 {
 							 * as txcts requested
 							 */
 } phy_periodic_obss_stats_v1_t;
+
+/* OBSS Statistics for PHY Logging */
+typedef struct phy_periodic_obss_stats_v2 {
+	uint32	obss_last_read_time;			/* last stats read time */
+	uint16	obss_mit_bw;				/* selected mitigation BW */
+	uint16	obss_stats_cnt;				/* stats count */
+	uint8	obss_need_updt;				/* BW update needed flag */
+	uint8	obss_mit_status;			/* obss mitigation status */
+	uint8	obss_curr_det[ACPHY_OBSS_SUBBAND_CNT];	/* obss curr detection */
+	uint16	dynbw_init_reducebw_cnt;		/*
+							 * bandwidth reduction cnt of
+							 * initiator (txrts+rxcts)
+							 */
+	uint16	dynbw_resp_reducebw_cnt;		/*
+							 * bandwidth reduction cnt of
+							 * responder (rxrts+txcts)
+							 */
+	uint16	dynbw_rxdata_reducebw_cnt;		/*
+							 * rx data cnt with reduced bandwidth
+							 * as txcts requested
+							 */
+	uint16	obss_mmt_skip_cnt;			/* mmt skipped due to powersave */
+	uint16	obss_mmt_no_result_cnt;			/* mmt with no result */
+	uint16	obss_mmt_intr_err_cnt;			/* obss reg mismatch between ucode and fw */
+	uint8	obss_final_rec_bw;			/* final recommended bw to wlc-Sent to SW */
+	uint8	debug01;
+	uint16	obss_det_stats[ACPHY_OBSS_SUBBAND_CNT];
+} phy_periodic_obss_stats_v2_t;
 
 typedef struct phy_periodic_obss_stats_v255 {
 	uint32	obss_last_read_time;			/* last stats read time */
@@ -3548,6 +3671,14 @@ typedef struct phycal_log_v3 {
 	/* This will be a variable length based on the numcores field defined above */
 	phycal_log_core_v3_t phycal_log_core[BCM_FLEX_ARRAY];
 } phycal_log_v3_t;
+
+#define PHY_CAL_EVENTLOG_VER4		(4u)
+typedef struct phycal_log_v4 {
+	uint8  version; /* Logging structure version */
+	uint8  numcores; /* Number of cores for which core specific data present */
+	uint16 length;  /* Length of the entire structure */
+	phy_phycal_v2_t phy_calibration;
+} phycal_log_v4_t;
 
 /* Note: The version 2 is reserved for 4357 only. Future chips must not use this version. */
 
@@ -4257,6 +4388,56 @@ typedef struct phy_periodic_log_v22 {
 	/* log data for smartCCA */
 	phy_periodic_scca_stats_v2_t scca_counters_peri_log;
 } phy_periodic_log_v22_t;
+
+#define PHY_PERIODIC_LOG_VER23	23u
+typedef struct phy_periodic_log_v23 {
+	uint8  version;		/* Logging structure version */
+	uint8  numcores;	/* Number of cores for which core specific data present */
+	uint16 length;		/* Length of the structure */
+
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v10_t phy_perilog_cmn;
+
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v9_t counters_peri_log;
+
+	/* log data for BTcoex */
+	phy_periodic_btc_stats_v2_t phy_perilog_btc_stats;
+
+	/* log data for obss/dynbw */
+	phy_periodic_obss_stats_v1_t phy_perilog_obss_stats;
+
+	/* Logs data pertaining to each core */
+	phy_periodic_log_core_v7_t phy_perilog_core[2];
+
+	/* log data for smartCCA */
+	phy_periodic_scca_stats_v3_t scca_counters_peri_log;
+} phy_periodic_log_v23_t;
+
+#define PHY_PERIODIC_LOG_VER24	24u
+typedef struct phy_periodic_log_v24 {
+	uint8  version;		/* Logging structure version */
+	uint8  numcores;	/* Number of cores for which core specific data present */
+	uint16 length;		/* Length of the structure */
+
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v10_t phy_perilog_cmn;
+
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v9_t counters_peri_log;
+
+	/* log data for BTcoex */
+	phy_periodic_btc_stats_v2_t phy_perilog_btc_stats;
+
+	/* log data for obss/dynbw */
+	phy_periodic_obss_stats_v2_t phy_perilog_obss_stats;
+
+	/* Logs data pertaining to each core */
+	phy_periodic_log_core_v7_t phy_perilog_core[2];
+
+	/* log data for smartCCA */
+	phy_periodic_scca_stats_v3_t scca_counters_peri_log;
+} phy_periodic_log_v24_t;
 
 /* ************************************************** */
 /* The version 255 for the logging data structures    */

@@ -182,8 +182,15 @@ wl_escan_check_sync_id(struct bcm_cfg80211 *cfg, s32 status, u16 result_id, u16 
 	}
 }
 
+#ifdef SYNCID_MISMATCH_DEBUG
+#define wl_escan_increment_sync_id(a, b) \
+	((u8)((a)->escan_info.cur_sync_id + b) == 0 ? \
+	((a)->escan_info.cur_sync_id = 1) : ((a)->escan_info.cur_sync_id += b))
+#define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 1)
+#else
 #define wl_escan_increment_sync_id(a, b) ((a)->escan_info.cur_sync_id += b)
 #define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 0)
+#endif /* SYNCID_MISMATCH_DEBUG */
 #else
 #define wl_escan_get_buf(a, b) ((wl_scan_results_v109_t *) (a)->escan_info.escan_buf)
 #define wl_escan_check_sync_id(a, b, c, d) 0
@@ -203,7 +210,7 @@ static void wl_rst_ie(struct bcm_cfg80211 *cfg)
 }
 
 static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, u32 *ie_size,
-	bool update_ssid)
+	bool update_ssid, u32 *ssid_len_from_ie)
 {
 	u8 *ssidie;
 	int32 ssid_len = MIN(bi->SSID_len, DOT11_MAX_SSID_LEN);
@@ -224,6 +231,8 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 	if (!ssidie) {
 		return;
 	}
+	*ssid_len_from_ie = (u32)ssidie[1];
+
 	available_buffer_len = ((int)(*ie_size)) - (ssidie + 2 - ie_stream);
 	remaining_ie_buf_len = available_buffer_len - (int)ssidie[1];
 	unused_buf_len = WL_EXTRA_BUF_MAX - (4 + bi->length + *ie_size);
@@ -323,6 +332,7 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	s32 err = 0;
 	gfp_t aflags;
 	u8 tmp_buf[IEEE80211_MAX_SSID_LEN + 1];
+	u32 ssid_len_from_ie = 0;
 
 	if (unlikely(dtoh32(bi->length) > WL_BSS_INFO_MAX)) {
 		WL_DBG(("Beacon is larger than buffer. Discarding\n"));
@@ -371,7 +381,13 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	beacon_proberesp->beacon_int = cpu_to_le16(bi->beacon_period);
 	beacon_proberesp->capab_info = cpu_to_le16(bi->capability);
 	wl_rst_ie(cfg);
-	wl_update_hidden_ap_ie(bi, ((u8 *) bi) + bi->ie_offset, &bi->ie_length, update_ssid);
+	wl_update_hidden_ap_ie(bi, ((u8 *) bi) + bi->ie_offset, &bi->ie_length,
+		update_ssid, &ssid_len_from_ie);
+	if (ssid_len_from_ie > IEEE80211_MAX_SSID_LEN) {
+		WL_ERR(("wrong SSID len from ie: %d\n", ssid_len_from_ie));
+		err = -EINVAL;
+		goto out_err;
+	}
 	wl_mrg_ie(cfg, ((u8 *) bi) + bi->ie_offset, bi->ie_length);
 	wl_cp_ie(cfg, beacon_proberesp->variable, WL_BSS_INFO_MAX -
 		offsetof(struct wl_cfg80211_bss_info, frame_buf));
@@ -1134,7 +1150,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			if (cfg->afx_hdl->peer_chan == WL_INVALID)
 				complete(&cfg->act_frm_scan);
 		} else if ((likely(cfg->scan_request)) || (cfg->sched_scan_running)) {
-			WL_INFORM_MEM(("ESCAN ABORTED\n"));
+			WL_INFORM_MEM(("ESCAN ABORTED - reason:%d\n", status));
 
 			if (cfg->escan_info.ndev != ndev) {
 				/* Ignore events coming for older scan reqs */
@@ -1231,8 +1247,16 @@ s32 wl_cfgscan_pfn_handler(struct bcm_cfg80211 *cfg, wl_pfn_scanresult_v3_1_t *p
 			"or invalid bss_info length\n"));
 		goto exit;
 	}
-
+	preempt_disable();
+#ifdef ESCAN_CHANNEL_CACHE
+	add_roam_cache(cfg, bi);
+#endif /* ESCAN_CHANNEL_CACHE */
 	err = wl_inform_single_bss(cfg, bi, false);
+	if (unlikely(err)) {
+		WL_ERR(("bss inform failed\n"));
+	}
+	preempt_enable();
+	WL_MEM(("cfg80211 scan cache updated\n"));
 exit:
 	return err;
 }
@@ -1888,6 +1912,7 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	if (!cfg || !request) {
 		err = -EINVAL;
+		WL_ERR(("invalid escan parameter\n"));
 		goto exit;
 	}
 
@@ -1978,6 +2003,7 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		params = MALLOCZ(cfg->osh, params_size);
 		if (params == NULL) {
 			err = -ENOMEM;
+			WL_ERR(("malloc failure for escan params\n"));
 			goto exit;
 		}
 
@@ -2098,6 +2124,11 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			cfg->p2p->search_state = search_state;
 
 		MFREE(cfg->osh, default_chan_list, chan_mem);
+	} else {
+		WL_ERR(("escan not triggered - p2p_supported=%d, p2p_scan=%d, p2p_is_on=%d\n",
+			cfg->p2p_supported, p2p_scan(cfg), p2p_is_on(cfg)));
+		err = -EINVAL;
+		goto exit;
 	}
 exit:
 	if (unlikely(err)) {
@@ -2161,6 +2192,10 @@ wl_do_escan(struct bcm_cfg80211 *cfg, struct wiphy *wiphy, struct net_device *nd
 	}
 
 	err = wl_run_escan(cfg, ndev, request, WL_SCAN_ACTION_START);
+	if (unlikely(err)) {
+		WL_ERR(("escan failed (%d)\n", err));
+		goto exit;
+	}
 
 	if (passive_channel_skip) {
 		err = wldev_ioctl_set(ndev, WLC_SET_SCAN_PASSIVE_TIME,
@@ -2429,6 +2464,11 @@ is_scan_allowed(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 			WL_ERR(("Scanning already\n"));
 			return FALSE;
 		}
+	}
+
+	if (wl_get_drv_status(cfg, CONNECTING, ndev)) {
+		WL_ERR(("Association is in progress, skip new scan\n"));
+		return FALSE;
 	}
 
 	if (wl_get_drv_status(cfg, SCAN_ABORTING, ndev)) {
@@ -3208,11 +3248,10 @@ static s32 wl_escan_without_scan_cache(struct bcm_cfg80211 *cfg,
 		(status == WLC_E_STATUS_NEWASSOC)) {
 		/* Handle all cases of scan abort */
 
-		WL_DBG(("ESCAN ABORT reason: %d\n", status));
+		WL_INFORM_MEM(("ESCAN ABORT reason: %d\n", status));
 		if (wl_p2p_find_peer_channel(cfg, status, NULL, 0)) {
 			goto exit;
 		}
-		WL_INFORM_MEM(("ESCAN ABORTED\n"));
 
 		/* Update escan complete status */
 		aborted = true;
@@ -6076,12 +6115,12 @@ static int wl_cfgscan_acs_parse_parameter_save(int *pLen, uint32 *pList, chanspe
 	return ret;
 }
 
-static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int chanspec,
+static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
+		int *pLen, uint32 *pList, unsigned int chanspec,
 		drv_acs_params_t *pParameter)
 {
-	unsigned int chspec_ctl_ch = 0x0;
-	unsigned int chspec_band, chspec_bw, chspec_sb;
-	uint32 qty = 0, i = 0, channel = 0;
+	unsigned int chspec = 0, chspec_ctl_ch = 0, chspec_band = 0, chspec_bw = 0, chspec_sb = 0;
+	uint32 qty = 0, channel = 0, bw = 0;
 	s32 ret = 0;
 
 	do {
@@ -6093,6 +6132,11 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 
 		chspec_band = CHSPEC_BAND((chanspec_t)chanspec);
 		channel = wf_chspec_ctlchan((chanspec_t)chanspec);
+		if (channel != 165) {
+			bw = pParameter->ch_width;
+		} else {
+			bw = 20;	/* ch165 supports bw20 only */
+		}
 		qty = *pLen;
 
 		/* Handle 20MHz case for 2G and 6G (PSC) */
@@ -6102,138 +6146,65 @@ static int wl_cfgscan_acs_parse_parameter(int *pLen, uint32 *pList, unsigned int
 			chspec_bw = WL_CHANSPEC_BW_20;
 			chspec_ctl_ch = channel;
 			chspec_sb = WL_CHANSPEC_CTL_SB_NONE;
-			chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
+			chspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
 					chspec_bw | chspec_sb);
-			wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
+			wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			*pLen = qty;
 			return 0;
 		}
 
-		/* HT20 */
-		chspec_bw = WL_CHANSPEC_BW_20;
-		if (((pParameter->ht_enabled) || (pParameter->ht40_enabled) ||
-				(pParameter->vht_enabled) || (pParameter->he_enabled)) &&
-				(pParameter->ch_width == 20)) {
-			chspec_ctl_ch = channel;
-			chspec_sb = WL_CHANSPEC_CTL_SB_NONE;
-			chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-					chspec_bw | chspec_sb);
-			WL_TRACE(("%s: checking HT20  [%d] = 0x%X\n", __FUNCTION__, qty, chanspec));
-			wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-		}
-
-		/* HT40 */
-		chspec_bw = WL_CHANSPEC_BW_40;
-		if (((pParameter->ht40_enabled) || (pParameter->vht_enabled) ||
-				(pParameter->he_enabled)) && (pParameter->ch_width == 40) &&
-				(channel != 165)) {
-			for (i = 0; i <= CH_20MHZ_APART * 2; i++) {
-				chspec_ctl_ch = channel + (i - CH_20MHZ_APART);
-				/* L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LOWER;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("%s: checking HT40 U  [%d] = 0x%X\n",
-						__FUNCTION__, qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* R-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_UPPER;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("%s: checking HT40 L  [%d] = 0x%X\n",
-						__FUNCTION__, qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
+		/* Handle 5G band (from bw20 to bw80) */
+		/* bw80 */
+		if ((bw == 80) &&
+				(pParameter->vht_enabled || pParameter->he_enabled)) {
+			chspec = wf_create_chspec_from_primary(channel,
+				WL_CHANSPEC_BW_80, chspec_band);
+#ifdef WL_CELLULAR_CHAN_AVOID
+			if (!wl_cellavoid_is_safe_overlap(cfg->cellavoid_info, chspec)) {
+				chspec = INVCHANSPEC;
+			}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+			if (chspec != INVCHANSPEC) {
+				WL_INFORM_MEM(("set %d/80 (0x%x)\n", channel, chspec));
+				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
+			} else {
+				bw = 40;	/* downgrade if not found proper chanspec */
 			}
 		}
 
-		/* HT80 */
-		chspec_bw = WL_CHANSPEC_BW_80;
-		if ((pParameter->vht_enabled || pParameter->he_enabled) &&
-				(pParameter->ch_width == 80) &&
-				(channel != 165)) {
-			for (i = 0; i <= CH_40MHZ_APART * 2; i++) {
-				chspec_ctl_ch = channel + (i - CH_40MHZ_APART);
-				/* L-L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LL;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT80 LL  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* L-U-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LU;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT80 LU  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* U-L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_UL;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT80 UL  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* U-U-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_UU;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT80 UU  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
+		/* bw40 */
+		if ((bw == 40) &&
+				((pParameter->ht40_enabled) || (pParameter->vht_enabled) ||
+				(pParameter->he_enabled))) {
+			chspec = wf_create_chspec_from_primary(channel,
+				WL_CHANSPEC_BW_40, chspec_band);
+#ifdef WL_CELLULAR_CHAN_AVOID
+			if (!wl_cellavoid_is_safe_overlap(cfg->cellavoid_info, chspec)) {
+				chspec = INVCHANSPEC;
+			}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+			if (chspec != INVCHANSPEC) {
+				WL_INFORM_MEM(("set %d/40 (0x%x)\n", channel, chspec));
+				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
+			} else {
+				bw = 20;	/* downgrade if not found proper chanspec */
 			}
 		}
 
-		/* HT160 */
-		chspec_bw = WL_CHANSPEC_BW_160;
-		if (pParameter->he_enabled && (pParameter->ch_width == 160) &&
-				(channel != 165)) {
-			for (i = 0; i <= CH_80MHZ_APART * 2; i++) {
-				chspec_ctl_ch = channel + (i - CH_80MHZ_APART);
-				/* L-L-L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LLL;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 LLL  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* L-L-U-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LLU;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 LLU  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* L-U-L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LUL;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 LUL  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* L-U-U-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_LUU;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 LUU  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* U-L-L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_ULL;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 ULL  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* U-L-U-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_ULU;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 ULU  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* U-U-L-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_UUL;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 UUL  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
-				/* U-U-U-sideband */
-				chspec_sb = WL_CHANSPEC_CTL_SB_UUU;
-				chanspec = (chanspec_t)(chspec_ctl_ch | chspec_band |
-						chspec_bw | chspec_sb);
-				WL_TRACE(("checking HT160 UUU  [%d] = 0x%X\n", qty, chanspec));
-				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chanspec);
+		/* bw20 */
+		if ((bw == 20) &&
+				((pParameter->ht_enabled) || (pParameter->ht40_enabled) ||
+				(pParameter->vht_enabled) || (pParameter->he_enabled))) {
+			chspec = wf_create_chspec_from_primary(channel,
+				WL_CHANSPEC_BW_20, chspec_band);
+#ifdef WL_CELLULAR_CHAN_AVOID
+			if (!wl_cellavoid_is_safe_overlap(cfg->cellavoid_info, chspec)) {
+				chspec = INVCHANSPEC;
+			}
+#endif /* WL_CELLULAR_CHAN_AVOID */
+			if (chspec != INVCHANSPEC) {
+				WL_INFORM_MEM(("set %d/20 (0x%x)\n", channel, chspec));
+				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			}
 		}
 
@@ -6396,6 +6367,9 @@ static int wl_cfgscan_acs_do_apcs(struct net_device *dev,
 			goto done2;
 		}
 
+		/* Make sure any scan is not running before ACS trigged. */
+		wl_cfgscan_cancel_scan(cfg);
+
 		ret = wldev_ioctl_set(dev, WLC_START_CHANNEL_SEL, (void *)pBuffer, buf_len);
 		if (ret) {
 			WL_ERR(("autochannel trigger failed. ret=%d\n", ret));
@@ -6527,6 +6501,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	s32 ret = -EINVAL;
 	u32 *chspeclist = NULL;
 	u32 *p_chspec_list = NULL;
+	char chanspec_str[CHANSPEC_STR_LEN];
 #ifdef WL_CELLULAR_CHAN_AVOID
 	int safe_chspec_cnt = 0;
 	u32 *safe_chspeclist = NULL;
@@ -6578,7 +6553,9 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		if (wl_cellavoid_is_safe(cfg->cellavoid_info, chspeclist[j])) {
 			safe_chspeclist[safe_chspec_cnt++] = chspeclist[j];
 			safe_param.freq_bands |= CHSPEC_TO_WLC_BAND(CHSPEC_BAND(chspeclist[j]));
-			WL_INFORM_MEM(("Adding safe chanspec %x to the list\n", chspeclist[j]));
+			wf_chspec_ntoa(chspeclist[j], chanspec_str);
+			WL_INFORM_MEM(("Adding %s (0x%x) to the safe list\n",
+				chanspec_str, chspeclist[j]));
 		}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 
@@ -6605,7 +6582,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		for (i = 0; i < freq_list_len; i++) {
 			if (CHSPEC_CHANNEL(chspeclist[i]) == APCS_DEFAULT_5G_CH) {
 				WL_INFORM_MEM(("Def ACS chanspec:0x%x\n", chspeclist[i]));
-				wl_cfgscan_acs_parse_parameter(req_len, pList,
+				wl_cfgscan_acs_parse_parameter(cfg, req_len, pList,
 					chspeclist[i], parameter);
 				goto exit;
 			}
@@ -6676,8 +6653,9 @@ success:
 			continue;
 		}
 
-		WL_INFORM_MEM(("ACS chanspec:0x%x\n", p_chspec_list[i]));
-		wl_cfgscan_acs_parse_parameter(req_len, pList,
+		wf_chspec_ntoa(p_chspec_list[i], chanspec_str);
+		WL_INFORM_MEM(("ACS : %s (0x%x)\n", chanspec_str, p_chspec_list[i]));
+		wl_cfgscan_acs_parse_parameter(cfg, req_len, pList,
 			p_chspec_list[i], parameter);
 	}
 
@@ -6846,7 +6824,7 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 			for (i = 0; i < chan_list_len; i++) {
 				/* TODO chanspec needs to be created */
 				chanspec = pElem_chan[i];
-				wl_cfgscan_acs_parse_parameter(&req_len, pList,
+				wl_cfgscan_acs_parse_parameter(cfg, &req_len, pList,
 					chanspec, parameter);
 			}
 		}

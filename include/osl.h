@@ -93,6 +93,25 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 #define OR_REG(osh, r, v)		W_REG(osh, (r), R_REG(osh, r) | (v))
 #endif   /* !OR_REG */
 
+/**
+ * @brief API to either read or read, modify, write, read a 32bit register.
+ * Modify the value in a register. If the mask or val are not zero, this will bitwise-or val into
+ * the register at the address after masking the value read from the register with the provided
+ * mask. This process is sometimes referred to as Read-Modify-Write (RMW). This replaces the
+ * functionality provided by si_corereg for the dongle. When mask and val are zero, this macro
+ * behaves the same as R_REG.
+ * @param  addr    Backplane address to perform an operation on as a uint32.
+ * @param  mask    Bitmask for the value that will be written.
+ * @param  val     Value to and into the register at the address.
+ * @return         The value in the register at the provided address after the optional write.
+ */
+#define RMWR_REG(addr, mask, val) ({ \
+	if ((bool)(mask) || (bool)(val)) { \
+		SET_REG(NULL, (uint32 *)(addr), (mask), (val)); \
+	} \
+	R_REG(NULL, (uint32 *)(addr)); \
+})
+
 #if !defined(OSL_SYSUPTIME)
 #define OSL_SYSUPTIME() (0)
 #define OSL_SYSUPTIME_NOT_DEFINED 1
@@ -415,14 +434,6 @@ do { \
 	#define MALLOC_RA(osh, size, callsite) MALLOCZ(osh, size)
 #endif /* !MALLOC_RA */
 
-#ifndef MALLOC_PERSIST_ATTACH
-	#define MALLOC_PERSIST_ATTACH MALLOC
-#endif /* !MALLOC_PERSIST_ATTACH */
-
-#ifndef MALLOCZ_PERSIST_ATTACH
-	#define MALLOCZ_PERSIST_ATTACH MALLOCZ
-#endif /* !MALLOCZ_PERSIST_ATTACH */
-
 #ifndef MALLOCZ_NOPERSIST
 	#define MALLOCZ_NOPERSIST MALLOCZ
 #endif /* !MALLOCZ_NOPERSIST */
@@ -500,5 +511,4 @@ do { \
 #else
 #define ASSERT_NULL(expr) // do nothing
 #endif /* ENABLE_ASSERT_NULL */
-
 #endif	/* _osl_h_ */

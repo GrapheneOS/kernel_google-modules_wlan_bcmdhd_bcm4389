@@ -2468,4 +2468,58 @@ copy_debug_dump_time(char *dest, char *src)
 }
 #endif /* WL_CFGVENDOR_SEND_HANG_EVENT || DHD_PKT_LOGGING */
 
+#ifdef DHD_IOVAR_LOG_FILTER_DUMP
+typedef struct iovar_log_filter_table {
+	char command[64];
+	int  enable;
+} iovar_log_filter_table_t;
+
+/* WLC_GET_VAR is not being logged by default. Add for logging in debug_dump. */
+static const iovar_log_filter_table_t iovar_get_filter_params[] = {
+	{"cur_etheraddr", TRUE},
+	{"\0", TRUE}
+};
+
+/* WLC_SET_VAR is being logged by default. Add for not logging in debug_dump. */
+static const iovar_log_filter_table_t iovar_set_filter_params[] = {
+	{"pkt_filter_enable", FALSE},
+	{"pkt_filter_mode", FALSE},
+	{"\0", FALSE}
+};
+
+bool
+dhd_iovar_log_dump_check(dhd_pub_t *dhd_pub, uint32 cmd, char *msg)
+{
+	int cnt = 0;
+	const iovar_log_filter_table_t *table;
+	bool ret_val = TRUE;
+
+	/* Logging all IOVARs with DHD_IOVAR_MEM() in debug_dump file
+	 * during during Wifi ON.
+	 */
+	if (dhd_pub->up == FALSE) {
+		return TRUE;
+	}
+
+	if (cmd == WLC_GET_VAR) {
+		ret_val = FALSE;
+		table = iovar_get_filter_params;
+	} else if (cmd == WLC_SET_VAR) {
+		ret_val = TRUE;
+		table = iovar_set_filter_params;
+	} else {
+		return TRUE;
+	}
+	while (strlen(table[cnt].command) > 0) {
+		if (!strncmp(msg, table[cnt].command,
+				strlen(table[cnt].command))) {
+			return table[cnt].enable;
+		}
+
+		cnt++;
+	}
+
+	return ret_val;
+}
+#endif /* DHD_IOVAR_LOG_FILTER_DUMP */
 #endif /* DHD_LOG_DUMP */

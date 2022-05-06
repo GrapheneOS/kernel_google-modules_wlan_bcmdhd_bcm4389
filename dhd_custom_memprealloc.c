@@ -291,8 +291,13 @@ dhd_init_wlan_mem(void)
 
 	for (i = 0; i < PREALLOC_WLAN_SEC_NUM; i++) {
 		if (wlan_mem_array[i].size > 0) {
+#ifdef CONFIG_BCMDHD_SDIO
 			wlan_mem_array[i].mem_ptr =
 				kmalloc(wlan_mem_array[i].size, GFP_KERNEL);
+#else
+			wlan_mem_array[i].mem_ptr =
+				kvmalloc(wlan_mem_array[i].size, GFP_KERNEL);
+#endif /* CONFIG_BCMDHD_SDIO */
 
 			if (!wlan_mem_array[i].mem_ptr) {
 				pr_err("Failed to mem_alloc for WLAN\n");
@@ -429,7 +434,11 @@ dhd_exit_wlan_mem(void)
 
 	for (i = 0; i < PREALLOC_WLAN_SEC_NUM; i++) {
 		if (wlan_mem_array[i].mem_ptr) {
+#ifdef CONFIG_BCMDHD_SDIO
 			kfree(wlan_mem_array[i].mem_ptr);
+#else
+			kvfree(wlan_mem_array[i].mem_ptr);
+#endif /* CONFIG_BCMDHD_SDIO */
 		}
 	}
 

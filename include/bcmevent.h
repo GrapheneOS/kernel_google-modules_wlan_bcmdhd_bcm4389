@@ -314,7 +314,8 @@ typedef union bcm_event_msg_u {
 #define WLC_E_PFN_PARTIAL_RESULT	202
 #define WLC_E_MLO_LINK_INFO		203	/* 11be MLO link information */
 #define WLC_E_C2C			204	/* Client to client (C2C) for 6GHz TX */
-#define WLC_E_LAST			205	/* highest val + 1 for range checking */
+#define WLC_E_BCN_TSF			205	/* Report Beacon TSF */
+#define WLC_E_LAST			206	/* highest val + 1 for range checking */
 
 /* define an API for getting the string name of an event */
 extern const char *bcmevent_get_name(uint event_type);
@@ -447,18 +448,26 @@ typedef enum wlc_roam_cache_update_reason {
 #define WLC_E_STATUS_PSK_AUTH_GTK_REKEY_FAIL	6	/* GTK event status code */
 
 /* SDB transition status code */
-#define WLC_E_STATUS_SDB_START			1
-#define WLC_E_STATUS_SDB_COMPLETE		2
+#define WLC_E_STATUS_SDB_START			1u
+#define WLC_E_STATUS_SDB_COMPLETE		2u
 /* Slice-swap status code */
-#define WLC_E_STATUS_SLICE_SWAP_START		3
-#define WLC_E_STATUS_SLICE_SWAP_COMPLETE	4
+#define WLC_E_STATUS_SLICE_SWAP_START		3u
+#define WLC_E_STATUS_SLICE_SWAP_COMPLETE	4u
+#define WLC_E_STATUS_SDB_FAILED                 5u
 
 /* SDB transition reason code */
-#define WLC_E_REASON_HOST_DIRECT	0
-#define WLC_E_REASON_INFRA_ASSOC	1
-#define WLC_E_REASON_INFRA_ROAM		2
-#define WLC_E_REASON_INFRA_DISASSOC	3
-#define WLC_E_REASON_NO_MODE_CHANGE_NEEDED	4
+#define WLC_E_REASON_HOST_DIRECT			0u
+#define WLC_E_REASON_INFRA_ASSOC			1u
+#define WLC_E_REASON_INFRA_ROAM				2u
+#define WLC_E_REASON_INFRA_DISASSOC			3u
+#define WLC_E_REASON_NO_MODE_CHANGE_NEEDED		4u
+
+#define WLC_E_REASON_SDB_MODESW_SLICE_CHANGE		7u
+#define WLC_E_REASON_SDB_MODESW_CHAIN_CHANGE		8u
+#define WLC_E_REASON_SDB_MODESW_SLICE_AND_CHAIN_CHANGE	9u
+#define WLC_E_REASON_SDB_MODESW_UNKNOWN			10u
+#define WLC_E_REASON_SDB_MODESW_TIMEOUT			11u
+#define WLC_E_REASON_SDB_MODESW_FAILED			12u
 
 /* TX STAT ERROR REASON CODE */
 #define WLC_E_REASON_TXBACKOFF_NOT_DECREMENTED 0x1
@@ -514,38 +523,48 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_REASON_LAST		22	/* NOTE: increment this as you add reasons above */
 
 /* prune reason codes */
-#define WLC_E_PRUNE_ENCR_MISMATCH	1	/* encryption mismatch */
-#define WLC_E_PRUNE_BCAST_BSSID		2	/* AP uses a broadcast BSSID */
-#define WLC_E_PRUNE_MAC_DENY		3	/* STA's MAC addr is in AP's MAC deny list */
-#define WLC_E_PRUNE_MAC_NA		4	/* STA's MAC addr is not in AP's MAC allow list */
-#define WLC_E_PRUNE_REG_PASSV		5	/* AP not allowed due to regulatory restriction */
-#define WLC_E_PRUNE_SPCT_MGMT		6	/* AP does not support STA locale spectrum mgmt */
-#define WLC_E_PRUNE_RADAR		7	/* AP is on a radar channel of STA locale */
-#define WLC_E_RSN_MISMATCH		8	/* STA does not support AP's RSN */
-#define WLC_E_PRUNE_NO_COMMON_RATES	9	/* No rates in common with AP */
-#define WLC_E_PRUNE_BASIC_RATES		10	/* STA does not support all basic rates of BSS */
+#define WLC_E_PRUNE_ENCR_MISMATCH	1u	/* encryption mismatch */
+#define WLC_E_PRUNE_BCAST_BSSID		2u	/* AP uses a broadcast BSSID */
+#define WLC_E_PRUNE_MAC_DENY		3u	/* STA's MAC addr is in AP's MAC deny list */
+#define WLC_E_PRUNE_MAC_NA		4u	/* STA's MAC addr is not in AP's MAC allow list */
+#define WLC_E_PRUNE_REG_PASSV		5u	/* AP not allowed due to regulatory restriction */
+#define WLC_E_PRUNE_SPCT_MGMT		6u	/* AP does not support STA locale spectrum mgmt */
+#define WLC_E_PRUNE_RADAR		7u	/* AP is on a radar channel of STA locale */
+#define WLC_E_RSN_MISMATCH		8u	/* STA does not support AP's RSN */
+#define WLC_E_PRUNE_NO_COMMON_RATES	9u	/* No rates in common with AP */
+#define WLC_E_PRUNE_BASIC_RATES		10u	/* STA does not support all basic rates of BSS */
 #ifdef BCMCCX
-#define WLC_E_PRUNE_CCXFAST_PREVAP	11	/* CCX FAST ROAM: prune previous AP */
+#define WLC_E_PRUNE_CCXFAST_PREVAP	11u	/* CCX FAST ROAM: prune previous AP */
 #endif /* def BCMCCX */
-#define WLC_E_PRUNE_CIPHER_NA		12	/* BSS's cipher not supported */
-#define WLC_E_PRUNE_KNOWN_STA		13	/* AP is already known to us as a STA */
+#define WLC_E_PRUNE_CIPHER_NA		12u	/* BSS's cipher not supported */
+#define WLC_E_PRUNE_KNOWN_STA		13u	/* AP is already known to us as a STA */
 #ifdef BCMCCX
-#define WLC_E_PRUNE_CCXFAST_DROAM	14	/* CCX FAST ROAM: prune unqualified AP */
+#define WLC_E_PRUNE_CCXFAST_DROAM	14u	/* CCX FAST ROAM: prune unqualified AP */
 #endif /* def BCMCCX */
-#define WLC_E_PRUNE_WDS_PEER		15	/* AP is already known to us as a WDS peer */
-#define WLC_E_PRUNE_QBSS_LOAD		16	/* QBSS LOAD - AAC is too low */
-#define WLC_E_PRUNE_HOME_AP		17	/* prune home AP */
+#define WLC_E_PRUNE_WDS_PEER		15u	/* AP is already known to us as a WDS peer */
+#define WLC_E_PRUNE_QBSS_LOAD		16u	/* QBSS LOAD - AAC is too low */
+#define WLC_E_PRUNE_HOME_AP		17u	/* prune home AP */
 #ifdef BCMCCX
-#define WLC_E_PRUNE_AP_BLOCKED		18	/* prune blocked AP */
-#define WLC_E_PRUNE_NO_DIAG_SUPPORT	19	/* prune due to diagnostic mode not supported */
+#define WLC_E_PRUNE_AP_BLOCKED		18u	/* prune blocked AP */
+#define WLC_E_PRUNE_NO_DIAG_SUPPORT	19u	/* prune due to diagnostic mode not supported */
 #endif /* BCMCCX */
-#define WLC_E_PRUNE_AUTH_RESP_MAC	20	/* suppress auth resp by MAC filter */
-#define WLC_E_PRUNE_ASSOC_RETRY_DELAY	21	/* MBO assoc retry delay */
-#define WLC_E_PRUNE_RSSI_ASSOC_REJ	22	/* OCE RSSI-based assoc rejection */
-#define WLC_E_PRUNE_MAC_AVOID		23	/* AP's MAC addr is in STA's MAC avoid list */
-#define WLC_E_PRUNE_TRANSITION_DISABLE	24	/* AP's Transition Disable Policy */
-#define WLC_E_PRUNE_WRONG_COUNTRY_CODE	25	/* Prune AP due to Wrong Country Code */
-#define WLC_E_PRUNE_CHANNEL_NOT_IN_VLP	26	/* Prune AP  due to Chanspec not in VLP cat */
+#define WLC_E_PRUNE_AUTH_RESP_MAC	20u	/* suppress auth resp by MAC filter */
+#define WLC_E_PRUNE_ASSOC_RETRY_DELAY	21u	/* MBO assoc retry delay */
+#define WLC_E_PRUNE_RSSI_ASSOC_REJ	22u	/* OCE RSSI-based assoc rejection */
+#define WLC_E_PRUNE_MAC_AVOID		23u	/* AP's MAC addr is in STA's MAC avoid list */
+#define WLC_E_PRUNE_TRANSITION_DISABLE	24u	/* AP's Transition Disable Policy */
+#define WLC_E_PRUNE_WRONG_COUNTRY_CODE	25u	/* Prune AP due to Wrong Country Code */
+#define WLC_E_PRUNE_CHANNEL_NOT_IN_VLP	26u	/* Prune AP due to Chanspec not in VLP cat */
+#define WLC_E_PRUNE_MFP_COMPAT_MISMATCH	27u	/* Prune AP due to MFP compatibility mismatch */
+#define WLC_E_PRUNE_CHAN_MISMATCH	28u	/* Prune AP due to channel mismatch */
+#define WLC_E_PRUNE_MSTA		29u	/* mSTA: Prune join to AP from multiple bsscfgs */
+#define WLC_E_PRUNE_BLIST_BTM		30u	/* Prune AP due to BTM Black listing */
+#define WLC_E_PRUNE_BCN_MUTE_LOW_RSSI	31u	/* Prune low rssi beacon muted AP */
+#define WLC_E_PRUNE_6G_RSN_MISMATCH	32u	/* Prune AP due to RSN mismatch in 6G */
+#define WLC_E_PRUNE_INVALID_CHAN	33u	/* Prune AP due to invalid channel */
+#define WLC_E_PRUNE_MESH_CFG_MISMATCH	34u	/* Prune due to Mesh AP config mismatch */
+#define WLC_E_PRUNE_6G_RNR_INVALID_CHAN 35u	/* Prune RNR due to invalid channel reporting */
+#define WLC_E_PRUNE_BY_OWE		36u	/* Pruned by OWE */
 
 /* WPA failure reason codes carried in the WLC_E_PSK_SUP event */
 #define WLC_E_SUP_OTHER			0	/* Other reason */
@@ -925,7 +944,7 @@ typedef struct wl_dpsta_intf_event {
 
 /*  **********  NAN protocol events/subevents  ********** */
 #ifndef NAN_EVENT_BUFFER_SIZE
-#define NAN_EVENT_BUFFER_SIZE 1024 /* max size */
+#define NAN_EVENT_BUFFER_SIZE 1600 /* max size */
 #endif /* NAN_EVENT_BUFFER_SIZE */
 /* NAN Events sent by firmware */
 
@@ -1248,6 +1267,17 @@ typedef struct wl_twt_notify {
 	uint8 notification;
 	uint8 PAD[3];
 } wl_twt_notify_t;
+
+/* Beacon TSF Event */
+typedef struct wl_bcn_tsf {
+	uint16 version;
+	uint16 length;	/* the byte count of fields from 'reason_code' onwards */
+	uint32 bcn_tsf_h;
+	uint32 bcn_tsf_l;
+} wl_bcn_tsf_t;
+
+#define WL_BCN_TSF_VER_0	0u
+#define WL_BCN_TSF_LEN	sizeof(wl_bcn_tsf_t)
 
 #define WL_INVALID_IE_EVENT_VERSION	0
 
@@ -1673,17 +1703,22 @@ typedef struct wl_mlo_link_info_event_v1 {
 /* ===== C2C event definitions ===== */
 #define C2C_EVENT_BUFFER_SIZE		1024u
 #define IS_C2C_EVT_ON(param, evt)	((param) & (1u << (evt)))
-#define C2C_ALLOWED_EVENT_MASK		(1u << WL_C2C_EVT_ESIG_START | \
-		(1u << WL_C2C_EVT_ESIG_END) | (1u << WL_C2C_EVT_ESIG_PRE_EXPIRY) | \
-		(1u << WL_C2C_EVT_CACHE_ADD) | (1u << WL_C2C_EVT_CACHE_DEL))
+#define C2C_ALLOWED_EVENT_MASK		(1u << WL_EVT_C2C_START | \
+		(1u << WL_EVT_C2C_END) | (1u << WL_EVT_C2C_PRE_EXPIRY) | \
+		(1u << WL_EVT_C2C_EXTN) | \
+		(1u << WL_EVT_C2C_CACHE_ADD) | (1u << WL_EVT_C2C_CACHE_DEL) | \
+		(1u << WL_EVT_C2C_MUTE_ON) | (1u << WL_EVT_C2C_MUTE_OFF))
 
 /* WLC_E_C2C subevent ID */
 typedef enum wl_c2c_events {
-	WL_C2C_EVT_ESIG_START,		/* new enabling signal */
-	WL_C2C_EVT_ESIG_END,		/* esig expired */
-	WL_C2C_EVT_ESIG_PRE_EXPIRY,	/* esig expiring soon; do scan or let expire */
-	WL_C2C_EVT_CACHE_ADD,		/* added new LPI AP to cache */
-	WL_C2C_EVT_CACHE_DEL		/* removed LPI AP from cache */
+	WL_EVT_C2C_START,		/* first enabling signal, c2c starts */
+	WL_EVT_C2C_END,			/* enabling signal expired, c2c ends */
+	WL_EVT_C2C_PRE_EXPIRY,		/* esig expiring soon; do scan or let expire */
+	WL_EVT_C2C_EXTN,		/* received new esig, c2c continues */
+	WL_EVT_C2C_CACHE_ADD,		/* added new LPI AP to cache */
+	WL_EVT_C2C_CACHE_DEL,		/* removed LPI AP from cache */
+	WL_EVT_C2C_MUTE_ON,		/* p2p tx is muted for 6GHz channels */
+	WL_EVT_C2C_MUTE_OFF		/* p2p tx unmuted for 6GHz channels */
 } wl_c2c_events_e;
 
 #endif /* _BCMEVENT_H_ */

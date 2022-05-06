@@ -405,6 +405,9 @@ extern void copy_debug_dump_time(char *dest, char *src);
 void dhd_get_debug_dump_len(void *handle, struct sk_buff *skb, void *event_info, uint8 event);
 void cfgvendor_log_dump_len(dhd_pub_t *dhdp, log_dump_type_t *type, struct sk_buff *skb);
 #endif
+#ifdef DHD_IOVAR_LOG_FILTER_DUMP
+bool dhd_iovar_log_dump_check(dhd_pub_t *dhd_pub, uint32 cmd, char *msg);
+#endif /* DHD_IOVAR_LOG_FILTER_DUMP */
 #endif /* DHD_LOG_DUMP */
 
 #endif /* !__DHD_LOG_DUMP_H__ */

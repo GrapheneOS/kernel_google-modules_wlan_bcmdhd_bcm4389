@@ -936,6 +936,7 @@ uint dhd_tcm_test_enable = FALSE;
 module_param(dhd_tcm_test_enable, uint, 0644);
 
 tcm_test_status_t dhd_tcm_test_status = TCM_TEST_NOT_RUN;
+tcm_test_mode_t dhd_tcm_test_mode = TCM_TEST_MODE_ALWAYS;
 
 extern char dhd_version[];
 extern char fw_version[];
@@ -2328,17 +2329,29 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				}
 #endif /* ARP_OFFLOAD_SUPPORT */
 #ifdef PASS_ALL_MCAST_PKTS
-				allmulti = 0;
 				for (i = 0; i < DHD_MAX_IFS; i++) {
-					if (dhdinfo->iflist[i] && dhdinfo->iflist[i]->net) {
-						ret = dhd_iovar(dhd, i, "allmulti",
-								(char *)&allmulti,
-								sizeof(allmulti),
-								NULL, 0, TRUE);
-						if (ret < 0) {
-							DHD_ERROR(("%s allmulti failed %d\n",
-								__FUNCTION__, ret));
-						}
+					struct net_device *ndev = NULL;
+					if (!dhdinfo->iflist[i] || !dhdinfo->iflist[i]->net) {
+						continue;
+					}
+
+					ndev = dhdinfo->iflist[i]->net;
+					if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_P2P_GO ||
+						ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP) {
+						allmulti = 1;
+						DHD_LOG_MEM(("%s: IF[%s] is AP/GO, set allmulti.\n",
+							__FUNCTION__, ndev->name));
+					} else {
+						allmulti = 0;
+					}
+
+					ret = dhd_iovar(dhd, i, "allmulti",
+						(char *)&allmulti,
+						sizeof(allmulti),
+						NULL, 0, TRUE);
+					if (ret < 0) {
+						DHD_ERROR(("%s allmulti failed %d\n",
+							__FUNCTION__, ret));
 					}
 				}
 #endif /* PASS_ALL_MCAST_PKTS */
@@ -5771,7 +5784,7 @@ dhd_add_monitor_if(dhd_info_t *dhd)
 	if (FW_SUPPORTED((&dhd->pub), monitor)) {
 #ifdef DHD_PCIE_RUNTIMEPM
 		/* Disable RuntimePM in monitor mode */
-		DHD_DISABLE_RUNTIME_PM(&dhd->pub);
+		DHD_STOP_RPM_TIMER(&dhd->pub);
 		DHD_ERROR(("%s : disable runtime PM in monitor mode\n", __FUNCTION__));
 #endif /* DHD_PCIE_RUNTIME_PM */
 		scan_suppress = TRUE;
@@ -5814,6 +5827,7 @@ dhd_del_monitor_if(dhd_info_t *dhd)
 		return;
 	}
 #ifdef WL_CFG80211_MONITOR
+	dhd->monitor_type = FALSE;
 	dev_priv = DHD_MON_DEV_PRIV(dhd->monitor_dev);
 	dev_priv->dhd = (dhd_info_t *)NULL;
 	bzero(&dev_priv->stats, sizeof(dev_priv->stats));
@@ -5822,7 +5836,7 @@ dhd_del_monitor_if(dhd_info_t *dhd)
 	if (FW_SUPPORTED((&dhd->pub), monitor)) {
 #ifdef DHD_PCIE_RUNTIMEPM
 		/* Enable RuntimePM */
-		DHD_ENABLE_RUNTIME_PM(&dhd->pub);
+		DHD_START_RPM_TIMER(&dhd->pub);
 		DHD_ERROR(("%s : enabled runtime PM\n", __FUNCTION__));
 #endif /* DHD_PCIE_RUNTIME_PM */
 		scan_suppress = FALSE;
@@ -6367,6 +6381,20 @@ dhd_ctrl_tcp_limit_output_bytes(int level)
 }
 #endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
 
+void
+dhd_force_collect_socram_during_wifi_onoff(dhd_pub_t *dhdp)
+{
+#ifdef DHD_FW_COREDUMP
+	if (dhdp->memdump_enabled && (dhdp->busstate != DHD_BUS_DOWN)) {
+#ifdef DHD_SSSR_DUMP
+		dhdp->collect_sssr = TRUE;
+#endif /* DHD_SSSR_DUMP */
+		dhdp->memdump_type = DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF;
+		dhd_bus_mem_dump(dhdp);
+	}
+#endif /* DHD_FW_COREDUMP */
+}
+
 int
 dhd_stop(struct net_device *net)
 {
@@ -6379,6 +6407,8 @@ dhd_stop(struct net_device *net)
 #endif /* WL_STATIC_IF */
 #endif /* WL_CFG80211 */
 	dhd_info_t *dhd = DHD_DEV_INFO(net);
+	int timeleft = 0;
+	uint32 bitmask = (uint32)-1;
 
 	DHD_ERROR(("%s: ENTER\n", __FUNCTION__));
 	DHD_OS_WAKE_LOCK(&dhd->pub);
@@ -6392,7 +6422,21 @@ dhd_stop(struct net_device *net)
 	/* Synchronize between the stop and rx path */
 	dhd->pub.stop_in_progress = true;
 	OSL_SMP_WMB();
-	dhd_os_busbusy_wait_negation(&dhd->pub, &dhd->pub.dhd_bus_busy_state);
+
+#ifdef DHD_COREDUMP
+	if (DHD_BUS_BUSY_CHECK_IN_HALDUMP(&dhd->pub)) {
+		DHD_ERROR(("%s: Cancel the triggerd HAL dump.\n", __FUNCTION__));
+		DHD_BUS_BUSY_CLEAR_IN_HALDUMP(&dhd->pub);
+	}
+	bitmask = ~(DHD_BUS_BUSY_IN_HALDUMP);
+#endif /* DHD_COREDUMP */
+	timeleft = dhd_os_busbusy_wait_bitmask(&dhd->pub,
+			&dhd->pub.dhd_bus_busy_state,
+			bitmask, 0);
+	if (dhd->pub.dhd_bus_busy_state & bitmask) {
+		DHD_ERROR(("%s: Timed out(%d) dhd_bus_busy_state=0x%x\n",
+				__FUNCTION__, timeleft, dhd->pub.dhd_bus_busy_state));
+	}
 
 	mutex_lock(&dhd->pub.ndev_op_sync);
 	if (dhd->pub.up == 0) {
@@ -6587,6 +6631,13 @@ exit:
 #if defined(WL_CFG80211)
 		if (ifidx == 0 && !dhd_download_fw_on_driverload) {
 #if defined(WLAN_ACCEL_BOOT)
+			if (dhd->pub.dongle_trap_during_wifi_onoff) {
+				DHD_ERROR(("%s: force collect socram due to trap "
+					"during wifi on/off.\n", __FUNCTION__));
+				dhd_force_collect_socram_during_wifi_onoff(&dhd->pub);
+				dhd->pub.dongle_trap_during_wifi_onoff = 0;
+			}
+
 			wl_android_wifi_accel_off(net, dhd->wl_accel_force_reg_on);
 #else
 #if defined(BT_OVER_SDIO)
@@ -6770,13 +6821,16 @@ dhd_open(struct net_device *net)
 	}
 #endif /* PREVENT_REOPEN_DURING_HANG */
 
-	dhd_tcm_test_status = TCM_TEST_NOT_RUN;	/* clear to run TCM test once per dhd_open() */
+	/* clear to run TCM test once per dhd_open() */
+	if (dhd_tcm_test_mode != TCM_TEST_MODE_ONCE) {
+		dhd_tcm_test_status = TCM_TEST_NOT_RUN;
+	}
 
 	mutex_lock(&dhd->pub.ndev_op_sync);
 
 	if (dhd->pub.up == 1) {
 		/* already up */
-		DHD_INFO(("Primary net_device is already up \n"));
+		DHD_ERROR(("Primary net_device is already up \n"));
 		mutex_unlock(&dhd->pub.ndev_op_sync);
 		return BCME_OK;
 	}
@@ -6832,6 +6886,7 @@ dhd_open(struct net_device *net)
 
 	DHD_OS_WAKE_LOCK(&dhd->pub);
 	dhd->pub.dongle_trap_occured = 0;
+	dhd->pub.dongle_trap_during_wifi_onoff = 0;
 	dhd->pub.hang_was_sent = 0;
 	dhd->pub.hang_was_pending = 0;
 	dhd->pub.hang_reason = 0;
@@ -9814,6 +9869,7 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	DHD_TRACE(("Enter %s:\n", __FUNCTION__));
 	dhdp->memdump_type = 0;
 	dhdp->dongle_trap_occured = 0;
+	dhdp->dongle_trap_during_wifi_onoff = 0;
 #ifdef DHD_SSSR_DUMP
 	dhdp->collect_sssr = FALSE;
 #endif /* DHD_SSSR_DUMP */
@@ -13271,6 +13327,11 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 		return BCME_ERROR;
 	}
 
+	if (dhdp->stop_in_progress) {
+		DHD_ERROR(("%s: dhd_stop in progress\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
 	DHD_GENERAL_LOCK(dhdp, flags);
 	if (DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhdp)) {
 		DHD_BUS_BUSY_CLEAR_IN_HALDUMP(dhdp);
@@ -13288,6 +13349,9 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp)
 		int timeleft = 0;
 
 		DHD_ERROR(("[DUMP] %s: HAL started. send urgent event\n", __FUNCTION__));
+#ifdef DHD_MAP_PKTID_LOGGING
+		dhd_pktid_logging_dump(dhdp);
+#endif /* DHD_MAP_PKTID_LOGGING */
 		dhd_dbg_send_urgent_evt(dhdp, NULL, 0);
 
 		DHD_ERROR(("%s: wait to clear dhd_bus_busy_state: 0x%x\n",
@@ -14462,6 +14526,10 @@ dhd_clear(dhd_pub_t *dhdp)
 static void
 dhd_module_cleanup(void)
 {
+#if defined(ENABLE_NOT_LOAD_DHD_MODULE)
+	DHD_ERROR(("%s ##### Do not clean-up due to secondary build\n", __FUNCTION__));
+	return;
+#endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 #ifdef BCMDBUS
@@ -14478,6 +14546,10 @@ dhd_module_cleanup(void)
 static void __exit
 dhd_module_exit(void)
 {
+#if defined(ENABLE_NOT_LOAD_DHD_MODULE)
+	DHD_ERROR(("%s ##### Do not unload driver due to secondary build\n", __FUNCTION__));
+	return;
+#endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	atomic_set(&exit_in_progress, 1);
 #ifdef DHD_BUZZZ_LOG_ENABLED
 	dhd_buzzz_detach();
@@ -14581,6 +14653,10 @@ dhd_module_init(void)
 {
 	int err;
 
+#if defined(ENABLE_NOT_LOAD_DHD_MODULE)
+	DHD_ERROR(("%s ##### Do not load driver due to secondary build\n", __FUNCTION__));
+	return 0;
+#endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	err = _dhd_module_init();
 #ifdef DHD_SUPPORT_HDM
 	if (hdm_wifi_support && err && !dhd_download_fw_on_driverload) {
@@ -14627,8 +14703,11 @@ dhd_module_init_hdm(void)
 static int
 dhd_reboot_callback(struct notifier_block *this, unsigned long code, void *unused)
 {
+	dhd_pub_t *dhdp = g_dhd_pub;
+
+	BCM_REFERENCE(dhdp);
 	DHD_ERROR(("%s: code = %ld\n", __FUNCTION__, code));
-	if (!atomic_inc_and_test(&reboot_in_progress)) {
+	if (!OSL_ATOMIC_INC_AND_TEST(dhdp->osh, &reboot_in_progress)) {
 		DHD_ERROR(("%s: Skip duplicated reboot callback!\n", __FUNCTION__));
 		return NOTIFY_DONE;
 	}
@@ -16393,7 +16472,7 @@ dhd_dev_set_lazy_roam_cfg(struct net_device *dev,
 	      roam_param->alert_roam_trigger_threshold, roam_param->a_band_max_boost));
 
 	memcpy(&roam_exp_cfg.params, roam_param, sizeof(*roam_param));
-	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION;
+	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION_1;
 	roam_exp_cfg.flags = ROAM_EXP_CFG_PRESENT;
 	if (dhd->pub.lazy_roam_enable) {
 		roam_exp_cfg.flags |= ROAM_EXP_ENABLE_FLAG;
@@ -16415,7 +16494,7 @@ dhd_dev_lazy_roam_enable(struct net_device *dev, uint32 enable)
 	wl_roam_exp_cfg_t roam_exp_cfg;
 
 	memset(&roam_exp_cfg, 0, sizeof(roam_exp_cfg));
-	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION;
+	roam_exp_cfg.version = ROAM_EXP_CFG_VERSION_1;
 	if (enable) {
 		roam_exp_cfg.flags = ROAM_EXP_ENABLE_FLAG;
 	}
@@ -16438,7 +16517,7 @@ dhd_dev_set_lazy_roam_bssid_pref(struct net_device *dev,
 	uint len;
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
-	bssid_pref->version = BSSID_PREF_LIST_VERSION;
+	bssid_pref->version = BSSID_PREF_LIST_VERSION_1;
 	/* By default programming bssid pref flushes out old values */
 	bssid_pref->flags = (flush && !bssid_pref->count) ? ROAM_EXP_CLEAR_BSSID_PREF: 0;
 	len = sizeof(wl_bssid_pref_cfg_t);
@@ -16522,7 +16601,7 @@ dhd_dev_set_rssi_monitor_cfg(struct net_device *dev, int start,
 	wl_rssi_monitor_cfg_t rssi_monitor;
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
-	rssi_monitor.version = RSSI_MONITOR_VERSION;
+	rssi_monitor.version = RSSI_MONITOR_VERSION_1;
 	rssi_monitor.max_rssi = max_rssi;
 	rssi_monitor.min_rssi = min_rssi;
 	rssi_monitor.flags = start ? 0: RSSI_MONITOR_STOP;
@@ -18897,12 +18976,14 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 
 	if ((dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) ||
 		(dhdp->memdump_type == DUMP_TYPE_DUE_TO_BT) ||
-		(dhdp->memdump_type == DUMP_TYPE_SMMU_FAULT))
+		(dhdp->memdump_type == DUMP_TYPE_SMMU_FAULT) ||
+		(dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF))
 	{
 		dhd_info->scheduled_memdump = FALSE;
 		dhd_mem_dump((void *)dhdp->info, (void *)dump, 0);
 		/* No need to collect debug dump for init failure */
-		if (dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
+		if (dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE ||
+			dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF) {
 			return;
 		}
 #ifdef DHD_LOG_DUMP
@@ -21099,10 +21180,6 @@ int dhd_check_valid_ie(dhd_pub_t *dhdp, uint8* buf, int len)
 		}
 		i++;
 	}
-	if (bcm_atoi((char*)buf) > 255) {
-		DHD_ERROR(("error: element id cannot be greater than 255 \n"));
-		return BCME_ERROR;
-	}
 
 	return BCME_OK;
 }
@@ -21129,7 +21206,7 @@ int dhd_parse_filter_ie(dhd_pub_t *dhd, uint8 *buf)
 	}
 
 	/* setup filter iovar header */
-	p_filter_iov->version = WL_FILTER_IE_VERSION;
+	p_filter_iov->version = WL_FILTER_IE_VERSION_1;
 	p_filter_iov->len = filter_iovsize;
 	p_filter_iov->fixed_length = p_filter_iov->len - FILTER_IE_BUFSZ;
 	p_filter_iov->pktflag = FC_PROBE_REQ;

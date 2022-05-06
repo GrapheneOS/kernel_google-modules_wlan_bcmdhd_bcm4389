@@ -76,6 +76,7 @@ typedef struct dot11_brcm_extch dot11_brcm_extch_ie_t;
  * #define WET_TUNNEL_IE_TYPE		3
  * #define ULB_BRCM_PROP_IE_TYPE	91
  * #define SDB_BRCM_PROP_IE_TYPE	92
+ * #define BCM_RESERVED_ACCESS		93	(Reserved, definition pending)
  */
 #define RWL_WIFI_DEFAULT		0
 #define DPT_IE_TYPE			2

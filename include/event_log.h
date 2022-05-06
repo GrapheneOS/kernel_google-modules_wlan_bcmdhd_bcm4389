@@ -39,8 +39,8 @@
 /* We make sure that the block size will fit in a single packet
  *  (allowing for a bit of overhead on each packet
  */
-#if defined(BCMPCIEDEV) && defined(BCMPCIEDEV_ENABLED)
-#define EVENT_LOG_MAX_BLOCK_SIZE	1648
+#if (defined(BCMPCIEDEV) && defined(BCMPCIEDEV_ENABLED)) || defined(BCMPCIE)
+#define EVENT_LOG_MAX_BLOCK_SIZE	1832
 #else
 #define EVENT_LOG_MAX_BLOCK_SIZE	1400
 #endif
@@ -48,6 +48,7 @@
 #define EVENT_LOG_BLOCK_SIZE_1K		0x400u
 #define EVENT_LOG_BLOCK_SIZE_512B	0x200u
 #define EVENT_LOG_BLOCK_SIZE_256B	0x100u
+#define EVENT_LOG_BLOCK_SIZE_1648B	0x670u
 #define EVENT_LOG_WL_BLOCK_SIZE		0x200
 #define EVENT_LOG_PSM_BLOCK_SIZE	0x200
 #define EVENT_LOG_MEM_API_BLOCK_SIZE	0x200
@@ -62,12 +63,12 @@
 #define EVENT_LOG_TOF_INLINE_BLOCK_SIZE	1300u
 #define EVENT_LOG_TOF_INLINE_BUF_SIZE (EVENT_LOG_TOF_INLINE_BLOCK_SIZE * 3u)
 
-#define EVENT_LOG_PRSRV_BUF_SIZE	(EVENT_LOG_MAX_BLOCK_SIZE * 2)
+#define EVENT_LOG_PRSRV_BUF_SIZE	(EVENT_LOG_BLOCK_SIZE_1648B * 2)
 #define EVENT_LOG_BUS_PRSRV_BUF_SIZE	(EVENT_LOG_BUS_BLOCK_SIZE * 2)
 #define EVENT_LOG_WBUS_PRSRV_BUF_SIZE	(EVENT_LOG_WBUS_BLOCK_SIZE * 2)
 
-#define EVENT_LOG_BLOCK_SIZE_PRSRV_CHATTY	(EVENT_LOG_MAX_BLOCK_SIZE * 1)
-#define EVENT_LOG_BLOCK_SIZE_BUS_PRSRV_CHATTY	(EVENT_LOG_MAX_BLOCK_SIZE * 1)
+#define EVENT_LOG_BLOCK_SIZE_PRSRV_CHATTY	(EVENT_LOG_BLOCK_SIZE_1648B * 1)
+#define EVENT_LOG_BLOCK_SIZE_BUS_PRSRV_CHATTY	(EVENT_LOG_BLOCK_SIZE_1648B * 1)
 
 /* Maximum event log record payload size = 1016 bytes or 254 words. */
 #define EVENT_LOG_MAX_RECORD_PAYLOAD_SIZE	254
@@ -677,10 +678,6 @@ extern void event_log2(int tag, int fmtNum, uint32 t1, uint32 t2);
 extern void event_log3(int tag, int fmtNum, uint32 t1, uint32 t2, uint32 t3);
 extern void event_log4(int tag, int fmtNum, uint32 t1, uint32 t2, uint32 t3, uint32 t4);
 extern void event_logn(int num_args, int tag, int fmtNum, ...);
-#ifdef ROM_COMPAT_MSCH_PROFILER
-/* For compatibility with ROM, for old msch event log function to pass parameters in stack */
-extern void event_logv(uint num_args, int tag, int fmtNum, va_list ap);
-#endif /* ROM_COMPAT_MSCH_PROFILER */
 
 /* Use PTM based timestamping of event log records if PTM is available. */
 #if defined(GTIMER_PTM) && !defined(GTIMER_PTM_DISABLED)

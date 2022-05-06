@@ -542,6 +542,7 @@ typedef struct nan_config_cmd_data {
 	uint32 dw_early_termination;
 	uint32 instant_mode_en;
 	uint32 instant_chan;
+	uint8 chre_req;
 } nan_config_cmd_data_t;
 
 typedef struct nan_event_hdr {
@@ -721,10 +722,21 @@ typedef struct wl_ndi_data
 	struct net_device *nan_ndev;
 } wl_ndi_data_t;
 
+/* Google mobile platforms have 2 processors which can request NAN
+ * APP - main application processor
+ * CHRE - Low power processor
+ * We need to differentiate the request for handling (non)concurrency
+ */
+typedef enum {
+	ENABLE_FOR_APP = 0,
+	ENABLE_FOR_CHRE = 1
+} nan_enab_reason;
+
 typedef struct wl_nancfg
 {
 	struct bcm_cfg80211 *cfg;
 	bool nan_enable;
+	nan_enab_reason enab_reason;
 	nan_svc_inst_t nan_inst_ctrl[NAN_ID_CTRL_SIZE];
 	struct ether_addr initiator_ndi;
 	uint8 nan_dp_state;
@@ -988,7 +1000,8 @@ typedef enum {
 	NAN_ATTRIBUTE_NUM_CHANNELS			= 229,
 	NAN_ATTRIBUTE_INSTANT_MODE_ENABLE		= 230,
 	NAN_ATTRIBUTE_INSTANT_COMM_CHAN			= 231,
-	NAN_ATTRIBUTE_MAX				= 232
+	NAN_ATTRIBUTE_CHRE_REQUEST			= 232,
+	NAN_ATTRIBUTE_MAX				= 233
 } NAN_ATTRIBUTE;
 
 enum geofence_suspend_reason {

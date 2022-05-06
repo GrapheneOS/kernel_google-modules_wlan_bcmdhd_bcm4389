@@ -1242,7 +1242,7 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 			if (!ecntr_pushed && dhd_log_dump_ecntr_enabled()) {
 				if (dhd_dbg_send_evtlog_to_ring(plog_hdr, &msg_hdr,
 					dhdp->ecntr_dbg_ring,
-					PAYLOAD_ECNTR_MAX_LEN, logbuf) != BCME_OK) {
+					EVENT_LOG_MAX_BLOCK_SIZE, logbuf) != BCME_OK) {
 					goto exit;
 				}
 				ecntr_pushed = TRUE;
@@ -2817,7 +2817,8 @@ void pr_roam_scan_cmpl_v2(prcd_event_log_hdr_t *plog_hdr)
 			"rssi:%d score:%d cu :%d channel:%s TPUT:%dkbps\n",
 			i, MAC2STRDBG((uint8 *)&log->scan_list[i].addr),
 			log->scan_list[i].rssi, log->scan_list[i].score,
-			log->scan_list[i].cu * 100 / WL_MAX_CHANNEL_USAGE,
+			log->scan_list[i].cu_avail ?
+			(log->scan_list[i].cu * 100 / WL_MAX_CHANNEL_USAGE) : WL_CU_NOT_AVAIL,
 			wf_chspec_ntoa_ex(log->scan_list[i].chanspec,
 			chanspec_buf),
 			log->scan_list[i].estm_tput != ROAM_LOG_INVALID_TPUT?
@@ -3142,7 +3143,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	}
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
-#ifdef DHD_DEBUGABILITY_DEBUG_DUMP
+#if defined(DHD_DEBUGABILITY_DEBUG_DUMP) || defined(DHD_HAL_RING_DUMP)
 	/*
 	 * delayed memory allocation. memory will be allocated when debug_dump is invoked
 	 * To prepare the ringbuffer in legacy HAL, we should initialize ring at this time
@@ -3162,7 +3163,16 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 		DHD_ERROR(("%s: Failed to init debug ring2\n", __func__));
 		goto error;
 	}
-#endif /* DHD_DEBUGABILITY_DEBUG_DUMP */
+#endif /* defined(DHD_DEBUGABILITY_DEBUG_DUMP) || defined(DHD_HAL_RING_DUMP) */
+
+#if defined(DHD_HAL_RING_DUMP_MEMDUMP)
+	ret = dhd_dbg_ring_init(dhdp, &dbg->dbg_rings[MEM_DUMP_RING_ID], MEM_DUMP_RING_ID,
+			(uint8 *)MEM_DUMP_RING_NAME, MEM_DUMP_RING_SIZE, NULL, FALSE);
+	if (ret) {
+		DHD_ERROR(("%s: Failed to init mem dump ring\n", __func__));
+		goto error;
+	}
+#endif /* DHD_HAL_RING_DUMP_MEMDUMP */
 
 #ifdef BTLOG
 	buf = VMALLOCZ(dhdp->osh, BT_LOG_RING_SIZE);
@@ -3186,12 +3196,14 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 
 	if (!pktlog_ring) {
 		DHD_ERROR(("%s: pktlog_ring is NULL. return.\n", __FUNCTION__));
+		ret = BCME_NOMEM;
 		goto error;
 	}
 
 	buf = pktlog_ring->ring_info_mem;
 	if (!buf) {
 		DHD_ERROR(("%s: ring_info_mem is NULL. return.\n", __FUNCTION__));
+		ret = BCME_NOMEM;
 		goto error;
 	}
 

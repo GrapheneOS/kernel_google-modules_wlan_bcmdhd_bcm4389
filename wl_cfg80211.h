@@ -41,6 +41,7 @@
 #include <dhd.h>
 #ifdef DHD_LOG_DUMP
 #include <dhd_log_dump.h>
+#include <dhd_debug.h>
 #endif
 #endif /* BCMDONGLEHOST */
 
@@ -139,6 +140,23 @@ typedef sta_info_v4_t wlcfg_sta_info_t;
 #define IS_STA_INFO_VER(sta) (dtoh16(sta->ver) == WL_STA_VER_4)
 #define WL_STAINFO_VER WL_STA_VER_4
 #endif /* USE_STA_INFO_V6 */
+
+/* MSCS default configuration values */
+#ifndef MSCS_CFG_DEF_STREAM_TIMEOUT
+#define MSCS_CFG_DEF_STREAM_TIMEOUT     60000u  /* TUs */
+#endif /* MSCS_CFG_DEF_STREAM_TIMEOUT */
+
+#ifndef MSCS_CFG_DEF_UP_LIMIT
+#define MSCS_CFG_DEF_UP_LIMIT           7u      /* up limit */
+#endif /* MSCS_CFG_DEF_UP_LIMIT */
+
+#ifndef MSCS_CFG_DEF_FC_MASK
+#define MSCS_CFG_DEF_FC_MASK            0xF0u   /* frame classifier mask  */
+#endif /* MSCS_CFG_DEF_FC_MASK */
+
+#ifndef MSCS_CFG_DEF_TCLAS_MASK
+#define MSCS_CFG_DEF_TCLAS_MASK         0x5Fu   /* TCLAS mask  */
+#endif /* MSCS_CFG_DEF_TCLAS_MASK */
 
 #define CH_TO_CHSPC(band, _channel) \
 	((_channel | band) | WL_CHANSPEC_BW_20 | WL_CHANSPEC_CTL_SB_NONE)
@@ -918,6 +936,23 @@ typedef struct wl_dpp_pub_act_frame wl_dpp_pa_frame_t;
 #define WL_PUB_AF_GAS_AD_EID  0x6c
 
 typedef wifi_p2psd_gas_pub_act_frame_t wl_dpp_gas_af_t;
+
+#define DEFAULT_ASSOC_LISTEN 0xau
+#define DEFAULT_ROAM_SCAN_PRD 10u
+#define DEFAULT_FULL_ROAM_PRD 0x78u
+#define DEFAULT_ASSOC_RETRY 0x3u
+#define DEFAULT_WNM_CONF 0x505u
+#define DEFAULT_RECREATE_BI_TIMEOUT 20u
+
+struct preinit_iov;
+typedef int (*wl_iov_fn) (struct bcm_cfg80211 *cfg, struct net_device *dev, struct preinit_iov *v);
+
+typedef struct preinit_iov {
+	wl_iov_fn fn;
+	uint16 cmd_id;	/* preinit iovar/ioctl cmd id */
+	int32 value;	/* preinit iovar input value */
+	s8  *cmd_name;	/* preinit ioctl cmd name */
+} preinit_iov_t;
 
 /* driver status */
 enum wl_status {
@@ -2203,6 +2238,7 @@ struct bcm_cfg80211 {
 	uint8 num_radios;		/* number of active radios */
 	uint32 ap_bw_limit;
 	uint32 ap_bw_chspec;
+	bool frameburst_disabled;
 };
 
 /* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
@@ -3600,6 +3636,9 @@ int wl_cfg80211_sroam_config(struct bcm_cfg80211 *cfg, struct net_device *dev, b
 
 int wl_cfg80211_get_roam_params(struct net_device *dev, uint32 *data, uint16 data_len, uint16 id);
 int wl_cfg80211_set_roam_params(struct net_device *dev, uint32 *data, uint16 data_len, uint16 id);
+
+extern void wl_cfg80211_wdev_lock(struct wireless_dev *wdev);
+extern void wl_cfg80211_wdev_unlock(struct wireless_dev *wdev);
 
 /* Added wl_reassoc_params_cvt_v1 due to mis-sync between DHD and FW
  * Because Dongle use wl_reassoc_params_v1_t for WLC_REASSOC

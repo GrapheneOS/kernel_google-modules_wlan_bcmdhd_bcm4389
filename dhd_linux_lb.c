@@ -251,6 +251,12 @@ int dhd_cpu_startup_callback(unsigned int cpu)
 {
 	dhd_info_t *dhd = g_dhd_pub->info;
 
+	if (!dhd || !(dhd->dhd_state & DHD_ATTACH_STATE_LB_ATTACH_DONE)) {
+		DHD_ERROR(("%s(): LB data is not initialized yet.\n",
+			__FUNCTION__));
+		return 0;
+	}
+
 	DHD_INFO(("%s(): \r\n cpu:%d", __FUNCTION__, cpu));
 	DHD_LB_STATS_INCR(dhd->cpu_online_cnt[cpu]);
 	cpumask_set_cpu(cpu, dhd->cpumask_curr_avail);
@@ -262,6 +268,12 @@ int dhd_cpu_startup_callback(unsigned int cpu)
 int dhd_cpu_teardown_callback(unsigned int cpu)
 {
 	dhd_info_t *dhd = g_dhd_pub->info;
+
+	if (!dhd || !(dhd->dhd_state & DHD_ATTACH_STATE_LB_ATTACH_DONE)) {
+		DHD_ERROR(("%s(): LB data is not initialized yet.\n",
+			__FUNCTION__));
+		return 0;
+	}
 
 	DHD_INFO(("%s(): \r\n cpu:%d", __FUNCTION__, cpu));
 	DHD_LB_STATS_INCR(dhd->cpu_offline_cnt[cpu]);
@@ -1132,31 +1144,6 @@ dhd_napi_schedule(void *info)
 	 * processing all its packets. The rx_napi_struct may only run on one
 	 * core at a time, to avoid out-of-order handling.
 	 */
-}
-
-/**
- * dhd_napi_schedule_on - API to schedule on a desired CPU core a NET_RX_SOFTIRQ
- * action after placing the dhd's rx_process napi object in the the remote CPU's
- * softnet data's poll_list.
- *
- * @dhd: dhd_info which has the rx_process napi object
- * @on_cpu: desired remote CPU id
- */
-static INLINE int
-dhd_napi_schedule_on(dhd_info_t *dhd, int on_cpu)
-{
-	int wait = 0; /* asynchronous IPI */
-	DHD_INFO(("%s dhd<%p> napi<%p> on_cpu<%d>\n",
-		__FUNCTION__, dhd, &dhd->rx_napi_struct, on_cpu));
-
-	if (smp_call_function_single(on_cpu, dhd_napi_schedule, dhd, wait)) {
-		DHD_ERROR(("%s smp_call_function_single on_cpu<%d> failed\n",
-			__FUNCTION__, on_cpu));
-	}
-
-	DHD_LB_STATS_INCR(dhd->napi_sched_cnt);
-
-	return 0;
 }
 
 /*

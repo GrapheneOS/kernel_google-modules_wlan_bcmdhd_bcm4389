@@ -128,7 +128,7 @@ typedef struct wme_param_ie wme_param_ie_t;
 #define WFA_OUI_TYPE_TPC	8		/* deprecated */
 
 /* ************* WFA definitions. ************* */
-#define WFA_OUI			"\x50\x6F\x9A"  /* WFA OUI */
+#define WFA_OUI			"\x50\x6F\x9A"	/* WFA OUI */
 #define WFA_OUI_LEN		3		/* WFA OUI length */
 #define WFA_OUI_TYPE_P2P	9
 
@@ -187,6 +187,46 @@ typedef struct dot11_sae_pk_element dot11_sae_pk_element_t;
 	TRANSITION_MODE_SAE_PK | \
 	TRANSITION_MODE_WPA3_ENTERPRISE | \
 	TRANSITION_MODE_ENHANCED_OPEN)
+
+/** Transition Disable Indication element */
+BWL_PRE_PACKED_STRUCT struct dot11_tdi_element {
+	uint8 id;	/* DOT11_MNG_VS_ID */
+	uint8 len;	/* IE length */
+	uint8 oui[3];	/* WFA_OUI */
+	uint8 type;	/* WFA_OUI_TYPE_TD_INDICATION */
+	uint8 tdi;	/* Transition Disable Indication bitmap */
+} BWL_POST_PACKED_STRUCT;
+typedef struct dot11_tdi_element dot11_tdi_element_t;
+
+#define DOT11_TDI_ELEM_LENGTH	sizeof(dot11_tdi_element_t)
+
+/* WiFi OWE transition OUI values */
+#define OWE_TRANS_OUI       WFA_OUI         /* WiFi OUI 50:6F:9A */
+/* oui_type field identifying the type and version of the OWE transition mode IE. */
+#define OWE_OUI_TYPE        WFA_OUI_TYPE_OWE /* OUI Type/Version */
+/* IEEE 802.11 vendor specific information element. */
+#define OWE_IE_ID           0xdd
+
+/*  2.3.1 OWE transition mode IE (WFA OWE spec 1.1) */
+typedef BWL_PRE_PACKED_STRUCT struct wifi_owe_ie_s {
+	uint8 id;               /* IE ID: OWE_IE_ID 0xDD */
+	uint8 len;              /* IE length */
+	uint8 oui[WFA_OUI_LEN]; /* OWE OUI 50:6F:9A */
+	uint8 oui_type;         /* WFA_OUI_TYPE_OWE 0x1A */
+	uint8 attr[];           /* var len attributes */
+} wifi_owe_ie_t;
+
+/* owe transition mode ie */
+typedef BWL_PRE_PACKED_STRUCT struct owe_transition_mode_ie_s {
+	uint8 bssid[ETHER_ADDR_LEN];  /* Contains the BSSID of the other virtual AP */
+	uint8 ssid_len;
+	uint8 *ssid;     /* SSID of the other virtual AP */
+	uint8 band_info; /* operating band info of the other virtual AP */
+	uint8 chan;      /* operating channel number of the other virtual AP */
+} BWL_POST_PACKED_STRUCT owe_transition_mode_ie_t;
+#define OWE_IE_HDR_SIZE (OFFSETOF(wifi_owe_ie_t, attr))
+/* oui:3 bytes + oui type:1 byte */
+#define OWE_IE_NO_ATTR_LEN  4
 
 /* This marks the end of a packed structure section. */
 #include <packed_section_end.h>

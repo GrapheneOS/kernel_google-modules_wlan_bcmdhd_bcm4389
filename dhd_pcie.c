@@ -465,6 +465,8 @@ enum {
 	IOV_MDRING_LINK,
 	IOV_MDRING_UNLINK,
 	IOV_MDRING_DUMP,
+	IOV_PTM_ENABLE,
+	IOV_PCIE_DMAXFER_PTRN,
 
 	IOV_PCIE_LAST /**< unused IOVAR */
 };
@@ -483,6 +485,7 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 	{"ramsize",	IOV_RAMSIZE,	0, 	0, IOVT_UINT32,	0 },
 	{"ramstart",	IOV_RAMSTART,	0, 	0, IOVT_UINT32,	0 },
 	{"pcie_dmaxfer", IOV_PCIE_DMAXFER, 0, 0, IOVT_BUFFER, sizeof(dma_xfer_info_t)},
+	{"lpbk_dmaxfer_data_pattern", IOV_PCIE_DMAXFER_PTRN, 0, 0, IOVT_UINT32, 0},
 	{"pcie_suspend", IOV_PCIE_SUSPEND,	DHD_IOVF_PWRREQ_BYPASS,	0, IOVT_UINT32,	0 },
 #ifdef PCIE_OOB
 	{"oob_bt_reg_on", IOV_OOB_BT_REG_ON,    0,	0, IOVT_UINT32,    0 },
@@ -582,6 +585,7 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 	{"mdring_unlink", IOV_MDRING_UNLINK,	0,	0, IOVT_UINT32,	0 },
 	{"dump_mdring", IOV_MDRING_DUMP,	0,	0, IOVT_BUFFER,
 	MAX_MDRING_ITEM_DUMP * D2HRING_MDCMPLT_ITEMSIZE },
+	{"ptm_enable", IOV_PTM_ENABLE,	0,	0, IOVT_UINT32,	0 },
 
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -3887,17 +3891,23 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 		dhd_tcm_test_enable = FALSE;
 	}
 #endif /* DHD_FW_MEM_CORRUPTION */
-	DHD_ERROR(("%s: dhd_tcm_test_enable %u, dhd_tcm_test_status %u\n", __FUNCTION__,
-		dhd_tcm_test_enable, dhd_tcm_test_status));
-	/* run TCM test if not passed yet */
-	if (dhd_tcm_test_enable && dhd_tcm_test_status != TCM_TEST_PASSED) {
-		if (dhd_bus_tcm_test(bus) == FALSE) {
-			DHD_ERROR(("dhd_bus_tcm_test failed\n"));
-			dhd_tcm_test_status = TCM_TEST_FAILED;
-			bcmerror = BCME_ERROR;
-			goto err;
-		} else {
-			dhd_tcm_test_status = TCM_TEST_PASSED;
+	DHD_ERROR(("%s: dhd_tcm_test_enable %u, dhd_tcm_test_status %u, dhd_tcm_test_mode %u\n",
+		__FUNCTION__, dhd_tcm_test_enable, dhd_tcm_test_status, dhd_tcm_test_mode));
+
+	if (dhd_tcm_test_enable && dhd_tcm_test_mode != TCM_TEST_MODE_DISABLE) {
+		if (((dhd_tcm_test_mode == TCM_TEST_MODE_ONCE) &&
+				(dhd_tcm_test_status == TCM_TEST_NOT_RUN)) ||
+				(dhd_tcm_test_mode == TCM_TEST_MODE_ALWAYS)) {
+			if (dhd_tcm_test_status != TCM_TEST_PASSED) {
+				if (dhd_bus_tcm_test(bus) == FALSE) {
+					DHD_ERROR(("dhd_bus_tcm_test failed\n"));
+					dhd_tcm_test_status = TCM_TEST_FAILED;
+					bcmerror = BCME_ERROR;
+					goto err;
+				} else {
+					dhd_tcm_test_status = TCM_TEST_PASSED;
+				}
+			}
 		}
 	}
 
@@ -5137,6 +5147,7 @@ dhdpcie_checkdied(dhd_bus_t *bus, char *data, uint size)
 		if (bus->dhd->up == 0) {
 			DHD_ERROR(("%s: socram will be collected in dhd_net_bus_devreset failure\n",
 				__FUNCTION__));
+			bus->dhd->dongle_trap_during_wifi_onoff = 1;
 		} else
 		{
 			/* save core dump or write to a file */
@@ -8041,6 +8052,15 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		bcmerror = dhdmsgbuf_dmaxfer_status(bus->dhd, dmaxfer);
 		break;
 	}
+	case IOV_GVAL(IOV_PCIE_DMAXFER_PTRN): {
+		int_val = bus->lpbk_xfer_data_pattern_type;
+		bcopy(&int_val, arg, val_size);
+		break;
+	}
+	case IOV_SVAL(IOV_PCIE_DMAXFER_PTRN): {
+		bus->lpbk_xfer_data_pattern_type = int_val;
+		break;
+	}
 
 #ifdef PCIE_OOB
 	case IOV_GVAL(IOV_OOB_BT_REG_ON):
@@ -9089,6 +9109,13 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		if (bus->dhd->mdring_capable) {
 			int_val = dhd_prot_mdring_linked_ring(bus->dhd);
 			bcopy(&int_val, arg, val_size);
+		}
+		break;
+	case IOV_SVAL(IOV_PTM_ENABLE):
+		if (int_val) {
+			dhdpcie_send_mb_data(bus, H2D_HOST_PTM_ENABLE);
+		} else {
+			dhdpcie_send_mb_data(bus, H2D_HOST_PTM_DISABLE);
 		}
 		break;
 	default:
@@ -11747,14 +11774,27 @@ dhd_bus_security_info(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	}
 
 	bcm_bprintf(strbuf, "\nDAR Security Status Reg\n");
-	bcm_bprintf(strbuf, "  Jtag Disable:     %d\n", (dar_sec_val & DAR_SEC_JTAG_MASK));
-	bcm_bprintf(strbuf, "  Secure Boot:      %d\n", (dar_sec_val & DAR_SEC_SBOOT_MASK) >>
-		DAR_SEC_SBOOT_SHIFT);
-	bcm_bprintf(strbuf, "  Arm Dbg Disable:  %d\n", (dar_sec_val & DAR_SEC_ARM_DBG_MASK) >>
-		DAR_SEC_ARM_DBG_SHIFT);
-	bcm_bprintf(strbuf, "  Transient Unlock: %d\n", (dar_sec_val & DAR_SEC_UNLOCK_MASK) >>
-		DAR_SEC_UNLOCK_SHIFT);
+	bcm_bprintf(strbuf, "  Jtag Disable:     %d\n",
+		(dar_sec_val & DAR_SEC_JTAG_MASK) >> DAR_SEC_JTAG_SHIFT);
+	bcm_bprintf(strbuf, "  Secure Boot:      %d\n",
+		(dar_sec_val & DAR_SEC_SBOOT_MASK) >> DAR_SEC_SBOOT_SHIFT);
+	bcm_bprintf(strbuf, "  Arm Dbg Disable:  %d\n",
+		(dar_sec_val & DAR_SEC_ARM_DBG_MASK) >> DAR_SEC_ARM_DBG_SHIFT);
+	bcm_bprintf(strbuf, "  Transient Unlock: %d\n",
+		(dar_sec_val & DAR_SEC_UNLOCK_MASK) >> DAR_SEC_UNLOCK_SHIFT);
 
+	/* The following bits in security status register provided for pcie core
+	 * generation2 at revisions > 76 and for generation3 at revisions > 129
+	 */
+	if (((bus->sih->buscorerev > 76) && (bus->sih->buscorerev < 128)) ||
+		(bus->sih->buscorerev > 129)) {
+		bcm_bprintf(strbuf, "  Rom Protect:      %d\n",
+			(dar_sec_val & DAR_SEC_ROM_PROT_MASK) >> DAR_SEC_ROM_PROT_SHIFT);
+		bcm_bprintf(strbuf, "  Non Secure Write: %d\n",
+			(dar_sec_val & DAR_SEC_NSEC_WR_MASK) >> DAR_SEC_NSEC_WR_SHIFT);
+		bcm_bprintf(strbuf, "  Non Secure Read:  %d\n",
+			(dar_sec_val & DAR_SEC_NSEC_RD_MASK) >> DAR_SEC_NSEC_RD_SHIFT);
+	}
 	return BCME_OK;
 }
 
@@ -12780,6 +12820,12 @@ done:
 		DHD_INFO_HW4(("%s: send H2D_HOST_D0_INFORM to dongle\n", __FUNCTION__));
 		bus->d0_inform_cnt++;
 	}
+	if (h2d_mb_data == H2D_HOST_PTM_ENABLE) {
+		DHD_INFO(("%s: send H2D_HOST_PTM_ENABLE to dongle\n", __FUNCTION__));
+	}
+	if (h2d_mb_data == H2D_HOST_PTM_DISABLE) {
+		DHD_INFO(("%s: send H2D_HOST_PTM_DISABLE to dongle\n", __FUNCTION__));
+	}
 	return BCME_OK;
 fail:
 	return BCME_ERROR;
@@ -13049,6 +13095,14 @@ dhd_bus_handle_mb_data(dhd_bus_t *bus, uint32 d2h_mb_data)
 			dhd_bus_handle_d3_ack(bus);
 #endif /* DHD_HANG_SEND_UP_TEST */
 		}
+	}
+
+	if (d2h_mb_data & D2H_DEV_PTM_ENABLED)  {
+		DHD_INFO(("D2H_MB_DATA: PTM ENABLED\n"));
+	}
+
+	if (d2h_mb_data & D2H_DEV_PTM_DISABLED)  {
+		DHD_INFO(("D2H_MB_DATA: PTM DISABLED\n"));
 	}
 
 exit:

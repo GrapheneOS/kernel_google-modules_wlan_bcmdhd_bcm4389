@@ -2070,8 +2070,8 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 						lval = 0;
 					}
 				}
-				DHD_IOVAR_MEM((
-					"%s: cmd: %d, msg: %s val: 0x%x,"
+				DHD_IOVAR_LOG(dhd_pub, ioc->cmd, msg,
+					("%s: cmd: %d, msg: %s val: 0x%x,"
 					" len: %d, set: %d, txn-id: %d\n",
 					ioc->cmd == WLC_GET_VAR ?
 					"WLC_GET_VAR" : "WLC_SET_VAR",
@@ -5607,7 +5607,7 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 		{
 		struct wl_event_data_if *ifevent = (struct wl_event_data_if *)event_data;
 #if defined(__linux__)
-		struct net_device *ndev = dhd_idx2net(dhd_pub, ifevent->ifidx);
+		struct net_device *ndev = NULL;
 #endif /* __linux__ */
 
 		/* Ignore the event if NOIF is set */
@@ -5655,12 +5655,18 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 					return (BCME_ERROR);
 				}
 #if defined(__linux__)
-				dhd_clear_del_in_progress(dhd_pub, ndev);
+				ndev = dhd_idx2net(dhd_pub, ifevent->ifidx);
+				if (ndev) {
+					dhd_clear_del_in_progress(dhd_pub, ndev);
+				}
 #endif /* __linux__ */
 			} else if (ifevent->opcode == WLC_E_IF_DEL) {
 #if defined(__linux__)
-				dhd_set_del_in_progress(dhd_pub, ndev);
-				netif_tx_disable(ndev);
+				ndev = dhd_idx2net(dhd_pub, ifevent->ifidx);
+				if (ndev) {
+					dhd_set_del_in_progress(dhd_pub, ndev);
+					netif_tx_disable(ndev);
+				}
 #endif /* __linux__ */
 #ifdef PCIE_FULL_DONGLE
 				dhd_flow_rings_delete(dhd_pub,
@@ -10990,6 +10996,9 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 		case DUMP_TYPE_DONGLE_TRAP:
 			type_str = "Dongle_Trap";
+			break;
+		case DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF:
+			type_str = "Dongle_Trap_During_Wifi_OnOff";
 			break;
 		case DUMP_TYPE_MEMORY_CORRUPTION:
 			type_str = "Memory_Corruption";

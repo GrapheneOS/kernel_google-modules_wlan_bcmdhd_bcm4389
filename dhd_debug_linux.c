@@ -257,8 +257,9 @@ dhd_os_start_logging(dhd_pub_t *dhdp, char *ring_name, int log_level,
 	if (!VALID_RING(ring_id))
 		return BCME_UNSUPPORTED;
 
-	DHD_LOG_MEM(("%s , log_level : %d, time_intval : %d, threshod %d Bytes\n",
-		__FUNCTION__, log_level, time_intval, threshold));
+	DHD_ERROR(("%s , ring_id : %d log_level : %d, "
+			"time_intval : %d, threshod %d Bytes\n",
+			__FUNCTION__, ring_id, log_level, time_intval, threshold));
 
 	/* change the configuration */
 	ret = dhd_dbg_set_configuration(dhdp, ring_id, log_level, flags, threshold);

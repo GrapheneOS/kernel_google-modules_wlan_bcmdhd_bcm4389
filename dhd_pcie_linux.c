@@ -1164,12 +1164,6 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	}
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 
-	/* Save aspm and l1ss state before doing to suspend, if they are disabled,
-	 * keep them disabled after resume.
-	 */
-	bus->aspm_enab_during_suspend = dhd_bus_is_aspm_enab_rc_ep(bus);
-	bus->l1ss_enab_during_suspend = dhd_bus_is_l1ss_enab_rc_ep(bus);
-
 #if defined(CUSTOMER_HW4_DEBUG)
 	clear_debug_dump_time(dhd_suspend_resume_time_str);
 	get_debug_dump_time(dhd_suspend_resume_time_str);
@@ -2385,10 +2379,15 @@ dhdpcie_free_irq(dhd_bus_t *bus)
 	if (bus) {
 		pdev = bus->dev;
 		if (bus->irq_registered) {
+#if defined(SET_PCIE_IRQ_CPU_CORE) || defined(DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON) || \
+	defined(CLEAN_IRQ_AFFINITY_HINT)
 			/* clean up the affinity_hint before
 			 * the unregistration of PCIe irq
 			 */
 			(void)irq_set_affinity_hint(pdev->irq, NULL);
+#endif /* SET_PCIE_IRQ_CPU_CORE || DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON ||
+		* CLEAN_IRQ_AFFINITY_HINT
+		*/
 			free_irq(pdev->irq, bus);
 			bus->irq_registered = FALSE;
 			if (bus->d2h_intr_method == PCIE_MSI) {
