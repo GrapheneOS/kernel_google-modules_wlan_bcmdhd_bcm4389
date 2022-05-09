@@ -151,14 +151,20 @@ sku_info_t sku_table[] = {
 	{ {"G8V0U"}, {"MMW"} },
 	{ {"GFQM1"}, {"MMW"} },
 	{ {"GB62Z"}, {"MMW"} },
+	{ {"GE2AE"}, {"MMW"} },
+	{ {"GQML3"}, {"MMW"} },
 	{ {"GB7N6"}, {"ROW"} },
 	{ {"GLU0G"}, {"ROW"} },
 	{ {"GNA8F"}, {"ROW"} },
 	{ {"GX7AS"}, {"ROW"} },
+	{ {"GP4BC"}, {"ROW"} },
+	{ {"GVU6C"}, {"ROW"} },
 	{ {"GR1YH"}, {"JPN"} },
 	{ {"GF5KQ"}, {"JPN"} },
 	{ {"GPQ72"}, {"JPN"} },
 	{ {"GB17L"}, {"JPN"} },
+	{ {"GFE4J"}, {"JPN"} },
+	{ {"G03Z5"}, {"JPN"} },
 	{ {"G1AZG"}, {"EU"} }
 };
 
