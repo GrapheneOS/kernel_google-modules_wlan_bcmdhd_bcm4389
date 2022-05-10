@@ -837,7 +837,11 @@ uint fis_enab = FALSE;
 int
 dhd_sssr_mempool_init(dhd_pub_t *dhd)
 {
+#ifdef CONFIG_BCMDHD_PCIE
+	dhd->sssr_mempool = (uint8 *) VMALLOCZ(dhd->osh, DHD_SSSR_MEMPOOL_SIZE);
+#else
 	dhd->sssr_mempool = (uint8 *) MALLOCZ(dhd->osh, DHD_SSSR_MEMPOOL_SIZE);
+#endif /* CONFIG_BCMDHD_PCIE */
 	if (dhd->sssr_mempool == NULL) {
 		DHD_ERROR(("%s: MALLOC of sssr_mempool failed\n",
 			__FUNCTION__));
@@ -850,7 +854,11 @@ void
 dhd_sssr_mempool_deinit(dhd_pub_t *dhd)
 {
 	if (dhd->sssr_mempool) {
+#ifdef CONFIG_BCMDHD_PCIE
+		VMFREE(dhd->osh, dhd->sssr_mempool, DHD_SSSR_MEMPOOL_SIZE);
+#else
 		MFREE(dhd->osh, dhd->sssr_mempool, DHD_SSSR_MEMPOOL_SIZE);
+#endif /* CONFIG_BCMDHD_PCIE */
 		dhd->sssr_mempool = NULL;
 	}
 }
