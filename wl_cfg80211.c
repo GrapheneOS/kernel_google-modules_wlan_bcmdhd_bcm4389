@@ -25270,6 +25270,9 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	chanspec_t sta_chanspec;
 	uint32 sta_assoc_freq = 0;
 	bool is_unii4 = false;
+#ifdef WL_NAN_INSTANT_MODE
+	uint8 nan_2g = 0, nan_pri_5g = 0, nan_sec_5g = 0;
+#endif /* WL_NAN_INSTANT_MODE */
 
 	bzero(u_info->channels, sizeof(*u_info->channels) * u_info->max_size);
 	/* Get chan_info_list or chanspec from FW */
@@ -25291,133 +25294,188 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		goto exit;
 	}
 
-	/* TDLS is supported only for single STA associated case */
-	if (cfg->stas_associated == 1) {
-		sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
-		band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(sta_chanspec));
-		channel = CHSPEC_CHANNEL(sta_chanspec);
-		sta_assoc_freq = wl_channel_to_frequency(channel, band);
-	}
-
-	list_count = ((wl_chanspec_list_v1_t *)chan_list)->count;
-	for (i = 0; i < list_count; i++) {
-		if (u_info->max_size <= idx) {
-			WL_ERR(("No more space to add usable channel info idx:%d max_size:%u\n",
-				idx, u_info->max_size));
-			break;
+#ifdef WL_NAN_INSTANT_MODE
+	if ((u_info->iface_mode_mask & (1 << WIFI_INTERFACE_NAN)) &&
+		(u_info->filter_mask & WIFI_USABLE_CHANNEL_FILTER_NAN_INSTANT_MODE)) {
+		wl_cfgnan_inst_chan_support(cfg, (wl_chanspec_list_v1_t *)chan_list,
+			u_info->band_mask, &nan_2g, &nan_pri_5g, &nan_sec_5g);
+		if (!nan_2g && !nan_pri_5g && !nan_sec_5g) {
+			WL_ERR(("Failed to retrieve the soc channels for nan:"
+				" err %d, nan_2g: %d, nan_pri_5g: %d, nan_sec_5g: %d\n",
+				err, nan_2g, nan_pri_5g, nan_sec_5g));
+			goto exit;
 		}
-		chspec = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chanspec);
-		chspec = wl_chspec_driver_to_host(chspec);
-		chaninfo = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chaninfo);
-		band = CHSPEC_BAND(chspec);
-		channel = wf_chspec_primary20_chan(chspec);
-		freq = wl_channel_to_frequency(channel, band);
-		width = wl_chanspec_to_host_bw_map(chspec);
+		/* Skip if chanspec does not match the interested band_mask */
+		if (!((u_info->band_mask & WLAN_MAC_2_4_BAND) ||
+			(u_info->band_mask & WLAN_MAC_5_0_BAND))) {
+			goto exit;
+		}
 
-		WL_DBG(("chspec:%x channel:%u chaninfo:%x freq:%u band:%u "
+		if ((u_info->band_mask & WLAN_MAC_5_0_BAND) && (nan_pri_5g)) {
+			channel = nan_pri_5g;
+			band = WL_CHANSPEC_BAND_5G;
+		} else if ((u_info->band_mask & WLAN_MAC_5_0_BAND) && (nan_sec_5g)) {
+			channel = nan_sec_5g;
+			band = WL_CHANSPEC_BAND_5G;
+		} else if ((u_info->band_mask & WLAN_MAC_2_4_BAND) && (nan_2g)) {
+			channel = nan_2g;
+			band = WL_CHANSPEC_BAND_2G;
+		} else {
+			WL_ERR(("No usable channels for nan\n"));
+			err = BCME_NOTFOUND;
+			goto exit;
+		}
+		/* Add current channel to list */
+		cur_ch = &u_info->channels[idx];
+		cur_ch->freq = wl_channel_to_frequency(channel, band);
+		cur_ch->iface_mode_mask = (1 << WIFI_INTERFACE_NAN);
+		cur_ch->chspec = wl_freq_to_chanspec(cur_ch->freq);
+		cur_ch->width = wl_chanspec_to_host_bw_map(cur_ch->chspec);
+		WL_INFORM_MEM(("idx:%d chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
+			idx, cur_ch->chspec, cur_ch->freq, cur_ch->width,
+			cur_ch->iface_mode_mask));
+		idx++;
+	} else
+#endif /* WL_NAN_INSTANT_MODE */
+#line 27277
+	{
+		/* TDLS is supported only for single STA associated case */
+		if (cfg->stas_associated == 1) {
+			sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
+			band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(sta_chanspec));
+			channel = CHSPEC_CHANNEL(sta_chanspec);
+			sta_assoc_freq = wl_channel_to_frequency(channel, band);
+		}
+
+		list_count = ((wl_chanspec_list_v1_t *)chan_list)->count;
+		for (i = 0; i < list_count; i++) {
+			if (u_info->max_size <= idx) {
+				WL_ERR(("No more space to add usable channel info idx:%d"
+					" max_size:%u\n", idx, u_info->max_size));
+				break;
+			}
+			chspec =
+				dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chanspec);
+			chspec = wl_chspec_driver_to_host(chspec);
+			chaninfo =
+				dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chaninfo);
+			band = CHSPEC_BAND(chspec);
+			channel = wf_chspec_primary20_chan(chspec);
+			freq = wl_channel_to_frequency(channel, band);
+			width = wl_chanspec_to_host_bw_map(chspec);
+
+			WL_DBG(("chspec:%x channel:%u chaninfo:%x freq:%u band:%u "
 				"req_band:%u req_iface_mode:%u filter:%u\n",
 				chspec, channel, chaninfo, freq, CHSPEC_TO_WLC_BAND(band),
 				u_info->band_mask, u_info->iface_mode_mask, u_info->filter_mask));
 
-		/* Skip if it is not interested */
-		if (!((u_info->band_mask & WLAN_MAC_2_4_BAND) && CHSPEC_IS2G(chspec)) &&
-			!((u_info->band_mask & WLAN_MAC_5_0_BAND) && CHSPEC_IS5G(chspec)) &&
-			!((u_info->band_mask & WLAN_MAC_6_0_BAND) && CHSPEC_IS6G(chspec))) {
-			continue;
-		}
+			/* Skip if it is not interested */
+			if (!((u_info->band_mask & WLAN_MAC_2_4_BAND) && CHSPEC_IS2G(chspec)) &&
+				!((u_info->band_mask & WLAN_MAC_5_0_BAND) && CHSPEC_IS5G(chspec)) &&
+				!((u_info->band_mask & WLAN_MAC_6_0_BAND) && CHSPEC_IS6G(chspec))) {
+				continue;
+			}
 
-		restrict_chan = ((chaninfo & WL_CHAN_RADAR) ||
+			restrict_chan = ((chaninfo & WL_CHAN_RADAR) ||
 				(chaninfo & WL_CHAN_PASSIVE)||
 				(chaninfo & WL_CHAN_CLM_RESTRICTED));
 #ifdef WL_SOFTAP_6G
-		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
-			(chaninfo & WL_CHAN_BAND_6G_VLP));
+			vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
+				(chaninfo & WL_CHAN_BAND_6G_VLP));
 #endif /* WL_SOFTAP_6G */
 #ifdef WL_UNII4_CHAN
-		is_unii4 = (CHSPEC_IS5G(chspec) &&
+			is_unii4 = (CHSPEC_IS5G(chspec) &&
 				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)));
 #endif /* WL_UNII4_CHAN */
 
-		/* STA set all chanspec but can be filtered out in filter function */
-		mask = (1 << WIFI_INTERFACE_STA);
+			/* STA set all chanspec but can be filtered out in filter function */
+			mask = (1 << WIFI_INTERFACE_STA);
 
-		if (sta_assoc_freq && (sta_assoc_freq == freq) &&
-			(!CHSPEC_IS6G(chspec) && !is_unii4)) {
-			if (CHSPEC_IS5G(chspec) && (chaninfo & WL_CHAN_CLM_RESTRICTED)) {
-				/* if restricted channel, specifically allow only DFS channel
-				 * (radar+passive). TDLS operates on STA channel and
-				 * allowed in DFS channel
-				 */
-				if ((chaninfo & WL_CHAN_RADAR) && (chaninfo & WL_CHAN_PASSIVE)) {
+			if (sta_assoc_freq && (sta_assoc_freq == freq) &&
+				(!CHSPEC_IS6G(chspec) && !is_unii4)) {
+				if (CHSPEC_IS5G(chspec) && (chaninfo & WL_CHAN_CLM_RESTRICTED)) {
+					/* if restricted channel,
+					 * specifically allow only DFS channel
+					 * (radar+passive). TDLS operates on STA channel and
+					 * allowed in DFS channel
+					 */
+					if ((chaninfo & WL_CHAN_RADAR) &&
+						(chaninfo & WL_CHAN_PASSIVE)) {
+						mask |= (1 << WIFI_INTERFACE_TDLS);
+					}
+				} else {
+					/* 2g channels || 5G non restricted channels */
 					mask |= (1 << WIFI_INTERFACE_TDLS);
 				}
-			} else {
-				/* 2g channels || 5G non restricted channels */
-				mask |= (1 << WIFI_INTERFACE_TDLS);
 			}
-		}
 
-		/* Only STA supported 160Mhz in 5G */
-		if (CHSPEC_IS5G(chspec) && CHSPEC_IS160(chspec)) {
-			ch_160mhz_5g = true;
-		} else {
-			ch_160mhz_5g = false;
-		}
+			/* Only STA supported 160Mhz in 5G */
+			if (CHSPEC_IS5G(chspec) && CHSPEC_IS160(chspec)) {
+				ch_160mhz_5g = true;
+			} else {
+				ch_160mhz_5g = false;
+			}
 
-		if (!restrict_chan && !ch_160mhz_5g) {
-			if (!is_unii4)
-			{
-				if (CHSPEC_IS6G(chspec)) {
+			if (!restrict_chan && !ch_160mhz_5g) {
+				if (!is_unii4) {
+					if (CHSPEC_IS6G(chspec)) {
 #ifdef WL_NAN_6G
-					mask |= (1 << WIFI_INTERFACE_NAN);
+						mask |= (1 << WIFI_INTERFACE_NAN);
 #endif /* WL_NAN_6G */
 #ifdef WL_SOFTAP_6G
-					/* consider only VLP and PSC channel in 6g for softap */
-					if (vlp_psc_include) {
-						mask |= (1 << WIFI_INTERFACE_SOFTAP);
-					}
+						/* consider only VLP and
+						*  PSC channel in 6g for softap
+						*/
+						if (vlp_psc_include) {
+							mask |= (1 << WIFI_INTERFACE_SOFTAP);
+						}
 #endif /* WL_SOFTAP_6G */
-				} else {
-					/* handle 2G and 5G channels */
-					mask |= ((1 << WIFI_INTERFACE_P2P_GO) |
+#line 27369
+					} else {
+						/* handle 2G and 5G channels */
+						mask |= ((1 << WIFI_INTERFACE_P2P_GO) |
 							(1 << WIFI_INTERFACE_SOFTAP) |
 							(1 << WIFI_INTERFACE_NAN));
+					}
 				}
 			}
-		}
 
-		/* Supplicant does scan passive channel but not for DFS channel */
-		if (!(chaninfo & WL_CHAN_RADAR) && !ch_160mhz_5g &&
-			!CHSPEC_IS6G(chspec) && (!is_unii4)) {
-			mask |= (1 << WIFI_INTERFACE_P2P_CLIENT);
-		}
-
-		/* only channel entries matched at least a bit in iface_mode_mask are returned */
-		if ((mask & u_info->iface_mode_mask) == 0) {
-			continue;
-		}
-
-		/* Return only primary channel and max bandwidth.
-		 * If freq is already added and found bigger bandwidth
-		 * replace bandwidth with found one
-		 */
-		found_idx = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
-		if (found_idx != BCME_NOTFOUND) {
-			if (width > u_info->channels[found_idx].width) {
-				u_info->channels[found_idx].width = width;
+			/* Supplicant does scan passive channel but not for DFS channel */
+			if (!(chaninfo & WL_CHAN_RADAR) && !ch_160mhz_5g &&
+				!CHSPEC_IS6G(chspec) && (!is_unii4)) {
+				mask |= (1 << WIFI_INTERFACE_P2P_CLIENT);
 			}
-			continue;
-		}
 
-		/* Add current channel to list */
-		cur_ch = &u_info->channels[idx];
-		cur_ch->freq = freq;
-		cur_ch->width = width;
-		cur_ch->iface_mode_mask = mask & u_info->iface_mode_mask;
-		cur_ch->chspec = chspec;
-		WL_INFORM_MEM(("idx:%d chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
-			idx, cur_ch->chspec, cur_ch->freq, cur_ch->width, cur_ch->iface_mode_mask));
-		idx++;
+			/* only channel entries matched at least
+			 * a bit in iface_mode_mask are returned
+			 */
+			if ((mask & u_info->iface_mode_mask) == 0) {
+				continue;
+			}
+
+			/* Return only primary channel and max bandwidth.
+			 * If freq is already added and found bigger bandwidth
+			 * replace bandwidth with found one
+			 */
+			found_idx = wl_check_exist_freq_in_list(u_info->channels, idx, freq);
+			if (found_idx != BCME_NOTFOUND) {
+				if (width > u_info->channels[found_idx].width) {
+					u_info->channels[found_idx].width = width;
+				}
+				continue;
+			}
+
+			/* Add current channel to list */
+			cur_ch = &u_info->channels[idx];
+			cur_ch->freq = freq;
+			cur_ch->width = width;
+			cur_ch->iface_mode_mask = mask & u_info->iface_mode_mask;
+			cur_ch->chspec = chspec;
+			WL_INFORM_MEM(("idx:%d chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
+				idx, cur_ch->chspec, cur_ch->freq, cur_ch->width,
+				cur_ch->iface_mode_mask));
+			idx++;
+		}
 	}
 	u_info->size = idx;
 
