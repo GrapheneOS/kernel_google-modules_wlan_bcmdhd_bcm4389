@@ -2786,6 +2786,7 @@ static void _wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg)
 
 	/* Check if any scan in progress only then abort */
 	if (wl_get_drv_status_all(cfg, SCANNING)) {
+		WL_MEM(("Called by %pS\n", CALL_SITE));
 		wl_cfgscan_scan_abort(cfg);
 
 		/* Indicate escan completion to upper layer */
@@ -2797,6 +2798,7 @@ static void _wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg)
 /* Wrapper function for cancel_scan with scan_sync mutex */
 void wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg)
 {
+	WL_MEM(("Called by %pS\n", CALL_SITE));
 	mutex_lock(&cfg->scan_sync);
 	_wl_cfgscan_cancel_scan(cfg);
 	mutex_unlock(&cfg->scan_sync);
