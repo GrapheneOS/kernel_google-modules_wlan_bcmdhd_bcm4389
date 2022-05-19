@@ -10422,11 +10422,11 @@ void wl_cfgnan_inst_chan_support(struct bcm_cfg80211 *cfg,
 				ret = wl_cfgnan_check_for_valid_5gchan(bcmcfg_to_prmry_ndev(cfg),
 					channel);
 				if (ret != BCME_OK) {
-					WL_ERR(("Current locale doesn't support 5G op"
-					"continuing with 2G only operation\n"));
+					WL_DBG_MEM(("Current locale doesn't support 5G op"
+						"continuing with 2G only operation\n"));
 					*nan_pri_5g = 0;
 				} else {
-					WL_INFORM_MEM(("Found prim inst mode 5g chan!!\n"));
+					WL_DBG_MEM(("Found prim inst mode 5g chan!!\n"));
 					*nan_pri_5g = channel;
 				}
 			}
@@ -10437,18 +10437,18 @@ void wl_cfgnan_inst_chan_support(struct bcm_cfg80211 *cfg,
 				ret = wl_cfgnan_check_for_valid_5gchan(bcmcfg_to_prmry_ndev(cfg),
 					channel);
 				if (ret != BCME_OK) {
-					WL_ERR(("Current locale doesn't support 5G op"
-					"continuing with 2G only operation\n"));
+					WL_DBG_MEM(("Current locale doesn't support 5G op"
+						"continuing with 2G only operation\n"));
 					*nan_sec_5g = 0;
 				} else {
-					WL_INFORM_MEM(("Found sec inst mode 5g chan!!\n"));
+					WL_DBG_MEM(("Found sec inst mode 5g chan!!\n"));
 					*nan_sec_5g = channel;
 				}
 			}
 
 			if ((band_mask & WLAN_MAC_2_4_BAND) &&
 				(channel == NAN_DEF_SOCIAL_CHAN_2G)) {
-				WL_INFORM_MEM(("Found instant mode 2g channel!!\n"));
+				WL_DBG_MEM(("Found instant mode 2g channel!!\n"));
 				*nan_2g = channel;
 			}
 		}
