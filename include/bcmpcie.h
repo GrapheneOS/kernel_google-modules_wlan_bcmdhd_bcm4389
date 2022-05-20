@@ -535,6 +535,7 @@ typedef struct {
 /* Indicates whether HMAP violation was Write */
 #define D2H_DEV_TRAP_HMAP_WRITE				0x04000000
 #define D2H_DEV_TRAP_PING_HOST_FAILURE			0x08000000
+#define D2H_DEV_TRAP_DS_ACK_TIMEOUT			0x00100000u
 #define D2H_FWTRAP_MASK		0x0000001F	/* Adding maskbits for TRAP information */
 
 #define D2HMB_FWHALT                    D2H_DEV_FWHALT

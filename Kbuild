@@ -133,6 +133,8 @@ DHDCFLAGS += -DDHD_SBN
 
 # Enable inband device wake feature
 DHDCFLAGS += -DPCIE_INB_DW
+# Enable DS ack extended wait
+DHDCFLAGS += -DPCIE_INB_DSACK_EXT_WAIT
 
 # Prioritize ARP
 DHDCFLAGS += -DPRIORITIZE_ARP
