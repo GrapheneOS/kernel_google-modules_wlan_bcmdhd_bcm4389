@@ -801,6 +801,8 @@ dhd_clear_bus_errors(dhd_pub_t *dhdp)
 
 	dhdp->dongle_reset = FALSE;
 	dhdp->dongle_trap_occured = FALSE;
+	dhdp->dsack_hc_due_to_isr_delay = FALSE;
+	dhdp->dsack_hc_due_to_dpc_delay = FALSE;
 	dhdp->iovar_timeout_occured = FALSE;
 #ifdef PCIE_FULL_DONGLE
 	dhdp->d3ack_timeout_occured = FALSE;
@@ -11029,6 +11031,12 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 		case DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF:
 			type_str = "Dongle_Trap_During_Wifi_OnOff";
+			break;
+		case DUMP_TYPE_BY_DSACK_HC_DUE_TO_ISR_DELAY:
+			type_str = "Dongle_Trap_DSACK_HC_due_to_ISR_delay";
+			break;
+		case DUMP_TYPE_BY_DSACK_HC_DUE_TO_DPC_DELAY:
+			type_str = "Dongle_Trap_DSACK_HC_due_to_DPC_delay";
 			break;
 		case DUMP_TYPE_MEMORY_CORRUPTION:
 			type_str = "Memory_Corruption";
