@@ -2321,7 +2321,7 @@ wl_cfgnan_set_rssi_mid_or_close(nan_config_cmd_data_t *cmd_data,
 	return ret;
 }
 
-static int
+int
 wl_cfgnan_check_for_valid_5gchan(struct net_device *ndev, uint8 chan)
 {
 	s32 ret = BCME_OK;
@@ -10398,4 +10398,63 @@ sched:
 	/* As FW is busy, retry NMI change after 60sec */
 	schedule_delayed_work(&cfg->nancfg->nan_nmi_rand, msecs_to_jiffies(60 * 1000));
 }
+#ifdef WL_NAN_INSTANT_MODE
+void wl_cfgnan_inst_chan_support(struct bcm_cfg80211 *cfg,
+	wl_chanspec_list_v1_t *chan_list, u32 band_mask,
+	uint8 *nan_2g, uint8 *nan_pri_5g, uint8 *nan_sec_5g)
+{
+	int ret = BCME_OK;
+	uint16 list_count = 0, i = 0;
+	uint8 channel = 0;
+	chanspec_t chanspec = INVCHANSPEC;
+
+	list_count = chan_list->count;
+	for (i = 0; i < list_count; i++) {
+		chanspec = dtoh32(((wl_chanspec_list_v1_t *)chan_list)->chspecs[i].chanspec);
+		chanspec = wl_chspec_driver_to_host(chanspec);
+
+		if (!wf_chspec_malformed(chanspec)) {
+			channel = CHSPEC_CHANNEL(chanspec);
+
+			if ((band_mask & WLAN_MAC_5_0_BAND) &&
+				(channel == NAN_DEF_SOCIAL_CHAN_5G)) {
+				/* Check nan operatability in the current locale */
+				ret = wl_cfgnan_check_for_valid_5gchan(bcmcfg_to_prmry_ndev(cfg),
+					channel);
+				if (ret != BCME_OK) {
+					WL_DBG_MEM(("Current locale doesn't support 5G op"
+						"continuing with 2G only operation\n"));
+					*nan_pri_5g = 0;
+				} else {
+					WL_DBG_MEM(("Found prim inst mode 5g chan!!\n"));
+					*nan_pri_5g = channel;
+				}
+			}
+
+			if ((band_mask & WLAN_MAC_5_0_BAND) &&
+				(channel == NAN_DEF_SEC_SOCIAL_CHAN_5G)) {
+				/* Check nan operatability in the current locale */
+				ret = wl_cfgnan_check_for_valid_5gchan(bcmcfg_to_prmry_ndev(cfg),
+					channel);
+				if (ret != BCME_OK) {
+					WL_DBG_MEM(("Current locale doesn't support 5G op"
+						"continuing with 2G only operation\n"));
+					*nan_sec_5g = 0;
+				} else {
+					WL_DBG_MEM(("Found sec inst mode 5g chan!!\n"));
+					*nan_sec_5g = channel;
+				}
+			}
+
+			if ((band_mask & WLAN_MAC_2_4_BAND) &&
+				(channel == NAN_DEF_SOCIAL_CHAN_2G)) {
+				WL_DBG_MEM(("Found instant mode 2g channel!!\n"));
+				*nan_2g = channel;
+			}
+		}
+	}
+	return;
+}
+#endif /* WL_NAN_INSTANT_MODE */
+#line 10447
 #endif /* WL_NAN */
