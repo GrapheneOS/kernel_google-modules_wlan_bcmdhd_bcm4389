@@ -7533,7 +7533,11 @@ wl_cfgvendor_get_radio_stats(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 				goto exit;
 			}
 			radio_h_v2[i].radio = radio_v2->radio;
-			radio_h_v2[i].on_time = radio_v2->on_time;
+			if (radio_v2->radio != WL_RADIOSTAT_SLICE_INDEX_SCAN) {
+				radio_h_v2[i].on_time = radio_v2->on_time;
+			} else {
+				radio_h_v2[i].on_time = 0;
+			}
 			radio_h_v2[i].tx_time = radio_v2->tx_time;
 			radio_h_v2[i].num_tx_levels = 0;
 			radio_h_v2[i].tx_time_per_levels = NULL;
@@ -7542,7 +7546,12 @@ wl_cfgvendor_get_radio_stats(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 #else
 			radio_h_v2[i].rx_time = radio_v2->rx_time;
 #endif /* LINKSTAT_EXT_SUPPORT  */
-			radio_h_v2[i].on_time_scan = (uint32)(radio_v2->on_time_scan / 1000);
+			if (radio_v2->radio != WL_RADIOSTAT_SLICE_INDEX_SCAN) {
+				radio_h_v2[i].on_time_scan =
+					(uint32)(radio_v2->on_time_scan / 1000);
+			} else {
+				radio_h_v2[i].on_time_scan = 0;
+			}
 			radio_h_v2[i].on_time_nbd = (uint32)(radio_v2->on_time_nbd / 1000);
 			radio_h_v2[i].on_time_gscan = (uint32)(radio_v2->on_time_gscan / 1000);
 			radio_h_v2[i].on_time_roam_scan = radio_v2->on_time_roam_scan;
@@ -7577,7 +7586,11 @@ wl_cfgvendor_get_radio_stats(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			}
 			radio_v1 = (wifi_radio_stat_v1_t *)iovar_buf;
 			radio_h.rx_time = radio_v1->rx_time;
-			radio_h.on_time = radio_v1->on_time;
+			if (radio_v1->radio != WL_RADIOSTAT_SLICE_INDEX_SCAN) {
+				radio_h.on_time = radio_v1->on_time;
+			} else {
+				radio_h.on_time = 0;
+			}
 			radio_h.tx_time = radio_v1->tx_time;
 			radio_h.on_time_nbd = radio_v1->on_time_nbd;
 			radio_h.on_time_gscan = radio_v1->on_time_gscan;
