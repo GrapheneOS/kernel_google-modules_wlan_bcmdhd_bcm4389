@@ -1179,12 +1179,14 @@ dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp)
 	if (sched_err) {
 		/* print out minimum timestamp info */
 		DHD_ERROR(("isr_entry_time="SEC_USEC_FMT
+			" prev_isr_entry_time="SEC_USEC_FMT
 			" isr_exit_time="SEC_USEC_FMT
 			" dpc_entry_time="SEC_USEC_FMT
 			"\ndpc_exit_time="SEC_USEC_FMT
 			" isr_sched_dpc_time="SEC_USEC_FMT
 			" resched_dpc_time="SEC_USEC_FMT"\n",
 			GET_SEC_USEC(bus->isr_entry_time),
+			GET_SEC_USEC(bus->prev_isr_entry_time),
 			GET_SEC_USEC(bus->isr_exit_time),
 			GET_SEC_USEC(bus->dpc_entry_time),
 			GET_SEC_USEC(bus->dpc_exit_time),
@@ -11343,7 +11345,7 @@ void dhd_dump_intr_counters(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 		dhdpcie_get_oob_irq_level());
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 	bcm_bprintf(strbuf, "\ncurrent_time="SEC_USEC_FMT" isr_entry_time="SEC_USEC_FMT
-		" isr_exit_time="SEC_USEC_FMT"\n"
+		" prev_isr_entry_time="SEC_USEC_FMT" isr_exit_time="SEC_USEC_FMT"\n"
 		"isr_sched_dpc_time="SEC_USEC_FMT" rpm_sched_dpc_time="SEC_USEC_FMT"\n"
 		" last_non_ours_irq_time="SEC_USEC_FMT" dpc_entry_time="SEC_USEC_FMT"\n"
 		"last_process_ctrlbuf_time="SEC_USEC_FMT " last_process_flowring_time="SEC_USEC_FMT
@@ -11352,6 +11354,7 @@ void dhd_dump_intr_counters(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 		"\ndpc_exit_time="SEC_USEC_FMT" resched_dpc_time="SEC_USEC_FMT"\n"
 		"last_d3_inform_time="SEC_USEC_FMT"\n",
 		GET_SEC_USEC(current_time), GET_SEC_USEC(bus->isr_entry_time),
+		GET_SEC_USEC(bus->prev_isr_entry_time),
 		GET_SEC_USEC(bus->isr_exit_time), GET_SEC_USEC(bus->isr_sched_dpc_time),
 		GET_SEC_USEC(bus->rpm_sched_dpc_time),
 		GET_SEC_USEC(bus->last_non_ours_irq_time), GET_SEC_USEC(bus->dpc_entry_time),
@@ -12356,6 +12359,33 @@ dhd_bus_inb_set_device_wake(struct dhd_bus *bus, bool val)
 exit:
 	return ret;
 }
+
+#ifdef PCIE_INB_DSACK_EXT_WAIT
+void
+dhd_bus_ds_ack_debug_dump(struct dhd_bus *bus)
+{
+	if ((DIV_U64_BY_U32(bus->isr_entry_time, NSEC_PER_SEC) -
+		DIV_U64_BY_U32(bus->prev_isr_entry_time, NSEC_PER_SEC)) >=
+		DW_DS_ACK_RETRY_THRESHOLD) {
+		bus->dhd->dsack_hc_due_to_isr_delay = TRUE;
+		DHD_ERROR(("ISR did not run causing DS ack timeout\n"));
+	} else if ((bus->dpc_entry_time > bus->isr_entry_time) &&
+		(DIV_U64_BY_U32(bus->dpc_entry_time, NSEC_PER_SEC) -
+		DIV_U64_BY_U32(bus->isr_entry_time, NSEC_PER_SEC)) >=
+		DW_DS_ACK_RETRY_THRESHOLD) {
+		bus->dhd->dsack_hc_due_to_dpc_delay = TRUE;
+		DHD_ERROR(("Delay in scheduling DPC causing DS ack timeout\n"));
+	} else {
+		DHD_ERROR(("Failed to send DS ack\n"));
+	}
+	DHD_ERROR(("prev_isr_entry_time="SEC_USEC_FMT
+		" isr_entry_time="SEC_USEC_FMT
+		" dpc_entry_time="SEC_USEC_FMT"\n",
+		GET_SEC_USEC(bus->prev_isr_entry_time),
+		GET_SEC_USEC(bus->isr_entry_time),
+		GET_SEC_USEC(bus->dpc_entry_time)));
+}
+#endif /* PCIE_INB_DSACK_EXT_WAIT */
 #endif /* PCIE_INB_DW */
 #if defined(PCIE_OOB) || defined(PCIE_INB_DW)
 void
@@ -17253,8 +17283,10 @@ dhd_pcie_intr_count_dump(dhd_pub_t *dhd)
 	DHD_ERROR(("\ncurrent_time="SEC_USEC_FMT"\n",
 		GET_SEC_USEC(current_time)));
 	DHD_ERROR(("isr_entry_time="SEC_USEC_FMT
+		" prev_isr_entry_time="SEC_USEC_FMT
 		" isr_exit_time="SEC_USEC_FMT"\n",
 		GET_SEC_USEC(bus->isr_entry_time),
+		GET_SEC_USEC(bus->prev_isr_entry_time),
 		GET_SEC_USEC(bus->isr_exit_time)));
 	DHD_ERROR(("isr_sched_dpc_time="SEC_USEC_FMT
 		" rpm_sched_dpc_time="SEC_USEC_FMT
