@@ -2423,6 +2423,7 @@ irqreturn_t
 dhdpcie_isr(int irq, void *arg)
 {
 	dhd_bus_t *bus = (dhd_bus_t*)arg;
+	bus->prev_isr_entry_time = bus->isr_entry_time;
 	bus->isr_entry_time = OSL_LOCALTIME_NS();
 	if (!dhdpcie_bus_isr(bus)) {
 		DHD_LOG_MEM(("%s: dhdpcie_bus_isr returns with FALSE\n", __FUNCTION__));

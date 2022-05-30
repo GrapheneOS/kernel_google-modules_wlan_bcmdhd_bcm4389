@@ -438,6 +438,7 @@ typedef struct dhd_bus {
 	uint64 last_oob_irq_disable_time;
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 	uint64 isr_entry_time;
+	uint64 prev_isr_entry_time;
 	uint64 isr_exit_time;
 	uint64 isr_sched_dpc_time;
 	uint64 rpm_sched_dpc_time;
@@ -872,6 +873,9 @@ extern enum dhd_bus_ds_state dhdpcie_bus_get_pcie_inband_dw_state(dhd_bus_t *bus
 extern const char * dhd_convert_inb_state_names(enum dhd_bus_ds_state inbstate);
 extern const char * dhd_convert_dsval(uint32 val, bool d2h);
 extern int dhd_bus_inb_set_device_wake(struct dhd_bus *bus, bool val);
+#ifdef PCIE_INB_DSACK_EXT_WAIT
+extern void dhd_bus_ds_ack_debug_dump(struct dhd_bus *bus);
+#endif /* PCIE_INB_DSACK_EXT_WAIT */
 extern void dhd_bus_inb_ack_pending_ds_req(dhd_bus_t *bus);
 #endif /* PCIE_INB_DW */
 extern void dhdpcie_bus_enab_pcie_dw(dhd_bus_t *bus, uint8 dw_option);
