@@ -24751,10 +24751,10 @@ static void wl_get_sar_config_info(struct bcm_cfg80211 *cfg)
 		if (cptr) {
 			num = sscanf(cptr, "%hhd,%hhd,%hhd",
 				&scenario, &sarmode, &airplanemode);
-			if ((num != 3) || (scenario < 0) ||
+			if ((num != 3) || (scenario < WIFI_POWER_SCENARIO_DEFAULT) ||
 					(scenario >= SAR_CONFIG_SCENARIO_COUNT)) {
 				cfg->sar_config_info[i].scenario = WIFI_POWER_SCENARIO_INVALID;
-				WL_ERR(("format should be [scenario (0-%d)], [sar], [airplane]\n",
+				WL_ERR(("format should be [scenario (-1 to %d)], [sar], [airplane]\n",
 					(SAR_CONFIG_SCENARIO_COUNT-1)));
 			} else {
 				WL_DBG(("scenario=%d, sar=%d, airplane=%d\n",
