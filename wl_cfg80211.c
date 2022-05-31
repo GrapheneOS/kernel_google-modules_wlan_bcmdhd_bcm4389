@@ -17478,7 +17478,8 @@ static s32 wl_update_chan_param(struct net_device *dev, u32 cur_chan,
 				band_chan->flags |= IEEE80211_CHAN_RADAR;
 #endif
 			}
-			if (channel & WL_CHAN_PASSIVE) {
+			if ((channel & WL_CHAN_PASSIVE) ||
+				(channel & WL_CHAN_CLM_RESTRICTED)) {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
 				band_chan->flags |= IEEE80211_CHAN_PASSIVE_SCAN;
 #else
