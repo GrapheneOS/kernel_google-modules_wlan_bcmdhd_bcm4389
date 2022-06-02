@@ -2863,6 +2863,7 @@ void pr_roam_scan_cmpl_v2(prcd_event_log_hdr_t *plog_hdr)
 	int i;
 	roam_log_scan_cmplt_v2_t *log = (roam_log_scan_cmplt_v2_t *)plog_hdr->log_ptr;
 	char chanspec_buf[CHANSPEC_STR_LEN];
+	uint8 scan_list_size;
 
 	DHD_ERROR_ROAM(("ROAM_LOG_SCAN_CMPL: time:%d version:%d"
 		"scan_count:%d score_delta:%d\n",
@@ -2873,7 +2874,9 @@ void pr_roam_scan_cmpl_v2(prcd_event_log_hdr_t *plog_hdr)
 			log->cur_info.rssi,
 			log->cur_info.score,
 			wf_chspec_ntoa_ex(log->cur_info.chanspec, chanspec_buf)));
-	for (i = 0; i < log->scan_list_size; i++) {
+
+	scan_list_size = MIN(log->scan_list_size, ROAM_LOG_RPT_SCAN_LIST_SIZE);
+	for (i = 0; i < scan_list_size; i++) {
 		DHD_ERROR_ROAM(("  ROAM_LOG_CANDIDATE %d: " MACDBG
 			"rssi:%d score:%d cu :%d channel:%s TPUT:%dkbps\n",
 			i, MAC2STRDBG((uint8 *)&log->scan_list[i].addr),
