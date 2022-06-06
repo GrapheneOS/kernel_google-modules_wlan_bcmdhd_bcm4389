@@ -21751,6 +21751,7 @@ dhd_print_tasklet_status(dhd_pub_t *dhd)
 	}
 
 	DHD_ERROR(("DHD Tasklet status : 0x%lx\n", dhdinfo->tasklet.state));
+	DHD_ERROR(("DPC thread thr_pid: %ld\n", dhdinfo->thr_dpc_ctl.thr_pid));
 }
 
 #if defined(DHD_MQ) && defined(DHD_MQ_STATS)

@@ -10263,7 +10263,7 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 				goto exit;
 		}
 	}
-	WL_DBG(("SAR: sar_mode %d airplane_mode %d\n", sar_tx_power_val, airplane_mode));
+	WL_DBG_MEM(("SAR: sar_mode %d airplane_mode %d\n", sar_tx_power_val, airplane_mode));
 	err = wldev_iovar_setint(wdev_to_ndev(wdev), "fccpwrlimit2g", airplane_mode);
 	if (unlikely(err)) {
 		WL_ERR(("SAR: Failed to set airplane_mode - error (%d)\n", err));
