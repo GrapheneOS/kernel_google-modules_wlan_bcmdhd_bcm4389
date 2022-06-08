@@ -936,6 +936,14 @@ void wl_cfgvendor_advlog_disassoc_tx(struct bcm_cfg80211 *cfg, struct net_device
 	uint32 reason, int rssi);
 #endif /* WL_CFGVENDOR_CUST_ADVLOG */
 
+#ifdef WL_NAN_INSTANT_MODE
+static int wl_cfg80211_get_nan_instant_chan(struct bcm_cfg80211 *cfg,
+	wl_chanspec_list_v1_t *chan_list, uint32 band_mask,
+	chanspec_t *nan_inst_mode_chspec);
+#endif /* WL_NAN_INSTANT_MODE */
+#line 967
+
+// MOG-ON: CHRE
 #ifdef CHRE
 #define WL_CFG_CHRE_DISABLE	0u
 #define WL_CFG_CHRE_ENABLE	1u
@@ -25249,6 +25257,60 @@ void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint
 
 }
 
+#ifdef WL_NAN_INSTANT_MODE
+static int wl_cfg80211_get_nan_instant_chan(struct bcm_cfg80211 *cfg,
+	wl_chanspec_list_v1_t *chan_list, uint32 band_mask,
+	chanspec_t *nan_inst_mode_chspec)
+{
+	int err = BCME_OK;
+	int band = 0;
+	uint32 channel;
+	uint8 nan_2g = 0, nan_pri_5g = 0, nan_sec_5g = 0;
+
+	wl_cfgnan_inst_chan_support(cfg, chan_list,
+		band_mask, &nan_2g, &nan_pri_5g, &nan_sec_5g);
+	if (!nan_2g && !nan_pri_5g && !nan_sec_5g) {
+		WL_ERR(("Failed to retrieve the soc channels for nan:"
+			"nan_2g: %d, nan_pri_5g: %d, nan_sec_5g: %d\n",
+			nan_2g, nan_pri_5g, nan_sec_5g));
+		err = BCME_NOTFOUND;
+		goto exit;
+	}
+	/* Skip if chanspec does not match the interested band_mask */
+	if (!((band_mask & WLAN_MAC_2_4_BAND) ||
+			(band_mask & WLAN_MAC_5_0_BAND))) {
+		WL_ERR(("Unsupported band mask in unsupported for nan\n"));
+		err = BCME_UNSUPPORTED;
+		goto exit;
+	}
+
+	if ((band_mask & WLAN_MAC_5_0_BAND) && (nan_pri_5g)) {
+		channel = nan_pri_5g;
+		band = WL_CHANSPEC_BAND_5G;
+	} else if ((band_mask & WLAN_MAC_5_0_BAND) && (nan_sec_5g)) {
+		channel = nan_sec_5g;
+		band = WL_CHANSPEC_BAND_5G;
+	} else if ((band_mask & WLAN_MAC_2_4_BAND) && (nan_2g)) {
+		channel = nan_2g;
+		band = WL_CHANSPEC_BAND_2G;
+	} else {
+		WL_ERR(("No usable channels for nan\n"));
+		err = BCME_NOTFOUND;
+		goto exit;
+	}
+	if ((*nan_inst_mode_chspec =
+		wl_freq_to_chanspec(wl_channel_to_frequency(channel, band))) == INVCHANSPEC) {
+		WL_ERR(("Invalid instant mode usable channel: %d, band: %d\n", channel, band));
+		err = BCME_ERROR;
+		goto exit;
+	}
+	WL_INFORM_MEM(("Instant mode usable channel for nan: %d\n", channel));
+exit:
+	return err;
+}
+#endif /* WL_NAN_INSTANT_MODE */
+#line 27247
+
 int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_info)
 {
 	usable_channel_t *cur_ch = NULL;
@@ -25270,6 +25332,9 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	chanspec_t sta_chanspec;
 	uint32 sta_assoc_freq = 0;
 	bool is_unii4 = false;
+#ifdef WL_NAN_INSTANT_MODE
+	chanspec_t nan_inst_mode_chspec = INVCHANSPEC;
+#endif /* WL_NAN_INSTANT_MODE */
 
 	bzero(u_info->channels, sizeof(*u_info->channels) * u_info->max_size);
 	/* Get chan_info_list or chanspec from FW */
@@ -25290,6 +25355,17 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		WL_ERR(("get chan_info_list err(%d)\n", err));
 		goto exit;
 	}
+
+#ifdef WL_NAN_INSTANT_MODE
+	if ((u_info->iface_mode_mask & (1 << WIFI_INTERFACE_NAN)) &&
+		(u_info->filter_mask & WIFI_USABLE_CHANNEL_FILTER_NAN_INSTANT_MODE)) {
+		if (wl_cfg80211_get_nan_instant_chan(cfg, (wl_chanspec_list_v1_t *)chan_list,
+			u_info->band_mask, &nan_inst_mode_chspec) != BCME_OK) {
+			WL_ERR(("Failed to get the instant nan mode chanspec!!\n"));
+		}
+	}
+#endif /* WL_NAN_INSTANT_MODE */
+#line 27304
 
 	/* TDLS is supported only for single STA associated case */
 	if (cfg->stas_associated == 1) {
@@ -25333,6 +25409,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
 			(chaninfo & WL_CHAN_BAND_6G_VLP));
 #endif /* WL_SOFTAP_6G */
+#line 27347
 #ifdef WL_UNII4_CHAN
 		is_unii4 = (CHSPEC_IS5G(chspec) &&
 				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)));
@@ -25371,17 +25448,32 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 #ifdef WL_NAN_6G
 					mask |= (1 << WIFI_INTERFACE_NAN);
 #endif /* WL_NAN_6G */
+#line 27385
 #ifdef WL_SOFTAP_6G
 					/* consider only VLP and PSC channel in 6g for softap */
 					if (vlp_psc_include) {
 						mask |= (1 << WIFI_INTERFACE_SOFTAP);
 					}
 #endif /* WL_SOFTAP_6G */
+#line 27391
 				} else {
 					/* handle 2G and 5G channels */
 					mask |= ((1 << WIFI_INTERFACE_P2P_GO) |
-							(1 << WIFI_INTERFACE_SOFTAP) |
-							(1 << WIFI_INTERFACE_NAN));
+						(1 << WIFI_INTERFACE_SOFTAP));
+#ifdef WL_NAN_INSTANT_MODE
+					/* handle nan instant mode filter mask case separately */
+					if ((u_info->iface_mode_mask & (1 << WIFI_INTERFACE_NAN)) &&
+						(u_info->filter_mask &
+						WIFI_USABLE_CHANNEL_FILTER_NAN_INSTANT_MODE)) {
+						if (chspec == nan_inst_mode_chspec) {
+							mask |= (1 << WIFI_INTERFACE_NAN);
+						}
+					} else
+#endif /* WL_NAN_INSTANT_MODE */
+#line 27405
+					{
+						mask |= (1 << WIFI_INTERFACE_NAN);
+					}
 				}
 			}
 		}

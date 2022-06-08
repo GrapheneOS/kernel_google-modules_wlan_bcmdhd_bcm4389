@@ -1341,7 +1341,7 @@ BCMFASTPATH(dhd_lb_sendpkt)(dhd_info_t *dhd, struct net_device *net,
 #endif /* DHD_LB_TXP */
 
 #ifdef DHD_LB_TXP
-#define DHD_LB_TXBOUND	64
+#define DHD_LB_TXBOUND	32
 /*
  * Function that performs the TX processing on a given CPU
  */

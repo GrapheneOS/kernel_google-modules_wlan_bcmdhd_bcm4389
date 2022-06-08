@@ -7352,6 +7352,14 @@ BCMFASTPATH(dhd_prot_process_trapbuf)(dhd_pub_t *dhd)
 			DHD_ERROR(("Firmware trapped and trap_data is 0x%04x\n", data));
 		}
 
+#if defined(PCIE_INB_DW) && defined(PCIE_INB_DSACK_EXT_WAIT)
+		if (INBAND_DW_ENAB(dhd->bus)) {
+			if (data & D2H_DEV_TRAP_DS_ACK_TIMEOUT) {
+				dhd_bus_ds_ack_debug_dump(dhd->bus);
+			}
+		}
+#endif /* PCIE_INB_DW && PCIE_INB_DSACK_EXT_WAIT */
+
 		if (data & D2H_DEV_EXT_TRAP_DATA)
 		{
 			if (dhd->extended_trap_data) {
