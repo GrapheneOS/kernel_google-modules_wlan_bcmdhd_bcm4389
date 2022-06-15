@@ -1290,6 +1290,7 @@ struct net_info {
 	*/
 	u8* passphrase_cfg;
 	u16 passphrase_cfg_len;
+	u8 *qos_up_table;
 };
 
 #ifdef WL_BCNRECV
@@ -2483,6 +2484,10 @@ wl_dealloc_netinfo_by_wdev(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev)
 				_net_info->passphrase_cfg = NULL;
 			}
 
+			if (_net_info->qos_up_table) {
+				MFREE(cfg->osh, _net_info->qos_up_table, UP_TABLE_MAX);
+				_net_info->qos_up_table = NULL;
+			}
 			list_del(&_net_info->list);
 			cfg->iface_cnt--;
 			MFREE(cfg->osh, _net_info, sizeof(struct net_info));
