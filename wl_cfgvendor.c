@@ -1462,8 +1462,15 @@ static int wl_cfgvendor_set_rssi_monitor(struct wiphy *wiphy,
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	int8 max_rssi = 0, min_rssi = 0;
 	const struct nlattr *iter;
+	struct net_device *ndev = wdev_to_ndev(wdev);
 
-	if (!wl_get_drv_status(cfg, CONNECTED, wdev_to_ndev(wdev))) {
+	/* Limit rssi monitoring only on primary interface */
+	if (!IS_INET_LINK_NDEV(cfg, ndev)) {
+		WL_ERR(("rssi monitor query requested on non primary interface\n"));
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wl_get_drv_status(cfg, CONNECTED, ndev)) {
 		WL_ERR(("Sta is not connected to an AP, rssi monitoring is not allowed\n"));
 		return -EINVAL;
 	}
@@ -1482,8 +1489,7 @@ static int wl_cfgvendor_set_rssi_monitor(struct wiphy *wiphy,
 		}
 	}
 
-	if (dhd_dev_set_rssi_monitor_cfg(bcmcfg_to_prmry_ndev(cfg),
-	       start, max_rssi, min_rssi) < 0) {
+	if (dhd_dev_set_rssi_monitor_cfg(ndev, start, max_rssi, min_rssi) < 0) {
 		WL_ERR(("Could not set rssi monitor cfg\n"));
 		err = -EINVAL;
 	}
@@ -9533,6 +9539,13 @@ static int wl_cfgvendor_start_mkeep_alive(struct wiphy *wiphy, struct wireless_d
 	uint32 period_msec = 0;
 	const struct nlattr *iter;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	struct net_device *ndev = wdev_to_ndev(wdev);
+
+	/* Limit keep alive only on primary interface */
+	if (!IS_INET_LINK_NDEV(cfg, ndev)) {
+		WL_ERR(("keep alive query requested on non primary interface\n"));
+		return BCME_UNSUPPORTED;
+	}
 
 	nla_for_each_attr(iter, data, len, rem) {
 		type = nla_type(iter);
@@ -9597,7 +9610,7 @@ static int wl_cfgvendor_start_mkeep_alive(struct wiphy *wiphy, struct wireless_d
 		goto exit;
 	}
 
-	ret = wl_cfg80211_start_mkeep_alive(cfg, mkeep_alive_id,
+	ret = wl_cfg80211_start_mkeep_alive(ndev, cfg, mkeep_alive_id,
 		ether_type, ip_pkt, ip_pkt_len, src_mac, dst_mac, period_msec);
 	if (ret < 0) {
 		WL_ERR(("start_mkeep_alive is failed ret: %d\n", ret));
@@ -9623,6 +9636,13 @@ static int wl_cfgvendor_stop_mkeep_alive(struct wiphy *wiphy, struct wireless_de
 	uint8 mkeep_alive_id = 0;
 	const struct nlattr *iter;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	struct net_device *ndev = wdev_to_ndev(wdev);
+
+	/* Limit keep alive only on primary interface */
+	if (!IS_INET_LINK_NDEV(cfg, ndev)) {
+		WL_ERR(("keep alive query requested on non primary interface\n"));
+		return BCME_UNSUPPORTED;
+	}
 
 	nla_for_each_attr(iter, data, len, rem) {
 		type = nla_type(iter);
@@ -9637,7 +9657,7 @@ static int wl_cfgvendor_stop_mkeep_alive(struct wiphy *wiphy, struct wireless_de
 		}
 	}
 
-	ret = wl_cfg80211_stop_mkeep_alive(cfg, mkeep_alive_id);
+	ret = wl_cfg80211_stop_mkeep_alive(ndev, cfg, mkeep_alive_id);
 	if (ret < 0) {
 		WL_ERR(("stop_mkeep_alive is failed ret: %d\n", ret));
 	}
