@@ -913,7 +913,7 @@ static s32 wl_bcnrecv_aborted_event_handler(struct bcm_cfg80211 *cfg, bcm_struct
 
 #if defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE)
 #define KEEP_ALIVE_ID_MAX	8
-void wl_cleanup_keep_alive(struct bcm_cfg80211 *cfg);
+void wl_cleanup_keep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg);
 #endif /* defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE) */
 
 #ifdef WL_CAC_TS
@@ -12702,8 +12702,9 @@ wl_post_linkdown_ops(struct bcm_cfg80211 *cfg,
 
 	/* clear RSSI monitor, framework will set new cfg */
 #ifdef RSSI_MONITOR_SUPPORT
-	dhd_dev_set_rssi_monitor_cfg(bcmcfg_to_prmry_ndev(cfg),
-		FALSE, 0, 0);
+	if (ndev == cfg->inet_ndev) {
+		dhd_dev_set_rssi_monitor_cfg(ndev, FALSE, 0, 0);
+	}
 #endif /* RSSI_MONITOR_SUPPORT */
 
 #ifdef WBTEXT
@@ -12719,8 +12720,8 @@ wl_post_linkdown_ops(struct bcm_cfg80211 *cfg,
 #endif /* P2PLISTEN_AP_SAMECHN */
 
 #if defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE)
-	if (ndev == bcmcfg_to_prmry_ndev(cfg) && cfg->mkeep_alive_avail) {
-		wl_cleanup_keep_alive(cfg);
+	if ((ndev == cfg->inet_ndev) && cfg->mkeep_alive_avail) {
+		wl_cleanup_keep_alive(ndev, cfg);
 	}
 #endif /* defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE) */
 
@@ -23592,8 +23593,8 @@ bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len)
 #define KA_TEMP_BUF_SIZE 512
 #define KA_FRAME_SIZE 300
 int
-wl_cfg80211_start_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id,
-	uint16 ether_type, uint8 *ip_pkt, uint16 ip_pkt_len,
+wl_cfg80211_start_mkeep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg,
+	uint8 mkeep_alive_id, uint16 ether_type, uint8 *ip_pkt, uint16 ip_pkt_len,
 	uint8* src_mac, uint8* dst_mac, uint32 period_msec)
 {
 	const int ETHERTYPE_LEN = 2;
@@ -23613,8 +23614,6 @@ wl_cfg80211_start_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id,
 	char *pmac_frame = NULL;
 	char *pmac_frame_begin = NULL;
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	struct net_device *primary_ndev = NULL;
-	primary_ndev = bcmcfg_to_prmry_ndev(cfg);
 
 	/*
 	 * The mkeep_alive packet is for STA interface only; if the bss is configured as AP,
@@ -23641,7 +23640,7 @@ wl_cfg80211_start_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id,
 	/*
 	 * Get current mkeep-alive status.
 	 */
-	res = wldev_iovar_getbuf(primary_ndev, "mkeep_alive", &mkeep_alive_id,
+	res = wldev_iovar_getbuf(ndev, "mkeep_alive", &mkeep_alive_id,
 		sizeof(mkeep_alive_id), pbuf, KA_TEMP_BUF_SIZE, &cfg->ioctl_buf_sync);
 	if (res < 0) {
 		WL_ERR(("%s: Get mkeep_alive failed (error=%d)\n", __FUNCTION__, res));
@@ -23754,7 +23753,7 @@ wl_cfg80211_start_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id,
 	}
 	buf_len += len_bytes;
 
-	res = wldev_ioctl_set(primary_ndev, WLC_SET_VAR, pbuf, buf_len);
+	res = wldev_ioctl_set(ndev, WLC_SET_VAR, pbuf, buf_len);
 exit:
 	if (pmac_frame_begin) {
 		MFREE(cfg->osh, pmac_frame_begin, KA_FRAME_SIZE);
@@ -23765,17 +23764,18 @@ exit:
 	return res;
 }
 
+
+
 int
-wl_cfg80211_stop_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id)
+wl_cfg80211_stop_mkeep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg,
+	uint8 mkeep_alive_id)
 {
 	char *pbuf = NULL;
 	wl_mkeep_alive_pkt_v1_t mkeep_alive_pkt;
 	wl_mkeep_alive_pkt_v1_t *mkeep_alive_pktp = NULL;
 	int	res = BCME_ERROR;
 	int	i = 0;
-	struct net_device *primary_ndev = NULL;
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	primary_ndev = bcmcfg_to_prmry_ndev(cfg);
 
 	/*
 	 * The mkeep_alive packet is for STA interface only; if the bss is configured as AP,
@@ -23795,7 +23795,7 @@ wl_cfg80211_stop_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id)
 		return res;
 	}
 
-	res = wldev_iovar_getbuf(primary_ndev, "mkeep_alive", &mkeep_alive_id,
+	res = wldev_iovar_getbuf(ndev, "mkeep_alive", &mkeep_alive_id,
 			sizeof(mkeep_alive_id), pbuf, KA_TEMP_BUF_SIZE, &cfg->ioctl_buf_sync);
 	if (res < 0) {
 		WL_ERR(("%s: Get mkeep_alive failed (error=%d)\n", __FUNCTION__, res));
@@ -23828,7 +23828,7 @@ wl_cfg80211_stop_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id)
 		mkeep_alive_pkt.length = htod16(WL_MKEEP_ALIVE_FIXED_LEN);
 		mkeep_alive_pkt.keep_alive_id = mkeep_alive_id;
 
-		res = wldev_iovar_setbuf(primary_ndev, "mkeep_alive",
+		res = wldev_iovar_setbuf(ndev, "mkeep_alive",
 			(char *)&mkeep_alive_pkt, WL_MKEEP_ALIVE_FIXED_LEN,
 			pbuf, KA_TEMP_BUF_SIZE, &cfg->ioctl_buf_sync);
 	} else {
@@ -25057,13 +25057,13 @@ wl_android_roamoff_dbg_dump(struct bcm_cfg80211 *cfg)
 
 #if defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE)
 void
-wl_cleanup_keep_alive(struct bcm_cfg80211 *cfg)
+wl_cleanup_keep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg)
 {
 	int mkeep_alive_id;
 
 	for (mkeep_alive_id = 1; mkeep_alive_id < KEEP_ALIVE_ID_MAX; mkeep_alive_id++) {
 		if (isset(&cfg->mkeep_alive_avail, mkeep_alive_id)) {
-			if (wl_cfg80211_stop_mkeep_alive(cfg, mkeep_alive_id) == BCME_OK) {
+			if (wl_cfg80211_stop_mkeep_alive(ndev, cfg, mkeep_alive_id) == BCME_OK) {
 				clrbit(&cfg->mkeep_alive_avail, mkeep_alive_id);
 			}
 		}
