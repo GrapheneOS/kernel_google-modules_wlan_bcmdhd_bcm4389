@@ -14040,85 +14040,21 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #endif	/* CUSTOM_EVENT_PM_WAKE */
 
 #if defined(QOS_MAP_SET) || defined(WL_CUSTOM_MAPPING_OF_DSCP)
-static void
-wl_store_up_table_netinfo(struct bcm_cfg80211 *cfg,
-		struct net_device *ndev, u8 *uptable)
-{
-	unsigned long flags;
-	struct net_info *netinfo;
-
-	WL_CFG_NET_LIST_SYNC_LOCK(&cfg->net_list_sync, flags);
-	netinfo = _wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
-	if (netinfo) {
-		netinfo->qos_up_table = uptable;
-	} else {
-		WL_ERR(("netinfo not found for %s\n", ndev->name));
-	}
-	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
-}
-
-static u8 *
-wl_get_up_table_netinfo(struct bcm_cfg80211 *cfg, struct net_device *ndev)
-{
-	u8 *uptable = NULL;
-	unsigned long flags;
-	struct net_info *netinfo;
-
-	WL_CFG_NET_LIST_SYNC_LOCK(&cfg->net_list_sync, flags);
-	netinfo = _wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
-	if (netinfo) {
-		uptable = netinfo->qos_up_table;
-	}
-	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
-
-	return uptable;
-}
-
 /* get user priority table */
-u8 *
+uint8 *
 wl_get_up_table(dhd_pub_t * dhdp, int idx)
 {
-	struct bcm_cfg80211 *cfg;
 	struct net_device *ndev;
+	struct bcm_cfg80211 *cfg;
 
 	ndev = dhd_idx2net(dhdp, idx);
 	if (ndev) {
 		cfg = wl_get_cfg(ndev);
 		if (cfg)
-			return wl_get_up_table_netinfo(cfg, ndev);
+			return (uint8 *)(cfg->up_table);
 	}
 
 	return NULL;
-}
-
-static s32
-wl_config_up_table(struct bcm_cfg80211 *cfg,
-		struct net_device *ndev, bcm_tlv_t *qos_map_ie)
-{
-	u8 *up_table = wl_get_up_table_netinfo(cfg, ndev);
-
-	/* Add/update table */
-	if (qos_map_ie) {
-		WL_INFORM_MEM(("[%s] qos map add\n", ndev->name));
-		if (!up_table) {
-			up_table = (uint8 *)MALLOCZ(cfg->osh, UP_TABLE_MAX);
-			if (up_table == NULL) {
-				WL_ERR(("** malloc failure for up_table\n"));
-				return -ENOMEM;
-			}
-		}
-		wl_set_up_table(up_table, qos_map_ie);
-		wl_store_up_table_netinfo(cfg, ndev, up_table);
-		if (wl_dbg_level & WL_DBG_DBG) {
-			prhex("*** UP Table", up_table, UP_TABLE_MAX);
-		}
-	} else if (up_table) {
-		/* No qos_map_ie. Delete old entry if present */
-		MFREE(cfg->osh, up_table, UP_TABLE_MAX);
-		WL_INFORM_MEM(("[%s] qos map del\n", ndev->name));
-	}
-
-	return BCME_OK;
 }
 #endif /* defined(QOS_MAP_SET) || defined(WL_CUSTOM_MAPPING_OF_DSCP) */
 
@@ -14211,7 +14147,6 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 	struct wl_security *sec;
 #ifdef QOS_MAP_SET
 	bcm_tlv_t * qos_map_ie = NULL;
-	bcm_tlv_t * ext_cap_ie = NULL;
 #endif /* QOS_MAP_SET */
 
 	WL_DBG(("Enter \n"));
@@ -14302,17 +14237,16 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 #endif /* defined(DHD_DSCP_POLICY) */
 
 #ifdef QOS_MAP_SET
-		if (wl_dbg_level & WL_DBG_DBG) {
-			/* find extended cap IE */
-			ext_cap_ie = bcm_parse_tlvs(conn_info->req_ie, conn_info->req_ie_len,
-				DOT11_MNG_EXT_CAP_ID);
-			prhex("ext_cap_ie", (u8 *)ext_cap_ie->data, ext_cap_ie->len);
-		}
 		/* find qos map set ie */
-		qos_map_ie = bcm_parse_tlvs(conn_info->resp_ie, conn_info->resp_ie_len,
-				DOT11_MNG_QOS_MAP_ID);
-		if (wl_config_up_table(cfg, ndev, qos_map_ie) != BCME_OK) {
-			WL_ERR(("qos map config failed\n"));
+		if ((qos_map_ie = bcm_parse_tlvs(conn_info->resp_ie, conn_info->resp_ie_len,
+				DOT11_MNG_QOS_MAP_ID)) != NULL) {
+			WL_DBG((" QoS map set IE found in assoc response\n"));
+			if (!cfg->up_table) {
+				cfg->up_table = (uint8 *)MALLOC(cfg->osh, UP_TABLE_MAX);
+			}
+			wl_set_up_table(cfg->up_table, qos_map_ie);
+		} else {
+			MFREE(cfg->osh, cfg->up_table, UP_TABLE_MAX);
 		}
 #endif /* QOS_MAP_SET */
 	} else {
@@ -15351,10 +15285,26 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				      &mgmt_frame[offset], mgmt_frame_len - offset);
 			}
 
-			qos_map_ie = bcm_parse_tlvs(&mgmt_frame[offset], mgmt_frame_len - offset,
-				DOT11_MNG_QOS_MAP_ID);
-			if (wl_config_up_table(cfg, ndev, qos_map_ie) != BCME_OK) {
-				WL_ERR(("qos map config failed\n"));
+			if ((qos_map_ie = bcm_parse_tlvs(
+			             &mgmt_frame[offset], mgmt_frame_len - offset,
+			             DOT11_MNG_QOS_MAP_ID)) != NULL) {
+				WL_INFORM((" QoS map set IE found in QoS action frame\n"));
+				if (!cfg->up_table) {
+					cfg->up_table = (uint8 *)MALLOCZ(cfg->osh, UP_TABLE_MAX);
+					if (cfg->up_table == NULL) {
+						WL_ERR(("** malloc failure for up_table\n"));
+						goto exit;
+					}
+				}
+
+				wl_set_up_table(cfg->up_table, qos_map_ie);
+
+				if (wl_dbg_level & WL_DBG_DBG) {
+					prhex("*** UP Table", cfg->up_table, UP_TABLE_MAX);
+				}
+			} else {
+				WL_INFORM((" QoS map set IE not found in QoS action frame\n"));
+				MFREE(cfg->osh, cfg->up_table, UP_TABLE_MAX);
 			}
 #endif /* QOS_MAP_SET */
 
@@ -18147,12 +18097,6 @@ static s32 wl_cfg80211_config_rav_mscs_params(struct bcm_cfg80211 *cfg,
 		ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
 	if (unlikely(err)) {
 		WL_ERR(("set qos_mgmt failed ,err(%d)\n", err));
-	} else {
-		if (wl_dbg_level & WL_DBG_DBG) {
-			prhex("mscs config", (u8 *)iov_buf, iovlen);
-			WL_DBG(("UP bit map: %0x\n",
-				((wl_qos_rav_mscs_config_v1_t *)(&iov_buf->data[0]))->up_bitmap));
-		}
 	}
 fail:
 	if (ioctl_buf) {
