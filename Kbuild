@@ -384,9 +384,9 @@ DHDCFLAGS += -DWL_P2P_RAND
 #Custom Mapping of DSCP to User Priority
 DHDCFLAGS += -DWL_CUSTOM_MAPPING_OF_DSCP
 # Enable below define for production
-ifneq ($(CONFIG_SOC_GOOGLE),)
-DHDCFLAGS += -DMACADDR_PROVISION_ENFORCED
-endif
+# ifneq ($(CONFIG_SOC_GOOGLE),)
+# DHDCFLAGS += -DMACADDR_PROVISION_ENFORCED
+# endif
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_WAKE_STATUS
 endif
