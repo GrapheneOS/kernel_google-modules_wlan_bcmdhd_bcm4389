@@ -219,7 +219,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Enable FIS Dump
 #	DHDCFLAGS += -DDHD_FIS_DUMP
 # Enable System Debug Trace Controller, Embedded Trace Buffer
-	DHDCFLAGS += -DDHD_SDTC_ETB_DUMP
+#	DHDCFLAGS += -DDHD_SDTC_ETB_DUMP
 # Enable SMD/Minidump collection
 	DHDCFLAGS += -DD2H_MINIDUMP
 # ROT and Scan timeout debugging due to Kernel scheduling problem
