@@ -25248,21 +25248,33 @@ int wl_check_exist_freq_in_list(usable_channel_t *channels, int cur_idx, u32 fre
 
 void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint32 *mask,
 		usable_channel_info_t *u_info, uint32 *conn,
-		chanspec_t sta_chspec)
+		chanspec_t sta_chspec, uint32 sta_chaninfo)
 {
 #ifdef WL_CELLULAR_CHAN_AVOID
 	wifi_interface_mode mode;
 #endif /* WL_CELLULAR_CHAN_AVOID */
 	drv_acs_params_t param = { 0 };
 	int ret;
-	uint32 cur_band;
+	uint32 cur_band, sta_band;
 	uint32 filter = 0;
-	bool filter_softap = true;
+	bool restrict_chan = false;
 
 	/* If there is STA connection on 5GHz DFS channel,
 	 * none of the 5GHz channels are usable for SoftAP
 	 */
 	if (u_info->filter_mask & WIFI_USABLE_CHANNEL_FILTER_CONCURRENCY) {
+		sta_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(sta_chspec));
+		cur_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(cur_chspec));
+		restrict_chan = ((sta_chaninfo & WL_CHAN_RADAR) ||
+				(sta_chaninfo & WL_CHAN_PASSIVE)||
+				(sta_chaninfo & WL_CHAN_CLM_RESTRICTED));
+
+		/* Filter out SOFTAP when STA connected DFS channel */
+		if (sta_band == WLC_BAND_5G && restrict_chan) {
+			if (cur_band == WLC_BAND_5G) {
+				filter |= (1U << WIFI_INTERFACE_SOFTAP);
+			}
+		}
 
 		/* Filter out P2P_GO, P2P_CLIENT and NAN under condition */
 		if (conn[WL_IF_TYPE_STA] && conn[WL_IF_TYPE_AP]) {
@@ -25270,7 +25282,6 @@ void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint
 			filter |= ((1U << WIFI_INTERFACE_P2P_GO) |
 					(1U << WIFI_INTERFACE_P2P_CLIENT) |
 					(1U << WIFI_INTERFACE_NAN));
-			filter_softap = false;
 		} else if (conn[WL_IF_TYPE_STA] && conn[WL_IF_TYPE_P2P_GO]) {
 			/* STA + GO */
 			filter |= ((1U << WIFI_INTERFACE_P2P_CLIENT) |
@@ -25293,8 +25304,7 @@ void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint
 
 		/* Filter out SOFTAP under condition */
 		/* Check whether the cur_chspec is available for SOFTAP (include scc case) */
-		cur_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(cur_chspec));
-		if (!filter_softap) {
+		if (!(filter & (1U << WIFI_INTERFACE_SOFTAP))) {
 			param.freq_bands |= cur_band;
 
 			ret = wl_handle_acs_concurrency_cases(cfg, &param, 1, &cur_chspec);
@@ -25302,6 +25312,23 @@ void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint
 				WL_DBG(("Clear SOFAP bit chspec:%x ret:%d freq_bands(%d)\n",
 					cur_chspec, ret, param.freq_bands));
 				filter |= (1U << WIFI_INTERFACE_SOFTAP);
+			} else {
+				/* the function could returns TRUE even if the requested chspec is
+				 * not unavailable due to DHD_ACS_CHECK_SCC_2G_ACTIVE_CH feature.
+				 * scc_chspec can be zero when STA doesn't exist
+				 * or band is not matched.
+				 * here, we just interested in requested chspec.
+				 * so, should check the requested chspec
+				 * and selected chspec are the same
+				 */
+				if (param.scc_chspec != 0 &&
+					(wf_chspec_primary20_chan(cur_chspec) !=
+					wf_chspec_primary20_chan(param.scc_chspec))) {
+					WL_DBG(("Clear SOFTAP bit chspec:"
+						"%x p_chspec:%x p_band:%x\n",
+						cur_chspec, param.scc_chspec, param.freq_bands));
+					filter |= (1U << WIFI_INTERFACE_SOFTAP);
+				}
 			}
 		}
 
@@ -25320,6 +25347,7 @@ void wl_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_chspec, uint
 			}
 		}
 
+		/* Only interfaces queried from upper layer are left. */
 		*mask &= ~(filter);
 	}
 
@@ -25396,7 +25424,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 	u32 mask = 0;
 	uint32 channel;
 	uint32 freq, width;
-	uint32 chspec, chaninfo;
+	uint32 chspec, chaninfo, sta_chaninfo = 0;
 	u16 list_count;
 	int found_idx = BCME_NOTFOUND;
 	bool ch_160mhz_5g;
@@ -25406,7 +25434,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 #endif /* WL_SOFTAP_6G */
 	uint32 conn[WL_IF_TYPE_MAX] = {0};
 	struct net_device *p2p_ndev = NULL;
-	chanspec_t sta_chanspec;
+	chanspec_t sta_chanspec = 0;
 	uint32 sta_assoc_freq = 0;
 	bool is_unii4 = false;
 #ifdef WL_NAN_INSTANT_MODE
@@ -25466,6 +25494,11 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		channel = wf_chspec_primary20_chan(chspec);
 		freq = wl_channel_to_frequency(channel, band);
 		width = wl_chanspec_to_host_bw_map(chspec);
+
+		if (sta_chanspec == chspec) {
+			sta_chaninfo = chaninfo;
+			WL_DBG(("Found STA chspec in chan_list sta_chanspec:%x\n", sta_chanspec));
+		}
 
 		WL_DBG(("chspec:%x channel:%u chaninfo:%x freq:%u band:%u "
 				"req_band:%u req_iface_mode:%u filter:%u\n",
@@ -25574,6 +25607,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		if (found_idx != BCME_NOTFOUND) {
 			if (width > u_info->channels[found_idx].width) {
 				u_info->channels[found_idx].width = width;
+				u_info->channels[found_idx].chspec = chspec;
 			}
 			continue;
 		}
@@ -25624,7 +25658,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		for (i = 0; i < u_info->size; i++) {
 			cur_ch = &u_info->channels[i];
 			wl_usable_channels_filter(cfg, cur_ch->chspec, &cur_ch->iface_mode_mask,
-					u_info, conn, sta_chanspec);
+					u_info, conn, sta_chanspec, sta_chaninfo);
 		}
 	}
 
