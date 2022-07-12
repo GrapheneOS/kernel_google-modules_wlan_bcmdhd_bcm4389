@@ -3321,6 +3321,9 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			/* stop all interface network queue. */
 			dhd_bus_stop_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
+#ifdef WLAN_TRACKER
+			dhd_custom_notify(CUSTOM_NOTIFY_BUS_SUSPEND);
+#endif /* WLAN_TRACKER */
 			/* RPM suspend is failed, return FALSE then re-trying */
 			if (dhdpcie_set_suspend_resume(bus, TRUE)) {
 				DHD_ERROR(("%s: exit with wakelock \n", __FUNCTION__));

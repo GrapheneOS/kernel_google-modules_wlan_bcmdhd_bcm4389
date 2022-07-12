@@ -580,7 +580,7 @@ static const uint16 pwrstats_req_type[] = {
 
 extern uint64 dhdpcie_get_last_suspend_time(dhd_pub_t *dhdp);
 
-static ssize_t
+ssize_t
 show_pwrstats_path(struct dhd_info *dev, char *buf)
 {
 	int err = 0;

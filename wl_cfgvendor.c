@@ -79,6 +79,7 @@
 #include <wl_cfgp2p.h>
 #include <wl_cfgscan.h>
 #include <wl_cfgvif.h>
+#include <dhd_plat.h>
 #ifdef WL_NAN
 #include <wl_cfgnan.h>
 #endif /* WL_NAN */
@@ -10609,6 +10610,10 @@ wl_cfgvendor_twt_setup(struct wiphy *wiphy,
 	uint8 *rem = mybuf;
 	uint16 rem_len = sizeof(mybuf);
 
+#ifdef WLAN_TRACKER
+	dhd_custom_notify(CUSTOM_NOTIFY_TWT_SETUP);
+#endif /* WLAN_TRACKER */
+
 	bzero(&val, sizeof(val));
 	val.version = WL_TWT_SETUP_VER;
 	val.length = sizeof(val.version) + sizeof(val.length);
@@ -10760,7 +10765,9 @@ wl_cfgvendor_twt_teardown(struct wiphy *wiphy,
 			"Negotiation type %d alltwt %d\n", val.configID,
 			val.teardesc.negotiation_type, val.teardesc.alltwt));
 	}
-
+#ifdef WLAN_TRACKER
+	dhd_custom_notify(CUSTOM_NOTIFY_TWT_TEARDOWN);
+#endif /* WLAN_TRACKER */
 exit:
 	return bw;
 }

@@ -870,6 +870,432 @@ struct wifi_platform_data dhd_wlan_control = {
 };
 EXPORT_SYMBOL(dhd_wlan_control);
 
+
+#ifdef WLAN_TRACKER
+#include <wlan_ptracker_client.h>
+#include <wldev_common.h>
+#include <wl_cfg80211.h>
+#include <dhd_linux_priv.h>
+
+static int
+dhd_twt_setup(void *priv, struct dytwt_setup_param *setup)
+{
+	wl_twt_config_t val;
+	struct net_device *dev = (struct net_device *)priv;
+	s32 bw;
+	u8 mybuf[WLC_IOCTL_SMLEN] = {0};
+	u8 resp_buf[WLC_IOCTL_SMLEN] = {0};
+	uint8 *rem = mybuf;
+	uint16 rem_len = sizeof(mybuf);
+
+	bzero(&val, sizeof(val));
+	val.version = WL_TWT_SETUP_VER;
+	val.length = sizeof(val.version) + sizeof(val.length);
+
+	/* Default values, Override Below */
+	val.desc.flow_flags = 0;
+	val.desc.wake_time_h = 0xFFFFFFFF;
+	val.desc.wake_time_l = 0xFFFFFFFF;
+	val.desc.wake_int_min = 0xFFFFFFFF;
+	val.desc.wake_int_max = 0xFFFFFFFF;
+	val.desc.wake_dur_min = 0xFFFFFFFF;
+	val.desc.wake_dur_max = 0xFFFFFFFF;
+	val.desc.avg_pkt_num  = 0xFFFFFFFF;
+	val.desc.avg_pkt_size = 0xFFFFFFFF;
+
+	/* Flow Flag for setup cmd: request, flow type: unannounced  */
+	val.desc.flow_flags |= WL_TWT_FLOW_FLAG_REQUEST;
+	val.desc.flow_flags |= WL_TWT_FLOW_FLAG_UNANNOUNCED;
+	/* Config ID */
+	val.desc.configID = setup->config_id;
+	/* negotiation_type */
+	val.desc.negotiation_type  = setup->nego_type;
+	/* Wake Duration */
+	val.desc.wake_dur = setup->wake_duration;
+	/* Wake interval */
+	val.desc.wake_int = setup->wake_interval;
+
+	bw = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_CONFIG,
+			sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
+	if (bw != BCME_OK) {
+		goto exit;
+	}
+
+	bw = wldev_iovar_setbuf(dev, "twt",
+		mybuf, sizeof(mybuf) - rem_len, resp_buf, WLC_IOCTL_SMLEN, NULL);
+	if (bw < 0) {
+		pr_err("twt config set failed. ret:%d\n", bw);
+	} else {
+		pr_err("twt config setup succeeded, config ID %d "
+			"Negotiation type %d flow flags %d\n", val.desc.configID,
+			val.desc.negotiation_type, val.desc.flow_flags);
+	}
+exit:
+	return bw;
+}
+
+static int
+dhd_twt_teardown(void *priv, struct dytwt_setup_param *setup)
+{
+	wl_twt_teardown_t val;
+	struct net_device *dev = (struct net_device *)priv;
+	s32 bw;
+	u8 mybuf[WLC_IOCTL_SMLEN] = {0};
+	u8 res_buf[WLC_IOCTL_SMLEN] = {0};
+	uint8 *rem = mybuf;
+	uint16 rem_len = sizeof(mybuf);
+
+	bzero(&val, sizeof(val));
+	val.version = WL_TWT_TEARDOWN_VER;
+	val.length = sizeof(val.version) + sizeof(val.length);
+
+	/* Default values, Override Below */
+	val.teardesc.flow_id = 0xFF;
+	val.teardesc.bid = 0xFF;
+	/* Config ID */
+	val.configID = setup->config_id;
+	/* negotiation_type */
+	val.teardesc.negotiation_type  = setup->nego_type;
+
+	bw = bcm_pack_xtlv_entry(&rem, &rem_len, WL_TWT_CMD_TEARDOWN,
+		sizeof(val), (uint8 *)&val, BCM_XTLV_OPTION_ALIGN32);
+	if (bw != BCME_OK) {
+		goto exit;
+	}
+
+	bw = wldev_iovar_setbuf(dev, "twt",
+		mybuf, sizeof(mybuf) - rem_len, res_buf, WLC_IOCTL_SMLEN, NULL);
+	if (bw < 0) {
+		pr_err("twt teardown failed. ret:%d\n", bw);
+	} else {
+		pr_err("twt teardown succeeded, config ID %d "
+			"Negotiation type %d alltwt %d\n", val.configID,
+			val.teardesc.negotiation_type, val.teardesc.alltwt);
+	}
+exit:
+	return bw;
+}
+
+static void dhd_twt_stats2_dytwt(wl_twt_stats_v2_t *src, struct dytwt_stats *dest)
+{
+	wl_twt_peer_stats_v2_t *peer_stats = &src->peer_stats_list[0];
+
+	dest->sp_seq = peer_stats->sp_seq;
+	dest->tx_ucast_pkts = peer_stats->tx_ucast_pkts;
+	dest->tx_pkts_min = peer_stats->tx_pkts_min;
+	dest->tx_pkts_max = peer_stats->tx_pkts_max;
+	dest->tx_pkts_avg = peer_stats->tx_pkts_avg;
+	dest->tx_failures = peer_stats->tx_failures;
+	dest->rx_ucast_pkts = peer_stats->rx_ucast_pkts;
+	dest->rx_pkts_min = peer_stats->rx_pkts_min;
+	dest->rx_pkts_max = peer_stats->rx_pkts_max;
+	dest->rx_pkts_avg = peer_stats->rx_pkts_avg;
+	dest->rx_pkts_retried = peer_stats->rx_pkts_retried;
+	dest->tx_pkt_sz_avg = peer_stats->tx_pkt_sz_avg;
+	dest->rx_pkt_sz_avg = peer_stats->rx_pkt_sz_avg;
+	dest->eosp_dur_avg = peer_stats->eosp_dur_avg;
+	dest->eosp_count = peer_stats->eosp_count;
+}
+
+static int
+dhd_twt_get_stats(void *priv, struct dytwt_stats *stats)
+{
+	struct net_device *dev = (struct net_device *)priv;
+	wl_twt_stats_cmd_v1_t query;
+	wl_twt_stats_v2_t stats_v2;
+	int ret = BCME_OK;
+	char iovbuf[WLC_IOCTL_SMLEN] = {0, };
+	uint8 *pxtlv = NULL;
+	uint8 *iovresp = NULL;
+	uint16 buflen = 0, bufstart = 0;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	bzero(&query, sizeof(query));
+	query.version = WL_TWT_STATS_CMD_VERSION_1;
+	query.length = sizeof(query) - OFFSETOF(wl_twt_stats_cmd_v1_t, peer);
+
+	/* Default values, Override Below */
+	query.num_bid = 0xFF;
+	query.num_fid = 0xFF;
+	query.configID = stats->config_id;
+
+	iovresp = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (iovresp == NULL) {
+		WL_ERR(("%s: iov resp memory alloc exited\n", __FUNCTION__));
+		goto exit;
+	}
+	//query.flags |= WL_TWT_STATS_CMD_FLAGS_RESET;
+	buflen = bufstart = WLC_IOCTL_SMLEN;
+	pxtlv = (uint8 *)iovbuf;
+	ret = bcm_pack_xtlv_entry(&pxtlv, &buflen, WL_TWT_CMD_STATS,
+			sizeof(query), (uint8 *)&query, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		WL_ERR(("%s : Error return during pack xtlv :%d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	if ((ret = wldev_iovar_getbuf(dev, "twt", iovbuf, bufstart-buflen,
+		iovresp, WLC_IOCTL_MEDLEN, NULL))) {
+		WL_ERR(("twt status failed with err=%d \n", ret));
+		goto exit;
+	}
+
+	(void)memcpy_s(&stats_v2, sizeof(stats_v2), iovresp, sizeof(stats_v2));
+	if (dtoh16(stats_v2.version) == WL_TWT_STATS_VERSION_2 &&
+		stats_v2.num_stats) {
+			dhd_twt_stats2_dytwt((wl_twt_stats_v2_t*)iovresp, stats);
+	} else {
+		ret = BCME_UNSUPPORTED;
+		WL_ERR(("Version 1 unsupported. ver %d, \n", dtoh16(stats_v2.version)));
+		goto exit;
+	}
+exit:
+	if (iovresp) {
+		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
+	}
+	return ret;
+}
+
+static void dhd_twt_status2_dytwt(
+	wl_twt_status_v1_t *result,
+	struct dytwt_status *status)
+{
+	int i;
+	wl_twt_sdesc_v0_t *sdesc = NULL;
+
+	for (i = 0 ; i < WL_TWT_MAX_ITWT; i++) {
+		if (result->itwt_status[i].configID != status->config_id)
+			continue;
+		sdesc = &result->itwt_status[i].desc;
+		status->config_id = result->itwt_status[i].configID;
+		status->flow_id = sdesc->flow_id;
+		status->flow_flags = sdesc->flow_flags;
+		status->setup_cmd = sdesc->setup_cmd;
+		status->channel = sdesc->channel;
+		status->nego_type = sdesc->negotiation_type;
+		status->wake_dur = sdesc->wake_dur;
+		status->wake_int = sdesc->wake_int;
+	}
+}
+
+static int
+dhd_twt_get_status(void *priv, struct dytwt_status *status)
+{
+	struct net_device *dev = (struct net_device *)priv;
+	wl_twt_status_cmd_v1_t query;
+	wl_twt_status_v1_t result;
+	int ret = BCME_OK;
+	char iovbuf[WLC_IOCTL_SMLEN] = {0, };
+	uint8 *pxtlv = NULL;
+	uint8 *iovresp = NULL;
+	uint16 buflen = 0, bufstart = 0;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	bzero(&query, sizeof(query));
+	bzero(&result, sizeof(result));
+	query.version = WL_TWT_CMD_STATUS_VERSION_1;
+	query.length = sizeof(query) - OFFSETOF(wl_twt_status_cmd_v1_t, peer);
+
+	query.configID = status->config_id;
+
+	iovresp = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (iovresp == NULL) {
+		WL_ERR(("%s: iov resp memory alloc exited\n", __FUNCTION__));
+		goto exit;
+	}
+	buflen = bufstart = WLC_IOCTL_SMLEN;
+	pxtlv = (uint8 *)iovbuf;
+	ret = bcm_pack_xtlv_entry(&pxtlv, &buflen, WL_TWT_CMD_STATUS,
+			sizeof(query), (uint8 *)&query, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		WL_ERR(("%s : Error return during pack xtlv :%d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	if ((ret = wldev_iovar_getbuf(dev, "twt", iovbuf, bufstart-buflen,
+		iovresp, WLC_IOCTL_MEDLEN, NULL))) {
+		WL_ERR(("twt status failed with err=%d \n", ret));
+		goto exit;
+	}
+
+	(void)memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+	printk("wlan_ptracker: %s(): version: %d, length: %d\n",
+		__func__, result.version, result.length);
+	if (dtoh16(result.version) == WL_TWT_CMD_STATUS_VERSION_1) {
+			dhd_twt_status2_dytwt(&result, status);
+	} else {
+		ret = BCME_UNSUPPORTED;
+		WL_ERR(("Version 1 unsupported. ver %d, \n", dtoh16(result.version)));
+		goto exit;
+	}
+exit:
+	if (iovresp) {
+		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
+	}
+	return ret;
+}
+
+static int
+dhd_twt_cap(void *priv, struct dytwt_cap *cap)
+{
+	int ret = BCME_OK;
+	struct net_device *dev = (struct net_device *)priv;
+	char iovbuf[WLC_IOCTL_SMLEN] = {0, };
+	uint8 *pxtlv = NULL;
+	uint8 *iovresp = NULL;
+	wl_twt_cap_cmd_t cmd_cap;
+	wl_twt_cap_t result;
+	scb_val_t scbval;
+	uint16 buflen = 0, bufstart = 0;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	/* Query link speed */
+	ret = wldev_get_link_speed(dev, &cap->link_speed);
+	if (unlikely(ret)) {
+		WL_ERR(("get_link speed error (%d)\n", ret));
+		goto exit;
+	}
+
+	/* Query RSSI */
+	bzero(&scbval, sizeof(scb_val_t));
+	ret = wldev_get_rssi(dev, &scbval);
+	if (unlikely(ret)) {
+		WL_ERR(("get_rssi error (%d)\n", ret));
+		goto exit;
+	}
+	cap->rssi = scbval.val;
+	bzero(&cmd_cap, sizeof(cmd_cap));
+
+	cmd_cap.version = WL_TWT_CAP_CMD_VERSION_1;
+	cmd_cap.length = sizeof(cmd_cap) - OFFSETOF(wl_twt_cap_cmd_t, peer);
+
+	iovresp = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (iovresp == NULL) {
+		pr_err("%s: iov resp memory alloc exited\n", __FUNCTION__);
+		goto exit;
+	}
+
+	buflen = bufstart = WLC_IOCTL_SMLEN;
+	pxtlv = (uint8 *)iovbuf;
+
+	ret = bcm_pack_xtlv_entry(&pxtlv, &buflen, WL_TWT_CMD_CAP,
+			sizeof(cmd_cap), (uint8 *)&cmd_cap, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		pr_err("%s : Error return during pack xtlv :%d\n", __FUNCTION__, ret);
+		goto exit;
+	}
+
+	if ((ret = wldev_iovar_getbuf(dev, "twt", iovbuf, bufstart-buflen,
+		iovresp, WLC_IOCTL_MEDLEN, NULL))) {
+		pr_err("Getting twt status failed with err=%d \n", ret);
+		goto exit;
+	}
+
+	(void)memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+
+	if (dtoh16(result.version) == WL_TWT_CAP_CMD_VERSION_1) {
+		pr_err("capability ver %d, \n", dtoh16(result.version));
+		cap->device_cap = dtoh16(result.device_cap);
+		cap->peer_cap = dtoh16(result.peer_cap);
+		return ret;
+	} else {
+		ret = BCME_UNSUPPORTED;
+		pr_err("Version 1 unsupported. ver %d, \n", dtoh16(result.version));
+		goto exit;
+	}
+exit:
+	if (iovresp) {
+		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
+	}
+	return ret;
+}
+
+extern 	ssize_t show_pwrstats_path(struct dhd_info *dev, char *buf);
+
+static u64 twt_pwrstate_hex_get(char *buf)
+{
+	char *ptr = buf;
+	char *token = strsep(&ptr, "\x0a");
+
+	/* remove prefix space */
+	token++;
+	return simple_strtoull(token, NULL, 16);
+}
+
+#define DHD_PWR_STAT_STR_SIZE 512
+static int dhd_twt_pwstate(void *priv, struct dytwt_pwr_state *state)
+{
+	char buf[DHD_PWR_STAT_STR_SIZE];
+	struct net_device *dev = (struct net_device *)priv;
+	struct dhd_info *dhd = DHD_DEV_INFO(dev);
+	char *ptr = &buf[0];
+	char *token;
+	int cnt = 0;
+	int ret;
+
+	ret = show_pwrstats_path(dhd, buf);
+	if (!ret)
+		goto out;
+
+	token = strsep(&ptr, ":");
+	while (token) {
+		if (cnt == 3)
+			state->awake = twt_pwrstate_hex_get(token);
+		if (cnt == 6)
+			state->count = twt_pwrstate_hex_get(token);
+		if (cnt == 7)
+			state->asleep = twt_pwrstate_hex_get(token);
+		token = strsep(&ptr, ":");
+		cnt++;
+	}
+out:
+	return 0;
+}
+
+struct dytwt_client_ops twt_ops = {
+	.setup = dhd_twt_setup,
+	.teardown = dhd_twt_teardown,
+	.get_cap = dhd_twt_cap,
+	.get_pwrstates = dhd_twt_pwstate,
+	.get_stats = dhd_twt_get_stats,
+	.get_status = dhd_twt_get_status,
+};
+
+struct wlan_ptracker_client client = {
+	.ifname = "wlan0",
+	.dytwt_ops = &twt_ops,
+	.cb = NULL,
+};
+
+static int dhd_plat_ptracker_register(void)
+{
+	return wlan_ptracker_register_client(&client);
+}
+
+static void dhd_plat_ptracker_unregister(void)
+{
+	wlan_ptracker_unregister_client(&client);
+}
+
+static u32 custom_notify_table[] = {
+	WLAN_PTRACKER_NOTIFY_SUSPEN, //CUSTOM_NOTIFY_BUS_SUSPEND,
+	WLAN_PTRACKER_NOTIFY_STA_CONNECT, //CUSTOM_NOTIFY_STA_CONNECT,
+	WLAN_PTRACKER_NOTIFY_STA_DISCONNECT, //CUSTOM_NOTIFY_STA_DISCONNECT,
+	WLAN_PTRACKER_NOTIFY_DYTWT_DISABLE, //CUSTOM_NOTIFY_TWT_SETUP,
+	WLAN_PTRACKER_NOTIFY_DYTWT_ENABLE, //CUSTOM_NOTIFY_TWT_TEARDOWN,
+};
+
+int
+dhd_custom_notify(u32 id)
+{
+	u32 _id = custom_notify_table[id];
+
+	if (!client.cb)
+		return 0;
+	return client.cb(&client, _id);
+}
+#endif /* WLAN_TRACKER */
+
 int
 dhd_wlan_init(void)
 {
@@ -909,6 +1335,10 @@ dhd_wlan_init(void)
 	dhd_wlan_init_hardware_info();
 #endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
 
+#ifdef WLAN_TRACKER
+	dhd_plat_ptracker_register();
+#endif /* WLAN_TRACKER */
+
 fail:
 	DHD_ERROR(("%s: FINISH.......\n", __FUNCTION__));
 	return ret;
@@ -923,6 +1353,10 @@ dhd_wlan_deinit(void)
 	if (gpio_is_valid(wlan_reg_on)) {
 		gpio_free(wlan_reg_on);
 	}
+
+#ifdef WLAN_TRACKER
+	dhd_plat_ptracker_unregister();
+#endif /* WLAN_TRACKER */
 
 #ifdef DHD_COREDUMP
 	platform_device_unregister(&sscd_dev);
@@ -1010,6 +1444,7 @@ uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
 	return rxbufpost_sz;
 #endif
 }
+
 
 #ifndef BCMDHD_MODULAR
 /* Required only for Built-in DHD */
