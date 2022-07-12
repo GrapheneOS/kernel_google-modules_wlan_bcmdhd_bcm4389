@@ -23275,6 +23275,11 @@ dhd_schedule_cto_recovery(dhd_pub_t *dhdp)
 		return;
 	}
 
+	if (dhdp->info->scheduled_memdump) {
+		DHD_ERROR(("%s, memdump in progress\n", __FUNCTION__));
+		return;
+	}
+
 	DHD_ERROR(("%s: scheduling cto recovery.. \n", __FUNCTION__));
 	dhd_deferred_schedule_work(dhdp->info->dhd_deferred_wq,
 		NULL, DHD_WQ_WORK_CTO_RECOVERY,
