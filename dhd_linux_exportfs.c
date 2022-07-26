@@ -2164,6 +2164,10 @@ trigger_dhd_dump_start_command(struct dhd_info *dhd, char *buf)
 	unsigned long flags = 0;
 
 	dhdp = &dhd->pub;
+	if (dhd->pub.up == 0) {
+		DHD_ERROR(("%s: Not up\n", __FUNCTION__));
+		return -EINVAL;
+	}
 
 	DHD_ERROR(("%s: dump_start command delivered.\n", __FUNCTION__));
 	DHD_GENERAL_LOCK(dhdp, flags);
