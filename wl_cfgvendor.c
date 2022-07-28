@@ -1909,6 +1909,43 @@ wl_cfgvendor_latency_mode_config(struct wiphy *wiphy,
 #endif /* WL_LATENCY_MODE */
 
 #ifdef RTT_SUPPORT
+bool wl_check_wdev(struct wireless_dev *wdev)
+{
+	struct bcm_cfg80211 *cfg = NULL;
+	cfg = wl_cfg80211_get_bcmcfg();
+
+	if (!wdev) {
+		WL_ERR(("wdev is null\n"));
+		return BCME_ERROR;
+	}
+
+	/* g_bcmcfg is set when the primary interface up
+	 * compare the wdev as parameter with g_bcmcfg->wdev
+	 * to detect whether the wdev is corrupted or not
+	 */
+	if (!cfg) {
+		WL_ERR(("cfg is null\n"));
+		return BCME_ERROR;
+	}
+
+	if (!cfg->wdev) {
+		WL_ERR(("cfg->wdev is null\n"));
+		return BCME_ERROR;
+	}
+
+	/* if the wdev param is valid address it will print and hexdump */
+	if (cfg->wdev->wiphy != wdev->wiphy) {
+		WL_ERR(("wiphy is not the same with wiphy "
+			"cfg->wdev:%px wdev:%px "
+			"cfg->wdev->wiphy:%px wdev->wiphy:%px\n",
+			cfg->wdev, wdev, cfg->wdev->wiphy, wdev->wiphy));
+		prhex("wdev hexdump", (const u8 *)wdev, sizeof(struct wireless_dev));
+		return BCME_ERROR;
+	}
+
+	return BCME_OK;
+}
+
 void
 wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 {
@@ -1925,6 +1962,11 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 	wiphy = wdev->wiphy;
 
 	WL_DBG(("In\n"));
+	if (wl_check_wdev(wdev)) {
+		WL_ERR(("Invalid wdev\n"));
+		return;
+	}
+
 	/* Push the data to the skb */
 	if (!rtt_data) {
 		WL_ERR(("rtt_data is NULL\n"));
@@ -2100,6 +2142,11 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 	bzero(&rtt_param, sizeof(rtt_param));
 
 	WL_DBG(("In\n"));
+	if (wl_check_wdev(wdev)) {
+		WL_ERR(("Invalid wdev\n"));
+		goto exit;
+	}
+
 	err = dhd_dev_rtt_register_noti_callback(wdev->netdev, wdev, wl_cfgvendor_rtt_evt);
 	if (err < 0) {
 		WL_ERR(("failed to register rtt_noti_callback\n"));
