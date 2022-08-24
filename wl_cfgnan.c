@@ -2095,7 +2095,7 @@ wl_cfgnan_enable_handler(wl_nan_iov_t *nan_iov_data, bool val)
 }
 
 static int
-wl_cfgnan_set_instant_chan(nan_config_cmd_data_t *cmd_data, wl_nan_iov_t *nan_iov_data)
+wl_cfgnan_set_instant_chanspec(nan_config_cmd_data_t *cmd_data, wl_nan_iov_t *nan_iov_data)
 {
 	s32 ret = BCME_OK;
 	bcm_iov_batch_subcmd_t *sub_cmd = NULL;
@@ -2115,7 +2115,7 @@ wl_cfgnan_set_instant_chan(nan_config_cmd_data_t *cmd_data, wl_nan_iov_t *nan_io
 	sub_cmd->id = htod16(WL_NAN_CMD_CFG_INSTANT_CHAN);
 	sub_cmd->len = sizeof(sub_cmd->u.options) + sizeof(chspec);
 	sub_cmd->u.options = htol32(BCM_XTLV_OPTION_ALIGN32);
-	chspec = CH20MHZ_CHSPEC(cmd_data->instant_chan);
+	chspec = cmd_data->instant_chspec;
 
 	ret = memcpy_s(sub_cmd->data, sizeof(chanspec_t),
 			(uint8*)&chspec, sizeof(chanspec_t));
@@ -3337,8 +3337,8 @@ wl_cfgnan_start_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	}
 	nan_buf->count++;
 
-	if (cmd_data->instant_chan) {
-		ret = wl_cfgnan_set_instant_chan(cmd_data, nan_iov_data);
+	if (cmd_data->instant_chspec) {
+		ret = wl_cfgnan_set_instant_chanspec(cmd_data, nan_iov_data);
 		if (unlikely(ret)) {
 			WL_ERR(("NAN 3.1 Instant disc channel sub_cmd set failed\n"));
 			goto fail;
@@ -3914,8 +3914,8 @@ wl_cfgnan_config_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	}
 
 	/* Set NAN 3.1 Instant channel */
-	if (cmd_data->instant_chan) {
-		ret = wl_cfgnan_set_instant_chan(cmd_data, nan_iov_data);
+	if (cmd_data->instant_chspec) {
+		ret = wl_cfgnan_set_instant_chanspec(cmd_data, nan_iov_data);
 		if (unlikely(ret)) {
 			WL_ERR(("NAN 3.1 Instant communication channel sub_cmd set failed\n"));
 			goto fail;
