@@ -5627,22 +5627,14 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				ret = -EINVAL;
 				goto exit;
 			}
-			chan = wf_mhz2channel((uint)nla_get_u32(iter), 0);
-			if (chan < 0) {
-				WL_ERR((" Instant mode Channel is not valid %d chan %d \n",
-						(uint)nla_get_u32(iter), chan));
-				ret = -EINVAL;
-				break;
-			}
-			/* 20MHz as BW */
-			cmd_data->instant_chan = wf_channel2chspec(chan, WL_CHANSPEC_BW_20);
-			if (cmd_data->instant_chan <= 0) {
+			cmd_data->instant_chspec = wl_freq_to_chanspec((int)nla_get_u32(iter));
+			if (cmd_data->instant_chspec <= 0) {
 				WL_ERR((" Instant mode Channel is not valid \n"));
 				ret = -EINVAL;
 				break;
 			}
-			WL_DBG(("valid instant mode chanspec, chanspec = 0x%04x \n",
-				cmd_data->instant_chan));
+			WL_INFORM_MEM(("[NAN Instant mode] Freq %d chanspec %x \n",
+					nla_get_u32(iter), cmd_data->instant_chspec));
 			break;
 		case NAN_ATTRIBUTE_ENABLE_MERGE:
 			if (nla_len(iter) != sizeof(uint8)) {

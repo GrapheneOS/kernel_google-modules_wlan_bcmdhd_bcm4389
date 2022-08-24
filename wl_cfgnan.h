@@ -541,7 +541,7 @@ typedef struct nan_config_cmd_data {
 	wl_nan_disc_bcn_interval_t disc_bcn_interval;
 	uint32 dw_early_termination;
 	uint32 instant_mode_en;
-	uint32 instant_chan;
+	chanspec_t instant_chspec;
 	uint8 chre_req;
 } nan_config_cmd_data_t;
 
