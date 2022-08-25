@@ -308,7 +308,15 @@ BCMFASTPATH(__dhd_sendpkt)(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 		{
 #if (!defined(BCM_ROUTER_DHD) && (defined(QOS_MAP_SET) || \
 	defined(WL_CUSTOM_MAPPING_OF_DSCP)))
-			pktsetprio_qms(pktbuf, wl_get_up_table(dhdp, ifidx), FALSE);
+			u8 *up_table = wl_get_up_table(dhdp, ifidx);
+			pktsetprio_qms(pktbuf, up_table, FALSE);
+			if (PKTPRIO(pktbuf) > MAXPRIO) {
+				DHD_ERROR_RLMT(("wrong user prio:%d from qosmap ifidx:%d\n",
+					PKTPRIO(pktbuf), ifidx));
+				if (up_table) {
+					prhex("up_table", up_table, UP_TABLE_MAX);
+				}
+			}
 #else
 			/* For LLR, pkt prio will be changed to 7(NC) here */
 			pktsetprio(pktbuf, FALSE);
@@ -358,12 +366,19 @@ BCMFASTPATH(__dhd_sendpkt)(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 		/* we only have support for one tx_profile at the moment */
 
 		/* tagged packets must be put into TID 6 */
-		pkt_flow_prio = PRIO_8021D_VO;
-	} else
-#endif /* defined(DHD_TX_PROFILE) */
-	{
-		pkt_flow_prio = dhdp->flow_prio_map[(PKTPRIO(pktbuf))];
+		PKTSETPRIO(pktbuf, PRIO_8021D_VO);
 	}
+#endif /* defined(DHD_TX_PROFILE) */
+
+	if (PKTPRIO(pktbuf) > MAXPRIO) {
+		DHD_ERROR_RLMT(("Wrong user prio:%d ifidx:%d\n", PKTPRIO(pktbuf), ifidx));
+		/* non-assert build, print ratelimit error, free packet and exit */
+		ASSERT(0);
+		PKTCFREE(dhd->pub.osh, pktbuf, TRUE);
+		return BCME_ERROR;
+	}
+
+	pkt_flow_prio = dhdp->flow_prio_map[(PKTPRIO(pktbuf))];
 
 	ret = dhd_flowid_update(dhdp, ifidx, pkt_flow_prio, pktbuf);
 	if (ret != BCME_OK) {
