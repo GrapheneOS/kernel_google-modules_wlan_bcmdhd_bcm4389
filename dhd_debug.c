@@ -380,7 +380,8 @@ dhd_dbg_pull_from_pktlog(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_le
 #endif /* DHD_PKT_LOGGING_DBGRING */
 
 int
-dhd_dbg_pull_from_ring(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_len)
+dhd_dbg_pull_from_ring(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_len,
+		int *num_entries)
 {
 	dhd_dbg_ring_t *ring;
 
@@ -391,7 +392,7 @@ dhd_dbg_pull_from_ring(dhd_pub_t *dhdp, int ring_id, void *data, uint32 buf_len)
 		return BCME_RANGE;
 	}
 	ring = &dhdp->dbg->dbg_rings[ring_id];
-	return dhd_dbg_ring_pull(ring, data, buf_len, FALSE);
+	return dhd_dbg_ring_pull(ring, data, buf_len, FALSE, num_entries);
 }
 
 static int

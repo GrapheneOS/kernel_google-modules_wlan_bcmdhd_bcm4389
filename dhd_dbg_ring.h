@@ -52,6 +52,11 @@ typedef struct dhd_dbg_ring_entry {
 	uint64 timestamp; /* present if has_timestamp bit is set. */
 } PACKED_STRUCT dhd_dbg_ring_entry_t;
 
+typedef struct dhd_dbg_ring_entry_pack {
+	uint32 magic;
+	int num_entries; /* the number of log entries */
+} PACKED_STRUCT dhd_dbg_ring_entry_pack_t;
+
 struct ring_statistics {
 	/* number of bytes that was written to the buffer by driver */
 	uint32 written_bytes;
@@ -110,6 +115,8 @@ typedef struct dhd_dbg_ring {
 		status.verbose_level = ring->log_level; \
 	} while (0)
 
+#define DBG_RING_PACK_MAGIC 0xDBAADBAA
+#define DBG_RING_ENTRY_PACK_SIZE (sizeof(dhd_dbg_ring_entry_pack_t))
 #define DBG_RING_ENTRY_SIZE (sizeof(dhd_dbg_ring_entry_t))
 #define ENTRY_LENGTH(hdr) ((hdr)->len + DBG_RING_ENTRY_SIZE)
 #define PAYLOAD_MAX_LEN 65535
@@ -140,7 +147,7 @@ int dhd_dbg_ring_update(void *dbg_ring, uint32 w_len);
 #endif /* DHD_PKT_LOGGING_DBGRING */
 int dhd_dbg_ring_push(dhd_dbg_ring_t *ring, dhd_dbg_ring_entry_t *hdr, void *data);
 int dhd_dbg_ring_pull(dhd_dbg_ring_t *ring, void *data, uint32 buf_len,
-		bool strip_hdr);
+		bool strip_hdr, int* num_entries);
 int dhd_dbg_ring_pull_single(dhd_dbg_ring_t *ring, void *data, uint32 buf_len,
 	bool strip_header);
 uint32 dhd_dbg_ring_get_pending_len(dhd_dbg_ring_t *ring);
