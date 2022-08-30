@@ -1856,6 +1856,7 @@ typedef struct dhd_pub {
 	bool assoc_at_suspend;
 #endif /* DEVICE_TX_STUCK_DETECT && ASSOC_CHECK_SR */
 	uint32 p2p_disc_busy_cnt;
+	bool skip_memdump_map_read;
 } dhd_pub_t;
 
 #if defined(__linux__)

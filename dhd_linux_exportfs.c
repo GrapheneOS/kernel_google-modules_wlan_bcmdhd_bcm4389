@@ -2166,28 +2166,13 @@ static ssize_t
 trigger_dhd_dump_start_command(struct dhd_info *dhd, char *buf)
 {
 	ssize_t ret = 0;
-	dhd_pub_t *dhdp;
-	unsigned long flags = 0;
 
-	dhdp = &dhd->pub;
 	if (dhd->pub.up == 0) {
 		DHD_ERROR(("%s: Not up\n", __FUNCTION__));
 		return -EINVAL;
 	}
 
 	DHD_ERROR(("%s: dump_start command delivered.\n", __FUNCTION__));
-	DHD_GENERAL_LOCK(dhdp, flags);
-	DHD_BUS_BUSY_SET_IN_DUMP_DONGLE_MEM(&dhd->pub);
-	DHD_GENERAL_UNLOCK(dhdp, flags);
-
-	dhd_log_dump_trigger(dhdp, CMD_DEFAULT);
-
-	DHD_GENERAL_LOCK(dhdp, flags);
-	DHD_BUS_BUSY_CLEAR_IN_DUMP_DONGLE_MEM(&dhd->pub);
-	dhd_os_busbusy_wake(dhdp);
-	DHD_GENERAL_UNLOCK(dhdp, flags);
-
-	ret = scnprintf(buf, PAGE_SIZE -1, "%u\n", 0);
 	return ret;
 }
 

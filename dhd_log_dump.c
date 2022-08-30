@@ -1887,6 +1887,24 @@ dhd_log_dump_get_timestamp(void)
 }
 
 void
+dhd_log_dump_vendor_trigger(dhd_pub_t *dhd_pub)
+{
+	unsigned long flags = 0;
+	DHD_GENERAL_LOCK(dhd_pub, flags);
+	DHD_BUS_BUSY_SET_IN_DUMP_DONGLE_MEM(dhd_pub);
+	DHD_GENERAL_UNLOCK(dhd_pub, flags);
+
+	dhd_log_dump_trigger(dhd_pub, CMD_DEFAULT);
+
+	DHD_GENERAL_LOCK(dhd_pub, flags);
+	DHD_BUS_BUSY_CLEAR_IN_DUMP_DONGLE_MEM(dhd_pub);
+	dhd_os_busbusy_wake(dhd_pub);
+	DHD_GENERAL_UNLOCK(dhd_pub, flags);
+
+	return;
+}
+
+void
 dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 {
 #if defined(DHD_DUMP_FILE_WRITE_FROM_KERNEL)

@@ -8727,6 +8727,7 @@ static int wl_cfgvendor_dbg_get_ring_data(struct wiphy *wiphy,
 {
 	int ret = BCME_OK, rem, type;
 	char ring_name[DBGRING_NAME_MAX] = {0};
+	int ring_id;
 	const struct nlattr *iter;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhd_pub = cfg->pub;
@@ -8743,7 +8744,21 @@ static int wl_cfgvendor_dbg_get_ring_data(struct wiphy *wiphy,
 		}
 	}
 
-	WL_MEM(("Received GET_RING_DATA ring:%s\n", ring_name));
+	/* Moved the dump_start op */
+	ring_id = dhd_dbg_find_ring_id(dhd_pub, ring_name);
+	/* Using first ring get context to trigger ring dump event. */
+	if (ring_id == DEBUG_DUMP_RING1_ID) {
+		/*
+		 * The ring buffer data context timeout at framework is 100ms and
+		 * hence skipping memdump invocation in this path.
+		 */
+		dhd_pub->skip_memdump_map_read = true;
+		WL_MEM(("Doing dump_start op for ring_id %d ring:%s\n",
+			ring_id, ring_name));
+		dhd_log_dump_vendor_trigger(dhd_pub);
+	}
+
+	WL_DBG_MEM(("Received GET_RING_DATA ring:%s\n", ring_name));
 	ret = dhd_os_trigger_get_ring_data(dhd_pub, ring_name);
 	if (ret < 0) {
 		WL_ERR(("trigger_get_data failed ret:%d\n", ret));
