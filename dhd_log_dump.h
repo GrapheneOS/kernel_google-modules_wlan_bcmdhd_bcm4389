@@ -280,6 +280,7 @@ extern void dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
 void dhd_schedule_log_dump(dhd_pub_t *dhdp, void *type);
 void dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd);
+void dhd_log_dump_vendor_trigger(dhd_pub_t *dhd_pub);
 
 #ifdef DHD_DEBUGABILITY_DEBUG_DUMP
 int dhd_debug_dump_get_ring_num(int sec_type);

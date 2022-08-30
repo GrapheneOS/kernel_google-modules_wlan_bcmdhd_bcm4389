@@ -19157,6 +19157,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		}
 #endif /* BOARD_HIKEY */
 	}
+	dhdp->skip_memdump_map_read = FALSE;
 #elif defined(DHD_DEBUGABILITY_DEBUG_DUMP)
 	dhd_debug_dump_to_ring(dhdp);
 #endif /* DHD_FILE_DUMP_EVENT */
@@ -19199,10 +19200,12 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 			__FUNCTION__));
 	}
 #endif /* DHD_SSSR_COREDUMP */
-	if (dhdp->memdump_type == DUMP_TYPE_BY_SYSDUMP) {
-		DHD_LOG_MEM(("%s: coredump is not supported for BY_SYSDUMP\n",
+	if ((dhdp->memdump_type == DUMP_TYPE_BY_SYSDUMP) &&
+		(dhdp->dongle_trap_occured == false)) {
+		DHD_LOG_MEM(("%s: coredump is not supported for BY_SYSDUMP/non trap cases\n",
 			__FUNCTION__));
 	} else {
+		DHD_ERROR(("%s: writing SoC_RAM dump\n", __FUNCTION__));
 		if (wifi_platform_set_coredump(dhd->adapter, dump->buf,
 			dump->bufsize, dhdp->memdump_str)) {
 			DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
