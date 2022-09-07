@@ -7240,10 +7240,6 @@ dhd_prot_update_txflowring(dhd_pub_t *dhd, uint16 flowid, void *msgring)
 		DHD_ERROR(("%s: NULL txflowring. exiting...\n",  __FUNCTION__));
 		return FALSE;
 	}
-	/* Update read pointer */
-	if (dhd->dma_d2h_ring_upd_support) {
-		ring->rd = dhd_prot_dma_indx_get(dhd, H2D_DMA_INDX_RD_UPD, ring->idx);
-	}
 
 	DHD_TRACE(("ringid %d flowid %d write %d read %d \n\n",
 		ring->idx, flowid, ring->wr, ring->rd));
