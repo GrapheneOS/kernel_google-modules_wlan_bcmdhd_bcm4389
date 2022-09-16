@@ -726,7 +726,7 @@ ifneq ($(filter y, $(CONFIG_BCM4389)),)
   DHDCFLAGS += -DWL_UNII4_CHAN
   # Use xorcsum sync retry count one with DMA indices
   # enabled to detect cache coherency issue in host
-  #DHDCFLAGS += -DPCIE_D2H_SYNC_RETRY_CNT_ONE
+  DHDCFLAGS += -DPCIE_D2H_SYNC_RETRY_CNT_ONE
 endif
 
 # For 4389 and 43752
