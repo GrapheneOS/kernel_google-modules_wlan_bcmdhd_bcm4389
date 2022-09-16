@@ -14103,7 +14103,7 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #endif	/* CUSTOM_EVENT_PM_WAKE */
 
 #if defined(QOS_MAP_SET) || defined(WL_CUSTOM_MAPPING_OF_DSCP)
-static void
+void
 wl_store_up_table_netinfo(struct bcm_cfg80211 *cfg,
 		struct net_device *ndev, u8 *uptable)
 {
@@ -14120,7 +14120,7 @@ wl_store_up_table_netinfo(struct bcm_cfg80211 *cfg,
 	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
 }
 
-static u8 *
+u8 *
 wl_get_up_table_netinfo(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 {
 	u8 *uptable = NULL;
