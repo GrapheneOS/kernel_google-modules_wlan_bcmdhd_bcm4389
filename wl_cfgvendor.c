@@ -10377,10 +10377,8 @@ const uint8 default_dscp_mapping_table[UP_TABLE_MAX] =
 	UNUSED_PRIO,   UNUSED_PRIO, UNUSED_PRIO,   UNUSED_PRIO		/* 60 ~ 63 */
 };
 
-static uint8 custom_dscp2priomap[UP_TABLE_MAX];
-
 static int
-wl_set_dscp_deafult_priority(uint8* table)
+wl_set_dscp_default_priority(uint8* table)
 {
 	int err = BCME_ERROR;
 
@@ -10396,7 +10394,6 @@ static int
 wl_cfgvendor_custom_mapping_of_dscp(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
 {
-	struct bcm_cfg80211 *cfg;
 	int err = BCME_OK, rem, type;
 	const struct nlattr *iter;
 	uint32 dscp_start = 0;
@@ -10405,14 +10402,27 @@ wl_cfgvendor_custom_mapping_of_dscp(struct wiphy *wiphy,
 	uint32 priority = 0;
 	uint32 dscp;
 	int32 def_dscp_pri;
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	struct net_device *ndev = wdev_to_ndev(wdev);
+	u8 *up_table;
 
-	cfg = wl_cfg80211_get_bcmcfg();
-	if (!cfg || !cfg->wdev) {
-		 err = BCME_NOTUP;
-		 goto exit;
+	if (ndev == NULL) {
+		WL_ERR(("Invalid net device, NULL\n"));
+		err = BCME_ERROR;
+		goto exit;
 	}
-	if (!cfg->up_table) {
-		cfg->up_table = (uint8 *) custom_dscp2priomap;
+
+	up_table = wl_get_up_table_netinfo(cfg, ndev);
+	if (!up_table) {
+		up_table = (uint8 *)MALLOCZ(cfg->osh, UP_TABLE_MAX);
+		if (up_table == NULL) {
+			WL_ERR(("malloc failure for up_table\n"));
+			err = BCME_NOMEM;
+			goto exit;
+		}
+		wl_set_dscp_default_priority(up_table);
+		wl_store_up_table_netinfo(cfg, ndev, up_table);
+		WL_INFORM(("allocate dscp up_table\n"));
 	}
 
 	nla_for_each_attr(iter, data, len, rem) {
@@ -10478,10 +10488,13 @@ wl_cfgvendor_custom_mapping_of_dscp(struct wiphy *wiphy,
 	}
 
 	/* Set the custom DSCP of user priority. */
-	err = memset_s(cfg->up_table + dscp_start, UP_TABLE_MAX - dscp_start, priority,
+	err = memset_s(up_table + dscp_start, UP_TABLE_MAX - dscp_start, priority,
 			dscp_end - dscp_start + 1);
+
 	if (unlikely(err)) {
-		WL_ERR(("Fail to set table\n"));
+		WL_ERR(("Fail to set table. free table\n"));
+		MFREE(cfg->osh, up_table, UP_TABLE_MAX);
+		wl_store_up_table_netinfo(cfg, ndev, NULL);
 	}
 
 exit:
@@ -10493,19 +10506,24 @@ static int
 wl_cfgvendor_custom_mapping_of_dscp_reset(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
 {
-	struct bcm_cfg80211 *cfg;
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	struct net_device *ndev = wdev_to_ndev(wdev);
+	u8 *up_table;
 
-	cfg = wl_cfg80211_get_bcmcfg();
-	if (!cfg || !cfg->wdev) {
-		return BCME_NOTUP;
+	if (ndev == NULL) {
+		WL_ERR(("Invalid net device, NULL\n"));
+		return BCME_ERROR;
 	}
 
-	if (!cfg->up_table) {
-		WL_INFORM(("Custom table not set yet.\n"));
-		return BCME_NOTREADY;
+	up_table = wl_get_up_table_netinfo(cfg, ndev);
+	if (!up_table) {
+		WL_ERR(("up_table is not ready\n"));
+		return BCME_ERROR;
 	}
 
-	return wl_set_dscp_deafult_priority(cfg->up_table);
+	wl_set_dscp_default_priority(up_table);
+
+	return BCME_OK;
 }
 #endif /* WL_CUSTOM_MAPPING_OF_DSCP */
 
@@ -13573,9 +13591,6 @@ int wl_cfgvendor_attach(struct wiphy *wiphy, dhd_pub_t *dhd)
 #ifdef DHD_LOG_DUMP
 	dhd_os_dbg_register_urgent_notifier(dhd, wl_cfgvendor_dbg_send_file_dump_evt);
 #endif /* DHD_LOG_DUMP */
-#ifdef WL_CUSTOM_MAPPING_OF_DSCP
-	(void)wl_set_dscp_deafult_priority(custom_dscp2priomap);
-#endif
 #ifdef SUPPORT_OTA_UPDATE
 	(void)wl_set_ota_nvram_ext(dhd);
 #endif /* SUPPORT_OTA_UPDATE */
