@@ -2410,6 +2410,13 @@ wl_cfg80211_iface_state_ops(struct wireless_dev *wdev,
 			}
 #endif /* CUSTOM_SET_CPUCORE */
 			 wl_add_remove_pm_enable_work(cfg, WL_PM_WORKQ_DEL);
+
+#if defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE)
+			 if ((ndev == cfg->inet_ndev) && cfg->mkeep_alive_avail) {
+				 wl_cleanup_keep_alive(ndev, cfg);
+			 }
+#endif /* defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE) */
+
 			break;
 		case WL_IF_CREATE_DONE:
 			if (wl_mode == WL_MODE_BSS) {
@@ -3040,10 +3047,10 @@ _wl_cfg80211_del_if(struct bcm_cfg80211 *cfg, struct net_device *primary_ndev,
 #endif /* PCIE_FULL_DONGLE */
 
 #ifdef WL_CELLULAR_CHAN_AVOID
-		if (wl_iftype == WL_IF_TYPE_AP) {
-			wl_cellavoid_clear_requested_freq_bands(wdev->netdev,
-				cfg->cellavoid_info);
-		}
+	if (wl_iftype == WL_IF_TYPE_AP) {
+		wl_cellavoid_clear_requested_freq_bands(wdev->netdev,
+			cfg->cellavoid_info);
+	}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 
 	switch (wl_iftype) {
@@ -23860,7 +23867,8 @@ wl_cfg80211_stop_mkeep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	res = wldev_iovar_getbuf(ndev, "mkeep_alive", &mkeep_alive_id,
 			sizeof(mkeep_alive_id), pbuf, KA_TEMP_BUF_SIZE, &cfg->ioctl_buf_sync);
 	if (res < 0) {
-		WL_ERR(("%s: Get mkeep_alive failed (error=%d)\n", __FUNCTION__, res));
+		WL_ERR(("%s: Get mkeep_alive failed id:%d (error=%d)\n", __FUNCTION__,
+			mkeep_alive_id, res));
 		goto exit;
 	} else {
 		/* Check occupied ID */
@@ -25123,6 +25131,7 @@ wl_cleanup_keep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg)
 {
 	int mkeep_alive_id;
 
+	WL_MEM(("mkeep_alive_avail:%x\n", cfg->mkeep_alive_avail));
 	for (mkeep_alive_id = 1; mkeep_alive_id < KEEP_ALIVE_ID_MAX; mkeep_alive_id++) {
 		if (isset(&cfg->mkeep_alive_avail, mkeep_alive_id)) {
 			if (wl_cfg80211_stop_mkeep_alive(ndev, cfg, mkeep_alive_id) == BCME_OK) {
