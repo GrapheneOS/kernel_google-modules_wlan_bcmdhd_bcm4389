@@ -48,7 +48,6 @@
 #include <bcmstdlib_s.h>
 
 #define NAN_RANGE_REQ_EVNT 1
-#define NAN_RAND_MAC_RETRIES 10
 #define NAN_SCAN_DWELL_TIME_DELTA_MS 10
 
 #ifdef WL_NAN_DISC_CACHE
@@ -72,7 +71,6 @@ void wl_cfgnan_data_remove_peer(struct bcm_cfg80211 *cfg,
         struct ether_addr *peer_addr);
 static void wl_cfgnan_send_stop_event(struct bcm_cfg80211 *cfg);
 static void wl_cfgnan_disable_cleanup(struct bcm_cfg80211 *cfg);
-static s32 wl_cfgnan_get_ndi_idx(struct bcm_cfg80211 *cfg);
 static int wl_cfgnan_init(struct bcm_cfg80211 *cfg);
 static int wl_cfgnan_deinit(struct bcm_cfg80211 *cfg, uint8 busstate);
 static void wl_cfgnan_update_dp_info(struct bcm_cfg80211 *cfg, bool add,
@@ -82,8 +80,6 @@ static void wl_cfgnan_data_set_peer_dp_state(struct bcm_cfg80211 *cfg,
 static nan_ndp_peer_t* wl_cfgnan_data_get_peer(struct bcm_cfg80211 *cfg,
 	struct ether_addr *peer_addr);
 static int wl_cfgnan_disable(struct bcm_cfg80211 *cfg);
-static s32 wl_cfgnan_del_ndi_data(struct bcm_cfg80211 *cfg, char *name);
-static s32 wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx, char *name);
 static int wl_nan_print_stats_tlvs(void *ctx, const uint8 *data, uint16 type, uint16 len);
 
 #ifdef RTT_SUPPORT
@@ -6865,47 +6861,6 @@ fail:
 	return ret;
 }
 
-static int
-wl_cfgnan_get_ndi_macaddr(struct bcm_cfg80211 *cfg, u8* mac_addr)
-{
-	int i = 0;
-	int ret = BCME_OK;
-	bool rand_mac = cfg->nancfg->mac_rand;
-	BCM_REFERENCE(i);
-
-	if (rand_mac) {
-		/* ensure nmi != ndi */
-		do {
-			RANDOM_BYTES(mac_addr, ETHER_ADDR_LEN);
-			/* restore mcast and local admin bits to 0 and 1 */
-			ETHER_SET_UNICAST(mac_addr);
-			ETHER_SET_LOCALADDR(mac_addr);
-			i++;
-			if (i == NAN_RAND_MAC_RETRIES) {
-				break;
-			}
-		} while (eacmp(cfg->nancfg->nan_nmi_mac, mac_addr) == 0);
-
-		if (i == NAN_RAND_MAC_RETRIES) {
-			if (eacmp(cfg->nancfg->nan_nmi_mac, mac_addr) == 0) {
-				WL_ERR(("\nCouldn't generate rand NDI which != NMI\n"));
-				ret = BCME_NORESOURCE;
-				goto fail;
-			}
-		}
-	} else {
-		if (wl_get_vif_macaddr(cfg, WL_IF_TYPE_NAN,
-			mac_addr) != BCME_OK) {
-			ret = -EINVAL;
-			WL_ERR(("Failed to get mac addr for NDI\n"));
-			goto fail;
-		}
-	}
-
-fail:
-	return ret;
-}
-
 int
 wl_cfgnan_data_path_iface_create_delete_handler(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, char *ifname, uint16 type, uint8 busstate)
@@ -6925,7 +6880,7 @@ wl_cfgnan_data_path_iface_create_delete_handler(struct net_device *ndev,
 				goto fail;
 			}
 
-			ret = wl_cfgnan_get_ndi_macaddr(cfg, mac_addr);
+			ret = wl_get_vif_macaddr(cfg, WL_IF_TYPE_NAN, mac_addr);
 			if (ret != BCME_OK) {
 				WL_ERR(("Couldn't get mac addr for NDI ret %d\n", ret));
 				goto fail;
@@ -6940,18 +6895,11 @@ wl_cfgnan_data_path_iface_create_delete_handler(struct net_device *ndev,
 			/* Store the iface name to pub data so that it can be used
 			 * during NAN enable
 			 */
-			wl_cfgnan_add_ndi_data(cfg, idx, ifname);
-			cfg->nancfg->ndi[idx].created = true;
-			/* Store nan ndev */
-			cfg->nancfg->ndi[idx].nan_ndev = wdev_to_ndev(wdev);
-
+			wl_cfgnan_add_ndi_data(cfg, idx, ifname, wdev);
 		} else if (type == NAN_WIFI_SUBCMD_DATA_PATH_IFACE_DELETE) {
 			ret = wl_cfg80211_del_if(cfg, ndev, NULL, ifname);
 			if (ret == BCME_OK) {
-				if (wl_cfgnan_del_ndi_data(cfg, ifname) < 0) {
-					WL_ERR(("Failed to find matching data for ndi:%s\n",
-					ifname));
-				}
+				/* handled the post del ndi ops in _wl_cfg80211_del_if */
 			} else if (ret == -ENODEV) {
 				WL_INFORM(("Already deleted: %s\n", ifname));
 				ret = BCME_OK;
@@ -9805,7 +9753,7 @@ wl_cfgnan_is_dp_active(struct net_device *ndev)
 	return nan_dp;
 }
 
-static s32
+s32
 wl_cfgnan_get_ndi_idx(struct bcm_cfg80211 *cfg)
 {
 	int i;
@@ -9819,13 +9767,14 @@ wl_cfgnan_get_ndi_idx(struct bcm_cfg80211 *cfg)
 	return WL_INVALID;
 }
 
-static s32
-wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx, char *name)
+void
+wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx, char const *name,
+	struct wireless_dev *wdev)
 {
 	u16 len;
 	wl_nancfg_t *nancfg = cfg->nancfg;
 	if (!name || (idx < 0) || (idx >= cfg->nancfg->max_ndi_supported)) {
-		return -EINVAL;
+		return;
 	}
 
 	/* Ensure ifname string size <= IFNAMSIZ including null termination */
@@ -9833,13 +9782,13 @@ wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx, char *name)
 	strncpy(nancfg->ndi[idx].ifname, name, len);
 	nancfg->ndi[idx].ifname[len] = '\0';
 	nancfg->ndi[idx].in_use = true;
-	nancfg->ndi[idx].created = false;
-
-	/* Don't have a free interface */
-	return WL_INVALID;
+	nancfg->ndi[idx].created = true;
+	/* Store nan ndev */
+	cfg->nancfg->ndi[idx].nan_ndev = wdev_to_ndev(wdev);
+	return;
 }
 
-static s32
+s32
 wl_cfgnan_del_ndi_data(struct bcm_cfg80211 *cfg, char *name)
 {
 	u16 len;

@@ -3522,7 +3522,7 @@ extern u32 wl_log_level;
 extern u32 wl_cfg80211_debug_data_dump(struct net_device *dev, u8 *buf, u32 buf_len);
 extern void wl_cfg80211_concurrent_roam(struct bcm_cfg80211 *cfg, int enable);
 
-extern void wl_cfg80211_iface_state_ops(struct wireless_dev *wdev, wl_interface_state_t state,
+extern s32 wl_cfg80211_iface_state_ops(struct wireless_dev *wdev, wl_interface_state_t state,
 	wl_iftype_t wl_iftype, u16 wl_mode);
 extern chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy);
 #ifdef SUPPORT_SET_CAC

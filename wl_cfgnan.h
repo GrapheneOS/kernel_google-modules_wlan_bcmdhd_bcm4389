@@ -230,6 +230,8 @@
 */
 #define NAN_DISC_BCN_INTERVAL_2G_DEF 128u
 #define NAN_DISC_BCN_INTERVAL_5G_DEF 176u
+#define NAN_RAND_MAC_RETRIES 10
+#define IS_NDI_IFACE(ifname) strstr(ifname, "aware")
 
 typedef uint32 nan_data_path_id;
 
@@ -870,6 +872,10 @@ bool wl_cfgnan_ranging_is_in_prog_for_peer(struct bcm_cfg80211 *cfg,
 #else
 static INLINE bool wl_cfgnan_ranging_allowed(struct bcm_cfg80211 *cfg) { return FALSE; }
 #endif /* RTT_SUPPORT */
+extern s32 wl_cfgnan_get_ndi_idx(struct bcm_cfg80211 *cfg);
+extern void wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx,
+	char const *name, struct wireless_dev *wdev);
+extern s32 wl_cfgnan_del_ndi_data(struct bcm_cfg80211 *cfg, char *name);
 
 typedef enum {
 	NAN_ATTRIBUTE_INVALID				= 0,
