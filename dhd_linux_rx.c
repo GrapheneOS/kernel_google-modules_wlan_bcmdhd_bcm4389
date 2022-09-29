@@ -1322,6 +1322,11 @@ dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 	}
 
 	dhd->monitor_skb = NULL;
+
+#if defined(OEM_ANDROID)
+	DHD_OS_WAKE_LOCK_RX_TIMEOUT_ENABLE(dhdp, DHD_MONITOR_TIMEOUT_MS);
+	DHD_OS_WAKE_LOCK_TIMEOUT(dhdp);
+#endif /* OEM_ANDROID */
 }
 #endif /* WL_MONITOR */
 
