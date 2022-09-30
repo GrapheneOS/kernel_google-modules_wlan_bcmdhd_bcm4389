@@ -10925,6 +10925,109 @@ fail:
 }
 
 static int
+wl_cfgvendor_send_twt_status_map_v1(struct wiphy *wiphy, uint8 config_id,
+	wl_twt_status_v1_t *status)
+{
+	uint i;
+	int ret = BCME_OK;
+	wl_twt_sdesc_v0_t *sdesc = NULL;
+	struct sk_buff *skb;
+	int32 mem_needed;
+
+	mem_needed = BRCM_TWT_HAL_VENDOR_EVENT_BUF_LEN;
+
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, mem_needed);
+	if (unlikely(!skb)) {
+		WL_ERR(("%s: can't allocate %d bytes\n", __FUNCTION__, mem_needed));
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	for (i = 0; i < WL_TWT_MAX_ITWT; i ++) {
+		if ((status->itwt_status[i].configID != WL_TWT_INV_CONFIG_ID) &&
+			(status->itwt_status[i].configID == config_id)) {
+			sdesc = &status->itwt_status[i].desc;
+			if (!sdesc) {
+				WL_ERR(("Failed to fetch the descriptions for the config id %d\n",
+					config_id));
+				goto fail;
+			}
+			WL_DBG_MEM(("response o/p for config_id %u: setup_cmd: %d, flow_flags: %u,"
+				" flow_id: %u, channel: %u, wake_dur: %u,"
+				" wake_int: %u, neg_type: %d",
+				status->itwt_status[i].configID,
+				(int)sdesc->setup_cmd, sdesc->flow_flags, (int)sdesc->flow_id,
+				(int)sdesc->channel, sdesc->wake_dur, sdesc->wake_int,
+				sdesc->negotiation_type));
+
+			ret = nla_put_u8(skb, ANDR_TWT_ATTRIBUTE_SETUP_CMD, (int)sdesc->setup_cmd);
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTRIBUTE_SETUP_CMD, ret:%d\n",
+					ret));
+				goto fail;
+			}
+			ret = nla_put_u8(skb, ANDR_TWT_ATTRIBUTE_FLOW_FLAGS,
+				(int)sdesc->flow_flags);
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTRIBUTE_FLOW_FLAGS, ret:%d\n",
+					ret));
+				goto fail;
+			}
+			ret = nla_put_u8(skb, ANDR_TWT_ATTRIBUTE_FLOW_ID, (int)sdesc->flow_id);
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTRIBUTE_FLOW_ID, ret:%d\n",
+					ret));
+				goto fail;
+			}
+			ret = nla_put_u32(skb, ANDR_TWT_ATTRIBUTE_CHANNEL, (int)sdesc->channel);
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTRIBUTE_CHANNEL, ret:%d\n",
+					ret));
+				goto fail;
+			}
+			ret = nla_put_u8(skb, ANDR_TWT_ATTR_NEGOTIATION_TYPE,
+				(int)sdesc->negotiation_type);
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTR_NEGOTIATION_TYPE, ret:%d\n",
+					ret));
+				goto fail;
+			}
+
+			/* Convert to us from ms, as fw expects it in us */
+			ret = nla_put_u32(skb, ANDR_TWT_ATTR_WAKE_DURATION,
+				(1000u*sdesc->wake_dur));
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTR_WAKE_DURATION, ret:%d\n",
+					ret));
+				goto fail;
+			}
+
+			/* Convert to us from ms, as fw expects it in us */
+			ret = nla_put_u32(skb, ANDR_TWT_ATTR_WAKE_INTERVAL,
+				(1000u*sdesc->wake_int));
+			if (ret < 0) {
+				WL_ERR(("Failed to put ANDR_TWT_ATTR_WAKE_INTERVAL, ret:%d\n",
+					ret));
+				goto fail;
+			}
+		}
+	}
+
+	ret = cfg80211_vendor_cmd_reply(skb);
+	if (unlikely(ret)) {
+		WL_ERR(("vendor command reply failed, ret=%d\n", ret));
+	}
+	return ret;
+fail:
+	/* Free skb for failure cases */
+	if (skb) {
+		kfree_skb(skb);
+	}
+
+	return ret;
+}
+
+static int
 wl_cfgvendor_twt_stats(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len, bool clear_stats)
 {
@@ -10981,7 +11084,17 @@ wl_cfgvendor_twt_stats(struct wiphy *wiphy,
 		goto exit;
 	}
 
-	(void)memcpy_s(&stats_v2, sizeof(stats_v2), iovresp, sizeof(stats_v2));
+	if (sizeof(stats_v2) > sizeof(iovresp)) {
+		WL_ERR(("Invalid len : %ld\n", sizeof(stats_v2)));
+		ret = BCME_BADLEN;
+		goto exit;
+	}
+
+	ret = memcpy_s(&stats_v2, sizeof(stats_v2), iovresp, sizeof(stats_v2));
+	if (ret) {
+		WL_ERR(("Failed to copy result: %d\n", ret));
+		goto exit;
+	}
 
 	if (dtoh16(stats_v2.version) == WL_TWT_STATS_VERSION_2) {
 		if (!clear_stats) {
@@ -10999,6 +11112,90 @@ exit:
 		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
 	}
 
+	return ret;
+}
+
+static int
+wl_cfgvendor_twt_get_response(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void  *data, int len)
+{
+	int ret = BCME_OK;
+	char iovbuf[WLC_IOCTL_SMLEN] = {0, };
+	uint8 *pxtlv = NULL;
+	uint8 *iovresp = NULL;
+	wl_twt_status_cmd_v1_t status_cmd;
+	wl_twt_status_v1_t result;
+	uint16 buflen = 0, bufstart = 0;
+	s32 type, rem_attr;
+	const struct nlattr *iter;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(wdev_to_ndev(wdev));
+
+	bzero(&status_cmd, sizeof(status_cmd));
+	bzero(&result, sizeof(result));
+
+	status_cmd.version = WL_TWT_CMD_STATUS_VERSION_1;
+	status_cmd.length = sizeof(status_cmd) - OFFSETOF(wl_twt_status_cmd_v1_t, peer);
+
+	nla_for_each_attr(iter, data, len, rem_attr) {
+		type = nla_type(iter);
+		if (type == ANDR_TWT_ATTR_CONFIG_ID) {
+			/* Config ID */
+			status_cmd.configID = nla_get_u8(iter);
+		} else {
+			WL_ERR(("Invalid TWT get status attribute type %d\n", type));
+			goto exit;
+		}
+	}
+
+	iovresp = (uint8 *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
+	if (iovresp == NULL) {
+		WL_ERR(("%s: iov resp memory alloc exited\n", __FUNCTION__));
+		goto exit;
+	}
+
+	buflen = bufstart = WLC_IOCTL_SMLEN;
+	pxtlv = (uint8 *)iovbuf;
+	ret = bcm_pack_xtlv_entry(&pxtlv, &buflen, WL_TWT_CMD_STATUS,
+			sizeof(status_cmd), (uint8 *)&status_cmd, BCM_XTLV_OPTION_ALIGN32);
+	if (ret != BCME_OK) {
+		WL_ERR(("%s : Error return during pack xtlv :%d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	if ((ret = wldev_iovar_getbuf(wdev_to_ndev(wdev), "twt", iovbuf, bufstart-buflen,
+		iovresp, WLC_IOCTL_MEDLEN, NULL))) {
+		WL_ERR(("Getting twt status failed with err=%d \n", ret));
+		goto exit;
+	}
+
+	if (sizeof(result) > sizeof(iovresp)) {
+		WL_ERR(("Invalid len : %ld\n", sizeof(result)));
+		ret = BCME_BADLEN;
+		goto exit;
+	}
+
+	ret = memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+	if (ret) {
+		WL_ERR(("Failed to copy result: %d\n", ret));
+		goto exit;
+	}
+
+	if (dtoh16(result.version) == WL_TWT_CMD_STATUS_VERSION_1) {
+		ret = wl_cfgvendor_send_twt_status_map_v1(wiphy, status_cmd.configID, &result);
+		if (ret != BCME_OK) {
+			WL_ERR(("Failed to send twt response for config_id %d\n",
+				status_cmd.configID));
+			goto exit;
+		}
+	} else {
+		ret = BCME_UNSUPPORTED;
+		WL_ERR(("Version 1 unsupported. ver %d, \n", dtoh16(result.version)));
+	}
+
+exit:
+	if (iovresp) {
+		MFREE(cfg->osh, iovresp, WLC_IOCTL_MEDLEN);
+	}
 	return ret;
 }
 
@@ -11101,7 +11298,17 @@ wl_cfgvendor_twt_cap(struct wiphy *wiphy,
 		goto exit;
 	}
 
-	(void)memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+	if (sizeof(result) > sizeof(iovresp)) {
+		WL_ERR(("Invalid len : %ld\n", sizeof(result)));
+		ret = BCME_BADLEN;
+		goto exit;
+	}
+
+	ret = memcpy_s(&result, sizeof(result), iovresp, sizeof(result));
+	if (ret) {
+		WL_ERR(("Failed to copy result: %d\n", ret));
+		goto exit;
+	}
 
 	if (dtoh16(result.version) == WL_TWT_CAP_CMD_VERSION_1) {
 		WL_ERR(("capability ver %d, \n", dtoh16(result.version)));
@@ -13408,6 +13615,18 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		},
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = wl_cfgvendor_twt_clear_stats,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = andr_twt_attr_policy,
+		.maxattr = ANDR_TWT_ATTR_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = ANDR_TWT_SUBCMD_GET_RESPONSE
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_twt_get_response,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
 		.policy = andr_twt_attr_policy,
 		.maxattr = ANDR_TWT_ATTR_MAX
