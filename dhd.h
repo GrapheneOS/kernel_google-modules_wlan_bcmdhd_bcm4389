@@ -4088,7 +4088,7 @@ void dhd_send_trap_to_fw_for_timeout(dhd_pub_t * pub, timeout_reasons_t reason);
 extern int dhd_bus_set_device_wake(struct dhd_bus *bus, bool val);
 extern void dhd_bus_dw_deassert(dhd_pub_t *dhd);
 #endif /* defined(PCIE_OOB) || defined(PCIE_INB_DW) */
-extern void dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level);
+extern void dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint32 dbg_level);
 int dhd_tput_test(dhd_pub_t *dhd, tput_test_t *tput_data);
 void dhd_tput_test_rx(dhd_pub_t *dhd, void *pkt);
 #ifdef DHD_EFI
