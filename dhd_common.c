@@ -9463,7 +9463,7 @@ int dhd_free_tdls_peer_list(dhd_pub_t *dhd_pub)
 * based on the debug level specified
 */
 void
-dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level)
+dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint32 dbg_level)
 {
 	char line[128], *p;
 	int len = sizeof(line);
@@ -9471,12 +9471,15 @@ dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level)
 	uint i;
 
 	if (msg && (msg[0] != '\0')) {
-		if (dbg_level == DHD_ERROR_VAL)
+		if (dbg_level == DHD_ERROR_VAL) {
 			DHD_ERROR(("%s:\n", msg));
-		else if (dbg_level == DHD_INFO_VAL)
+		} else if (dbg_level == DHD_INFO_VAL) {
 			DHD_INFO(("%s:\n", msg));
-		else if (dbg_level == DHD_TRACE_VAL)
+		} else if (dbg_level == DHD_TRACE_VAL) {
 			DHD_TRACE(("%s:\n", msg));
+		} else if (dbg_level == DHD_RPM_VAL) {
+			DHD_RPM(("%s:\n", msg));
+		}
 	}
 
 	p = line;
@@ -9494,12 +9497,16 @@ dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level)
 
 		if (i % 16 == 15) {
 			/* flush line */
-			if (dbg_level == DHD_ERROR_VAL)
+			if (dbg_level == DHD_ERROR_VAL) {
 				DHD_ERROR(("%s:\n", line));
-			else if (dbg_level == DHD_INFO_VAL)
+			} else if (dbg_level == DHD_INFO_VAL) {
 				DHD_INFO(("%s:\n", line));
-			else if (dbg_level == DHD_TRACE_VAL)
+			} else if (dbg_level == DHD_TRACE_VAL) {
 				DHD_TRACE(("%s:\n", line));
+			} else if (dbg_level == DHD_RPM_VAL) {
+				DHD_RPM(("%s:\n", line));
+			}
+
 			p = line;
 			len = sizeof(line);
 		}
@@ -9507,12 +9514,15 @@ dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level)
 
 	/* flush last partial line */
 	if (p != line) {
-		if (dbg_level == DHD_ERROR_VAL)
+		if (dbg_level == DHD_ERROR_VAL) {
 			DHD_ERROR(("%s:\n", line));
-		else if (dbg_level == DHD_INFO_VAL)
+		} else if (dbg_level == DHD_INFO_VAL) {
 			DHD_INFO(("%s:\n", line));
-		else if (dbg_level == DHD_TRACE_VAL)
+		} else if (dbg_level == DHD_TRACE_VAL) {
 			DHD_TRACE(("%s:\n", line));
+		} else if (dbg_level == DHD_RPM_VAL) {
+			DHD_RPM(("%s:\n", line));
+		}
 	}
 }
 
