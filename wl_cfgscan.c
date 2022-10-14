@@ -6926,26 +6926,32 @@ wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data)
 	}
 }
 
-inline bool
-is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec)
+bool wl_is_chanspec_restricted(struct bcm_cfg80211 *cfg, chanspec_t sta_chanspec)
 {
-	u32 ch;
-	s32 err;
-	u8 buf[WLC_IOCTL_SMLEN];
-	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
+	struct net_device *dev = bcmcfg_to_prmry_ndev(cfg);
+	s32 ret = BCME_OK;
+	uint bitmap = 0;
+	u8 ioctl_buf[WLC_IOCTL_SMLEN];
 
-	ch = (u32)chspec;
-	err = wldev_iovar_getbuf_bsscfg(ndev, "per_chan_info", (void *)&ch,
-			sizeof(u32), buf, WLC_IOCTL_SMLEN, 0, NULL);
-	if (unlikely(err)) {
-		WL_ERR(("get per chan info failed:%d\n", err));
+	bzero(ioctl_buf, WLC_IOCTL_SMLEN);
+	ret = wldev_iovar_getbuf(dev, "per_chan_info",
+			(void *)&sta_chanspec, sizeof(sta_chanspec),
+			ioctl_buf, WLC_IOCTL_SMLEN, NULL);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get per_chan_info chspec:0x%x, error:%d\n",
+				sta_chanspec, ret));
 		return FALSE;
 	}
 
-	/* Check the channel flags returned by fw */
-	if (*((u32 *)buf) & WL_CHAN_PASSIVE) {
+	bitmap = dtoh32(*(uint *)ioctl_buf);
+	if (bitmap & (WL_CHAN_PASSIVE | WL_CHAN_RADAR |
+		WL_CHAN_RESTRICTED | WL_CHAN_CLM_RESTRICTED)) {
+		WL_INFORM_MEM(("chanspec:0x%x is restricted by per_chan_info:0x%x\n",
+			sta_chanspec, bitmap));
 		return TRUE;
 	}
+
+	WL_INFORM_MEM(("STA chanspec:0x%x per_chan_info:0x%x\n", sta_chanspec, bitmap));
 	return FALSE;
 }
 
@@ -6996,7 +7002,14 @@ wl_acs_check_scc(struct bcm_cfg80211 *cfg, drv_acs_params_t *parameter,
 	 * get active channels and check it
 	 */
 	if (scc == FALSE && CHSPEC_IS2G(sta_chanspec)) {
-		scc = wl_check_active_2g_chan(cfg, parameter, sta_chanspec);
+#ifdef WL_CELLULAR_CHAN_AVOID
+		scc = wl_cellavoid_operation_allowed(cfg->cellavoid_info,
+			sta_chanspec, NL80211_IFTYPE_AP);
+		if (scc == FALSE) {
+			WL_INFORM_MEM(("Not allow unsafe channel and mandatory chspec:0x%x\n",
+			sta_chanspec));
+		}
+#endif /* WL_CELLULAR_CHAN_AVOID */
 	}
 #endif /* DHD_ACS_CHECK_SCC_2G_ACTIVE_CH */
 
@@ -7074,7 +7087,8 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 		bool scc_case = false;
 		u32 sta_band = CHSPEC_TO_WLC_BAND(chspec);
 		if (sta_band == WLC_BAND_2G) {
-			if (parameter->freq_bands & (WLC_BAND_5G | WLC_BAND_6G)) {
+			if (wl_is_chanspec_restricted(cfg, chspec) ||
+				(parameter->freq_bands & (WLC_BAND_5G | WLC_BAND_6G))) {
 				/* Remove the 2g band from incoming ACS bands */
 				parameter->freq_bands &= ~WLC_BAND_2G;
 			} else if (wl_acs_check_scc(cfg, parameter, chspec, qty, pList)) {
@@ -7085,10 +7099,9 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 				return -EINVAL;
 			}
 		} else if (sta_band == WLC_BAND_5G) {
-			if (is_chanspec_dfs(cfg, chspec) ||
+			if (wl_is_chanspec_restricted(cfg, chspec) ||
 #ifdef WL_UNII4_CHAN
-				(CHSPEC_IS5G(chspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec))) ||
+				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)) ||
 #endif /* WL_UNII4_CHAN */
 				FALSE) {
 				/*
