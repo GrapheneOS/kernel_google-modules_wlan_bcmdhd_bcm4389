@@ -930,7 +930,7 @@ dhd_wlan_deinit(void)
 void dhd_plat_l1ss_ctrl(bool ctrl)
 {
 #if defined(CONFIG_SOC_GOOGLE)
-	printk(KERN_DEBUG "%s: Control L1ss RC side %d \n", __FUNCTION__, ctrl);
+	DHD_CONS_ONLY(("%s: Control L1ss RC side %d \n", __FUNCTION__, ctrl));
 	exynos_pcie_rc_l1ss_ctrl(ctrl, PCIE_L1SS_CTRL_WIFI, 1);
 #endif /* CONFIG_SOC_GOOGLE */
 	return;
