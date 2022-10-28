@@ -942,7 +942,9 @@ typedef wifi_p2psd_gas_pub_act_frame_t wl_dpp_gas_af_t;
 #define DEFAULT_FULL_ROAM_PRD 0x78u
 #define DEFAULT_ASSOC_RETRY 0x3u
 #define DEFAULT_WNM_CONF 0x505u
+#ifndef DEFAULT_RECREATE_BI_TIMEOUT
 #define DEFAULT_RECREATE_BI_TIMEOUT 20u
+#endif
 
 struct preinit_iov;
 typedef int (*wl_iov_fn) (struct bcm_cfg80211 *cfg, struct net_device *dev, struct preinit_iov *v);

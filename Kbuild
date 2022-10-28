@@ -907,6 +907,8 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 	DHDCFLAGS += -DPOWERUP_MAX_RETRY=0
 	# Explicitly disable Softap 6G
 	DHDCFLAGS += -DWL_DISABLE_SOFTAP_6G
+	# Increase assoc beacon wait time
+	DHDCFLAGS += -DDEFAULT_RECREATE_BI_TIMEOUT=40
 ifneq ($(filter y, $(CONFIG_BCM4389)),)
 	# Add chip specific suffix to the output on customer release
 	BCM_WLAN_CHIP_SUFFIX = 4389
