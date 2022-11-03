@@ -847,7 +847,7 @@ struct resource dhd_wlan_resources = {
 	.start	= 0, /* Dummy */
 	.end	= 0, /* Dummy */
 	.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_SHAREABLE |
-	IORESOURCE_IRQ_HIGHEDGE,
+	IORESOURCE_IRQ_HIGHLEVEL,
 };
 EXPORT_SYMBOL(dhd_wlan_resources);
 
