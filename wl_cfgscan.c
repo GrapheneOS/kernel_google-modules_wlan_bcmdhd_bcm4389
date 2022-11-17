@@ -435,6 +435,14 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	if (unlikely(!cbss)) {
 		WL_ERR(("cfg80211_inform_bss_frame error bssid " MACDBG " channel %d \n",
 			MAC2STRDBG((u8*)(&bi->BSSID)), notif_bss_info->channel));
+		WL_ERR(("SSID : \"%s\", rssi %d, fc : 0x04%x, "
+			"capability : 0x04%x, beacon_int : 0x04%x, "
+			"mgmt_type %d, frame_len %d, freq %d, "
+			"band %d, center_freq %d, freq_offset %d\n",
+			tmp_buf, notif_bss_info->rssi, mgmt->frame_control,
+			mgmt->u.probe_resp.capab_info, mgmt->u.probe_resp.beacon_int,
+			mgmt_type, notif_bss_info->frame_len, freq,
+			channel->band, channel->center_freq, channel->freq_offset));
 		err = -EINVAL;
 		goto out_err;
 	}
