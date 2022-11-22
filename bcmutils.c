@@ -1190,9 +1190,11 @@ dscp2up(uint8 *up_table, uint8 dscp)
 		user_priority = up_table[dscp];
 	}
 
-	/* 255 is unused value so return up from dscp */
-	if (user_priority == 255) {
-		user_priority = dscp >> (IPV4_TOS_PREC_SHIFT - IPV4_TOS_DSCP_SHIFT);
+	if (user_priority == 255) {	/* unknown user priority */
+		/* If the user_priority from the QoS Map table is unknown(i.e., 255), then
+		 * set the default user priority as PRIO_8021D_BE(0); Reference RFC 8325.
+		 */
+		user_priority = PRIO_8021D_BE; /* default priority */
 	}
 
 	return user_priority;
