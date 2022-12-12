@@ -178,11 +178,16 @@ void reset_roam_cache(struct bcm_cfg80211 *cfg)
 static void
 add_roam_cache_list(uint8 *SSID, uint32 SSID_len, chanspec_t chanspec)
 {
-	int i;
+	int i, ret = 0;
 	uint8 channel;
 	char chanbuf[CHANSPEC_STR_LEN];
 
 	if (n_roam_cache >= MAX_ROAM_CACHE) {
+		return;
+	}
+
+	if (SSID_len > DOT11_MAX_SSID_LEN) {
+		WL_ERR(("SSID len %u out of bounds [0-32]\n", SSID_len));
 		return;
 	}
 
@@ -197,10 +202,16 @@ add_roam_cache_list(uint8 *SSID, uint32 SSID_len, chanspec_t chanspec)
 
 	roam_cache[n_roam_cache].ssid_len = SSID_len;
 	channel = wf_chspec_ctlchan(chanspec);
-	WL_DBG(("CHSPEC  = %s, CTL %d SSID %s\n",
+	WL_DBG(("CHSPEC  = %s, CTL %d SSID %.32s\n",
 		wf_chspec_ntoa_ex(chanspec, chanbuf), channel, SSID));
 	roam_cache[n_roam_cache].chanspec = CHSPEC_BAND(chanspec) | band_bw | channel;
-	(void)memcpy_s(roam_cache[n_roam_cache].ssid, SSID_len, SSID, SSID_len);
+	ret = memcpy_s(roam_cache[n_roam_cache].ssid,
+		sizeof(roam_cache[n_roam_cache].ssid), SSID, SSID_len);
+	if (ret) {
+		WL_ERR(("memcpy failed:%d, destsz:%lu, n:%d\n",
+			ret, sizeof(roam_cache[n_roam_cache].ssid), SSID_len));
+		return;
+	}
 
 	n_roam_cache++;
 }
