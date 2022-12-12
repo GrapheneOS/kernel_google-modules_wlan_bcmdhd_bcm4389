@@ -216,6 +216,7 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 	int32 ssid_len = MIN(bi->SSID_len, DOT11_MAX_SSID_LEN);
 	int32 remaining_ie_buf_len, available_buffer_len, unused_buf_len;
 	/* cfg80211_find_ie defined in kernel returning const u8 */
+	int ret = 0;
 
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	ssidie = (u8 *)cfg80211_find_ie(WLAN_EID_SSID, ie_stream, *ie_size);
@@ -259,10 +260,19 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 		 */
 		if ((update_ssid && (ssid_len > ssidie[1])) && (unused_buf_len > ssid_len)) {
 			WL_INFORM_MEM(("Changing the SSID Info.\n"));
-			memmove(ssidie + ssid_len + 2,
-				(ssidie + 2) + ssidie[1],
-				remaining_ie_buf_len);
-			memcpy(ssidie + 2, bi->SSID, ssid_len);
+			ret = memmove_s(ssidie + ssid_len + 2, available_buffer_len,
+				(ssidie + 2) + ssidie[1], remaining_ie_buf_len);
+			if (ret) {
+				WL_ERR(("SSID Info memmove failed:%d, destsz:%d, n:%d\n",
+					ret, available_buffer_len, remaining_ie_buf_len));
+				return;
+			}
+			ret = memcpy_s(ssidie + 2, DOT11_MAX_SSID_LEN, bi->SSID, ssid_len);
+			if (ret) {
+				WL_ERR(("SSID Info memcpy failed:%d, destsz:%d, n:%d\n",
+					ret, DOT11_MAX_SSID_LEN, ssid_len));
+				return;
+			}
 			*ie_size = *ie_size + ssid_len - ssidie[1];
 			ssidie[1] = ssid_len;
 		} else if (ssid_len < ssidie[1]) {
@@ -271,8 +281,14 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 		}
 		return;
 	}
-	if (*(ssidie + 2) == '\0')
-		 memcpy(ssidie + 2, bi->SSID, ssid_len);
+	if (*(ssidie + 2) == '\0') {
+		 ret = memcpy_s(ssidie + 2, DOT11_MAX_SSID_LEN, bi->SSID, ssid_len);
+		if (ret) {
+			WL_ERR(("memcopy failed:%d, destsz:%d, n:%d\n",
+				ret, DOT11_MAX_SSID_LEN, ssid_len));
+			return;
+		}
+	}
 	return;
 }
 
@@ -280,12 +296,19 @@ static s32 wl_mrg_ie(struct bcm_cfg80211 *cfg, u8 *ie_stream, u16 ie_size)
 {
 	struct wl_ie *ie = wl_to_ie(cfg);
 	s32 err = 0;
+	int ret = 0;
 
 	if (unlikely(ie->offset + ie_size > WL_TLV_INFO_MAX)) {
 		WL_ERR(("ei_stream crosses buffer boundary\n"));
 		return -ENOSPC;
 	}
-	memcpy(&ie->buf[ie->offset], ie_stream, ie_size);
+	ret = memcpy_s(&ie->buf[ie->offset], (sizeof(ie->buf) - ie->offset),
+		ie_stream, ie_size);
+	if (ret) {
+		WL_ERR(("memcpy failed:%d, destsz: %lu, n: %d\n",
+			ret, (sizeof(ie->buf) - ie->offset), ie_size));
+		return BCME_ERROR;
+	}
 	ie->offset += ie_size;
 
 	return err;
@@ -337,6 +360,12 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	if (unlikely(dtoh32(bi->length) > WL_BSS_INFO_MAX)) {
 		WL_DBG(("Beacon is larger than buffer. Discarding\n"));
 		return err;
+	}
+
+	if (bi->length < (bi->ie_offset + bi->ie_length)) {
+		WL_ERR(("IE length is not Valid. IE offse:%d, len:%d\n",
+			bi->ie_offset, bi->ie_length));
+		return -EINVAL;
 	}
 
 	if (bi->SSID_len > IEEE80211_MAX_SSID_LEN) {
@@ -655,6 +684,7 @@ wl_bcnrecv_result_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	struct wiphy *wiphy = NULL;
 	wl_bcnrecv_result_t *bcn_recv = NULL;
 	struct timespec64 ts;
+	int ret = 0;
 	if (!bi) {
 		WL_ERR(("%s: bi is NULL\n", __func__));
 		err = BCME_NORESOURCE;
@@ -677,11 +707,15 @@ wl_bcnrecv_result_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			WL_ERR(("Failed to allocate memory\n"));
 			return -ENOMEM;
 		}
-		/* Returning void here as copy size does not exceed dest size of SSID */
-		(void)memcpy_s((char *)bcn_recv->SSID, DOT11_MAX_SSID_LEN,
-			(char *)bi->SSID, DOT11_MAX_SSID_LEN);
-		/* Returning void here as copy size does not exceed dest size of ETH_LEN */
-		(void)memcpy_s(&bcn_recv->BSSID, ETHER_ADDR_LEN, &bi->BSSID, ETH_ALEN);
+		ret = memcpy_s((char *)bcn_recv->SSID, sizeof(bcn_recv->SSID),
+			(char *)bi->SSID, bi->SSID_len);
+		if (ret) {
+			WL_ERR(("memcpy failed:%d, destsz:%lu, n:%d\n",
+				ret, sizeof(bcn_recv->SSID), bi->SSID_len));
+			err = BCME_ERROR;
+			goto exit;
+		}
+		eacopy(&bi->BSSID, &bcn_recv->BSSID);
 		bcn_recv->channel = wf_chspec_ctlchan(
 			wl_chspec_driver_to_host(bi->chanspec));
 		bcn_recv->beacon_interval = bi->beacon_period;
