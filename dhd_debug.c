@@ -1119,11 +1119,11 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 	 * event log buffer. Refer to event log buffer structure in
 	 * event_log.h
 	 */
-	DHD_MSGTRACE_LOG(("EVENT_LOG_HDR[0x%x]: Set: 0x%08x length = %d\n",
-		ltoh16(*((uint16 *)(data+2))), ltoh32(*((uint32 *)(data + 4))),
-		ltoh16(*((uint16 *)(data)))));
+	logset = (ltoh32(*((uint32 *)(data + 4))) & EVENT_LOG_SETID_MASK);
 
-	logset = ltoh32(*((uint32 *)(data + 4)));
+	DHD_MSGTRACE_LOG(("EVENT_LOG_HDR[0x%x]: Set: 0x%08x length = %d\n",
+		ltoh16(*((uint16 *)(data+2))), logset, ltoh16(*((uint16 *)(data)))));
+
 	block_hdr_len = ltoh16(*((uint16 *)(data)));
 
 	if (logset >= event_log_max_sets) {
