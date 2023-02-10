@@ -3308,7 +3308,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			!DHD_CHECK_CFG_IN_PROGRESS(dhd) && !dhd_os_check_wakelock_all(bus->dhd)) {
 #ifdef WL_CFG80211
 			ps_mode_off_dur = dhd_ps_mode_managed_dur(dhd);
-			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
+			DHD_RPM(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d, "
 				"PS mode off dur: %d sec \n", __FUNCTION__,
 				bus->idletime, dhd_runtimepm_ms, ps_mode_off_dur));
 #else
@@ -3321,6 +3321,9 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			/* stop all interface network queue. */
 			dhd_bus_stop_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
+#ifdef WLAN_TRACKER
+			dhd_custom_notify(CUSTOM_NOTIFY_BUS_SUSPEND);
+#endif /* WLAN_TRACKER */
 			/* RPM suspend is failed, return FALSE then re-trying */
 			if (dhdpcie_set_suspend_resume(bus, TRUE)) {
 				DHD_ERROR(("%s: exit with wakelock \n", __FUNCTION__));
@@ -3415,7 +3418,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 
 			smp_wmb();
 			wake_up(&bus->rpm_queue);
-			DHD_ERROR(("%s : runtime resume ended \n", __FUNCTION__));
+			DHD_RPM(("%s : runtime resume ended \n", __FUNCTION__));
 			return TRUE;
 		} else {
 			DHD_GENERAL_UNLOCK(dhd, flags);
@@ -3462,7 +3465,7 @@ bool dhd_runtime_bus_wake(dhd_bus_t *bus, bool wait, void *func_addr)
 
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
 
-			DHD_ERROR(("Runtime Resume is called in %ps\n", func_addr));
+			DHD_RPM(("Runtime Resume is called in %ps\n", func_addr));
 			smp_wmb();
 			wake_up(&bus->rpm_queue);
 		/* No need to wake up the RPM state thread */

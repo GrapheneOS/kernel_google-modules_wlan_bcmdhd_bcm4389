@@ -490,7 +490,8 @@ exit:
 }
 
 int
-dhd_dbg_ring_pull(dhd_dbg_ring_t *ring, void *data, uint32 buf_len, bool strip_hdr)
+dhd_dbg_ring_pull(dhd_dbg_ring_t *ring, void *data, uint32 buf_len,
+		bool strip_hdr, int *num_entries)
 {
 	int32 r_len, total_r_len = 0;
 	unsigned long flags;
@@ -512,6 +513,7 @@ dhd_dbg_ring_pull(dhd_dbg_ring_t *ring, void *data, uint32 buf_len, bool strip_h
 		data = (uint8 *)data + r_len;
 		buf_len -= r_len;
 		total_r_len += r_len;
+		(*num_entries)++;
 	}
 
 	return total_r_len;

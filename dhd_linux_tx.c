@@ -308,7 +308,15 @@ BCMFASTPATH(__dhd_sendpkt)(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 		{
 #if (!defined(BCM_ROUTER_DHD) && (defined(QOS_MAP_SET) || \
 	defined(WL_CUSTOM_MAPPING_OF_DSCP)))
-			pktsetprio_qms(pktbuf, wl_get_up_table(dhdp, ifidx), FALSE);
+			u8 *up_table = wl_get_up_table(dhdp, ifidx);
+			pktsetprio_qms(pktbuf, up_table, FALSE);
+			if (PKTPRIO(pktbuf) > MAXPRIO) {
+				DHD_ERROR_RLMT(("wrong user prio:%d from qosmap ifidx:%d\n",
+					PKTPRIO(pktbuf), ifidx));
+				if (up_table) {
+					prhex("up_table", up_table, UP_TABLE_MAX);
+				}
+			}
 #else
 			/* For LLR, pkt prio will be changed to 7(NC) here */
 			pktsetprio(pktbuf, FALSE);
@@ -358,12 +366,19 @@ BCMFASTPATH(__dhd_sendpkt)(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 		/* we only have support for one tx_profile at the moment */
 
 		/* tagged packets must be put into TID 6 */
-		pkt_flow_prio = PRIO_8021D_VO;
-	} else
-#endif /* defined(DHD_TX_PROFILE) */
-	{
-		pkt_flow_prio = dhdp->flow_prio_map[(PKTPRIO(pktbuf))];
+		PKTSETPRIO(pktbuf, PRIO_8021D_VO);
 	}
+#endif /* defined(DHD_TX_PROFILE) */
+
+	if (PKTPRIO(pktbuf) > MAXPRIO) {
+		DHD_ERROR_RLMT(("Wrong user prio:%d ifidx:%d\n", PKTPRIO(pktbuf), ifidx));
+		/* non-assert build, print ratelimit error, free packet and exit */
+		ASSERT(0);
+		PKTCFREE(dhd->pub.osh, pktbuf, TRUE);
+		return BCME_ERROR;
+	}
+
+	pkt_flow_prio = dhdp->flow_prio_map[(PKTPRIO(pktbuf))];
 
 	ret = dhd_flowid_update(dhdp, ifidx, pkt_flow_prio, pktbuf);
 	if (ret != BCME_OK) {
@@ -697,6 +712,25 @@ BCMFASTPATH(dhd_start_xmit)(struct sk_buff *skb, struct net_device *net)
 	ASSERT((ifp != NULL) && ((ifidx < DHD_MAX_IFS) && (ifp == dhd->iflist[ifidx])));
 
 	bcm_object_trace_opr(skb, BCM_OBJDBG_ADD_PKT, __FUNCTION__, __LINE__);
+
+#ifdef HOST_SFH_LLC
+	/* if upper layer has cloned the skb, ex:- packet filter
+	 * unclone the skb, otherwise due to host sfh llc insertion
+	 * the upper layer packet capture will show wrong ethernet DA/SA
+	 */
+	if (unlikely(skb_cloned(skb))) {
+		int res = 0;
+		gfp_t gfp_flags = CAN_SLEEP() ? GFP_KERNEL : GFP_ATOMIC;
+		res = skb_unclone(skb, gfp_flags);
+		if (res) {
+			DHD_ERROR_RLMT(("%s: sbk_unclone fails ! err = %d\n",
+				__FUNCTION__, res));
+#ifdef CUSTOMER_HW2_DEBUG
+			return -ENOMEM;
+#endif /* CUSTOMER_HW2_DEBUG */
+		}
+	}
+#endif /* HOST_SFH_LLC */
 
 	/* re-align socket buffer if "skb->data" is odd address */
 	if (((unsigned long)(skb->data)) & 0x1) {

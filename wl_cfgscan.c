@@ -216,6 +216,7 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 	int32 ssid_len = MIN(bi->SSID_len, DOT11_MAX_SSID_LEN);
 	int32 remaining_ie_buf_len, available_buffer_len, unused_buf_len;
 	/* cfg80211_find_ie defined in kernel returning const u8 */
+	int ret = 0;
 
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	ssidie = (u8 *)cfg80211_find_ie(WLAN_EID_SSID, ie_stream, *ie_size);
@@ -259,10 +260,19 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 		 */
 		if ((update_ssid && (ssid_len > ssidie[1])) && (unused_buf_len > ssid_len)) {
 			WL_INFORM_MEM(("Changing the SSID Info.\n"));
-			memmove(ssidie + ssid_len + 2,
-				(ssidie + 2) + ssidie[1],
-				remaining_ie_buf_len);
-			memcpy(ssidie + 2, bi->SSID, ssid_len);
+			ret = memmove_s(ssidie + ssid_len + 2, available_buffer_len,
+				(ssidie + 2) + ssidie[1], remaining_ie_buf_len);
+			if (ret) {
+				WL_ERR(("SSID Info memmove failed:%d, destsz:%d, n:%d\n",
+					ret, available_buffer_len, remaining_ie_buf_len));
+				return;
+			}
+			ret = memcpy_s(ssidie + 2, DOT11_MAX_SSID_LEN, bi->SSID, ssid_len);
+			if (ret) {
+				WL_ERR(("SSID Info memcpy failed:%d, destsz:%d, n:%d\n",
+					ret, DOT11_MAX_SSID_LEN, ssid_len));
+				return;
+			}
 			*ie_size = *ie_size + ssid_len - ssidie[1];
 			ssidie[1] = ssid_len;
 		} else if (ssid_len < ssidie[1]) {
@@ -271,8 +281,14 @@ static void wl_update_hidden_ap_ie(wl_bss_info_v109_t *bi, const u8 *ie_stream, 
 		}
 		return;
 	}
-	if (*(ssidie + 2) == '\0')
-		 memcpy(ssidie + 2, bi->SSID, ssid_len);
+	if (*(ssidie + 2) == '\0') {
+		 ret = memcpy_s(ssidie + 2, DOT11_MAX_SSID_LEN, bi->SSID, ssid_len);
+		if (ret) {
+			WL_ERR(("memcopy failed:%d, destsz:%d, n:%d\n",
+				ret, DOT11_MAX_SSID_LEN, ssid_len));
+			return;
+		}
+	}
 	return;
 }
 
@@ -280,12 +296,19 @@ static s32 wl_mrg_ie(struct bcm_cfg80211 *cfg, u8 *ie_stream, u16 ie_size)
 {
 	struct wl_ie *ie = wl_to_ie(cfg);
 	s32 err = 0;
+	int ret = 0;
 
 	if (unlikely(ie->offset + ie_size > WL_TLV_INFO_MAX)) {
 		WL_ERR(("ei_stream crosses buffer boundary\n"));
 		return -ENOSPC;
 	}
-	memcpy(&ie->buf[ie->offset], ie_stream, ie_size);
+	ret = memcpy_s(&ie->buf[ie->offset], (sizeof(ie->buf) - ie->offset),
+		ie_stream, ie_size);
+	if (ret) {
+		WL_ERR(("memcpy failed:%d, destsz: %lu, n: %d\n",
+			ret, (sizeof(ie->buf) - ie->offset), ie_size));
+		return BCME_ERROR;
+	}
 	ie->offset += ie_size;
 
 	return err;
@@ -337,6 +360,12 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	if (unlikely(dtoh32(bi->length) > WL_BSS_INFO_MAX)) {
 		WL_DBG(("Beacon is larger than buffer. Discarding\n"));
 		return err;
+	}
+
+	if (bi->length < (bi->ie_offset + bi->ie_length)) {
+		WL_ERR(("IE length is not Valid. IE offse:%d, len:%d\n",
+			bi->ie_offset, bi->ie_length));
+		return -EINVAL;
 	}
 
 	if (bi->SSID_len > IEEE80211_MAX_SSID_LEN) {
@@ -435,6 +464,14 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 	if (unlikely(!cbss)) {
 		WL_ERR(("cfg80211_inform_bss_frame error bssid " MACDBG " channel %d \n",
 			MAC2STRDBG((u8*)(&bi->BSSID)), notif_bss_info->channel));
+		WL_ERR(("SSID : \"%s\", rssi %d, fc : 0x04%x, "
+			"capability : 0x04%x, beacon_int : 0x04%x, "
+			"mgmt_type %d, frame_len %d, freq %d, "
+			"band %d, center_freq %d, freq_offset %d\n",
+			tmp_buf, notif_bss_info->rssi, mgmt->frame_control,
+			mgmt->u.probe_resp.capab_info, mgmt->u.probe_resp.beacon_int,
+			mgmt_type, notif_bss_info->frame_len, freq,
+			channel->band, channel->center_freq, channel->freq_offset));
 		err = -EINVAL;
 		goto out_err;
 	}
@@ -647,6 +684,7 @@ wl_bcnrecv_result_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	struct wiphy *wiphy = NULL;
 	wl_bcnrecv_result_t *bcn_recv = NULL;
 	struct timespec64 ts;
+	int ret = 0;
 	if (!bi) {
 		WL_ERR(("%s: bi is NULL\n", __func__));
 		err = BCME_NORESOURCE;
@@ -669,11 +707,15 @@ wl_bcnrecv_result_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			WL_ERR(("Failed to allocate memory\n"));
 			return -ENOMEM;
 		}
-		/* Returning void here as copy size does not exceed dest size of SSID */
-		(void)memcpy_s((char *)bcn_recv->SSID, DOT11_MAX_SSID_LEN,
-			(char *)bi->SSID, DOT11_MAX_SSID_LEN);
-		/* Returning void here as copy size does not exceed dest size of ETH_LEN */
-		(void)memcpy_s(&bcn_recv->BSSID, ETHER_ADDR_LEN, &bi->BSSID, ETH_ALEN);
+		ret = memcpy_s((char *)bcn_recv->SSID, sizeof(bcn_recv->SSID),
+			(char *)bi->SSID, bi->SSID_len);
+		if (ret) {
+			WL_ERR(("memcpy failed:%d, destsz:%lu, n:%d\n",
+				ret, sizeof(bcn_recv->SSID), bi->SSID_len));
+			err = BCME_ERROR;
+			goto exit;
+		}
+		eacopy(&bi->BSSID, &bcn_recv->BSSID);
 		bcn_recv->channel = wf_chspec_ctlchan(
 			wl_chspec_driver_to_host(bi->chanspec));
 		bcn_recv->beacon_interval = bi->beacon_period;
@@ -2431,14 +2473,6 @@ wl_set_legacy_scan_states(struct bcm_cfg80211 *cfg,
 		cfg->wl11u = FALSE;
 	}
 #endif /* WL11U */
-
-	if (request) {
-		err = wl_cfg80211_set_mgmt_vndr_ies(cfg, ndev_to_cfgdev(ndev), bssidx,
-				VNDR_IE_PRBREQ_FLAG, request->ie, request->ie_len);
-		if (unlikely(err)) {
-			WL_ERR(("vndr_ie set for probereq failed for bssidx:%d!\n", bssidx));
-		}
-	}
 }
 
 static bool
@@ -2608,6 +2642,13 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 			wl_set_p2p_scan_states(cfg, ndev);
 		} else {
 			wl_set_legacy_scan_states(cfg, request, ndev, bssidx);
+		}
+
+		/* configure upper app provided IEs to the firmware */
+		err = wl_cfg80211_set_mgmt_vndr_ies(cfg, ndev_to_cfgdev(ndev), bssidx,
+				VNDR_IE_PRBREQ_FLAG, request->ie, request->ie_len);
+		if (unlikely(err)) {
+			WL_ERR(("vndr_ie set for probereq failed for bssidx:%d!\n", bssidx));
 		}
 	}
 
@@ -6927,26 +6968,32 @@ wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data)
 	}
 }
 
-inline bool
-is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec)
+bool wl_is_chanspec_restricted(struct bcm_cfg80211 *cfg, chanspec_t sta_chanspec)
 {
-	u32 ch;
-	s32 err;
-	u8 buf[WLC_IOCTL_SMLEN];
-	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
+	struct net_device *dev = bcmcfg_to_prmry_ndev(cfg);
+	s32 ret = BCME_OK;
+	uint bitmap = 0;
+	u8 ioctl_buf[WLC_IOCTL_SMLEN];
 
-	ch = (u32)chspec;
-	err = wldev_iovar_getbuf_bsscfg(ndev, "per_chan_info", (void *)&ch,
-			sizeof(u32), buf, WLC_IOCTL_SMLEN, 0, NULL);
-	if (unlikely(err)) {
-		WL_ERR(("get per chan info failed:%d\n", err));
+	bzero(ioctl_buf, WLC_IOCTL_SMLEN);
+	ret = wldev_iovar_getbuf(dev, "per_chan_info",
+			(void *)&sta_chanspec, sizeof(sta_chanspec),
+			ioctl_buf, WLC_IOCTL_SMLEN, NULL);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get per_chan_info chspec:0x%x, error:%d\n",
+				sta_chanspec, ret));
 		return FALSE;
 	}
 
-	/* Check the channel flags returned by fw */
-	if (*((u32 *)buf) & WL_CHAN_PASSIVE) {
+	bitmap = dtoh32(*(uint *)ioctl_buf);
+	if (bitmap & (WL_CHAN_PASSIVE | WL_CHAN_RADAR |
+		WL_CHAN_RESTRICTED | WL_CHAN_CLM_RESTRICTED)) {
+		WL_INFORM_MEM(("chanspec:0x%x is restricted by per_chan_info:0x%x\n",
+			sta_chanspec, bitmap));
 		return TRUE;
 	}
+
+	WL_INFORM_MEM(("STA chanspec:0x%x per_chan_info:0x%x\n", sta_chanspec, bitmap));
 	return FALSE;
 }
 
@@ -6997,7 +7044,14 @@ wl_acs_check_scc(struct bcm_cfg80211 *cfg, drv_acs_params_t *parameter,
 	 * get active channels and check it
 	 */
 	if (scc == FALSE && CHSPEC_IS2G(sta_chanspec)) {
-		scc = wl_check_active_2g_chan(cfg, parameter, sta_chanspec);
+#ifdef WL_CELLULAR_CHAN_AVOID
+		scc = wl_cellavoid_operation_allowed(cfg->cellavoid_info,
+			sta_chanspec, NL80211_IFTYPE_AP);
+		if (scc == FALSE) {
+			WL_INFORM_MEM(("Not allow unsafe channel and mandatory chspec:0x%x\n",
+			sta_chanspec));
+		}
+#endif /* WL_CELLULAR_CHAN_AVOID */
 	}
 #endif /* DHD_ACS_CHECK_SCC_2G_ACTIVE_CH */
 
@@ -7075,7 +7129,8 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 		bool scc_case = false;
 		u32 sta_band = CHSPEC_TO_WLC_BAND(chspec);
 		if (sta_band == WLC_BAND_2G) {
-			if (parameter->freq_bands & (WLC_BAND_5G | WLC_BAND_6G)) {
+			if (wl_is_chanspec_restricted(cfg, chspec) ||
+				(parameter->freq_bands & (WLC_BAND_5G | WLC_BAND_6G))) {
 				/* Remove the 2g band from incoming ACS bands */
 				parameter->freq_bands &= ~WLC_BAND_2G;
 			} else if (wl_acs_check_scc(cfg, parameter, chspec, qty, pList)) {
@@ -7086,10 +7141,9 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 				return -EINVAL;
 			}
 		} else if (sta_band == WLC_BAND_5G) {
-			if (is_chanspec_dfs(cfg, chspec) ||
+			if (wl_is_chanspec_restricted(cfg, chspec) ||
 #ifdef WL_UNII4_CHAN
-				(CHSPEC_IS5G(chspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec))) ||
+				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)) ||
 #endif /* WL_UNII4_CHAN */
 				FALSE) {
 				/*

@@ -1856,6 +1856,7 @@ typedef struct dhd_pub {
 	bool assoc_at_suspend;
 #endif /* DEVICE_TX_STUCK_DETECT && ASSOC_CHECK_SR */
 	uint32 p2p_disc_busy_cnt;
+	bool skip_memdump_map_read;
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -2268,6 +2269,7 @@ extern void dhd_os_oob_irq_wake_unlock(dhd_pub_t *pub);
  * to prevent the system from entering suspend during TX/RX frame processing.
  * It can be adjusted depending on the host platform.
  */
+#define DHD_MONITOR_TIMEOUT_MS	1000
 #define DHD_PACKET_TIMEOUT_MS	100
 #define DHD_HANDSHAKE_TIMEOUT_MS       1000
 #define DHD_EVENT_TIMEOUT_MS	1500
@@ -4086,7 +4088,7 @@ void dhd_send_trap_to_fw_for_timeout(dhd_pub_t * pub, timeout_reasons_t reason);
 extern int dhd_bus_set_device_wake(struct dhd_bus *bus, bool val);
 extern void dhd_bus_dw_deassert(dhd_pub_t *dhd);
 #endif /* defined(PCIE_OOB) || defined(PCIE_INB_DW) */
-extern void dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level);
+extern void dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint32 dbg_level);
 int dhd_tput_test(dhd_pub_t *dhd, tput_test_t *tput_data);
 void dhd_tput_test_rx(dhd_pub_t *dhd, void *pkt);
 #ifdef DHD_EFI

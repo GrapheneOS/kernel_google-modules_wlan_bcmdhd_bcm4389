@@ -220,7 +220,7 @@ extern int wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg,
 extern void wl_cfgscan_sched_scan_stop_work(struct work_struct *work);
 #endif /* WL_SCHED_SCAN */
 #ifdef WL_SOFTAP_ACS
-extern bool is_chanspec_dfs(struct bcm_cfg80211 *cfg, chanspec_t chspec);
+extern bool wl_is_chanspec_restricted(struct bcm_cfg80211 *cfg, chanspec_t chspec);
 #endif /* WL_SOFTAP_ACS */
 
 #ifdef ESCAN_CHANNEL_CACHE

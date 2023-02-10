@@ -437,7 +437,7 @@ wl_cellavoid_do_csa_work(struct work_struct *work)
 		} else {
 			wl_cellavoid_free_csa_info(cellavoid_info, csa_info->ndev);
 			if (err < 0) {
-				WL_ERR(("csa failed, target chanspec %x\n", csa_info->chanspec));
+				WL_ERR(("csa failed, err %d\n", err));
 				delay = CSA_DELAYWORK_FAIL_INTERVAL;
 			} else {
 				delay = CSA_DELAYWORK_CSA_INTERVAL;
@@ -1456,7 +1456,7 @@ wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, chanspec_t ap_chspec,
 			 * Skip DFS case
 			 */
 			WL_INFORM_MEM(("STA in the another core. band %d\n", csa_target_band));
-			if (!is_chanspec_dfs(cfg, sta_chspec)) {
+			if (!wl_is_chanspec_restricted(cfg, sta_chspec)) {
 				chan_info = wl_cellavoid_find_chinfo_fromchspec(cfg->cellavoid_info,
 					sta_chspec);
 			}

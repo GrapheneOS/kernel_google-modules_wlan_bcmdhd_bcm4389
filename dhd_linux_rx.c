@@ -733,7 +733,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 #if defined(DHD_WAKE_STATUS) && defined(DHD_WAKEPKT_DUMP)
 		if (pkt_wake) {
 			DHD_ERROR(("##### dhdpcie_host_wake caused by packets\n"));
-			dhd_prhex("[wakepkt_dump]", (char*)dump_data, MIN(len, 64), DHD_ERROR_VAL);
+			dhd_prhex("[wakepkt_dump]", (char*)dump_data, MIN(len, 64), DHD_RPM_VAL);
 			DHD_ERROR(("config check in_suspend: %d\n", dhdp->in_suspend));
 #ifdef ARP_OFFLOAD_SUPPORT
 			DHD_ERROR(("arp hmac_update:%d \n", dhdp->hmac_updated));
@@ -1322,6 +1322,11 @@ dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 	}
 
 	dhd->monitor_skb = NULL;
+
+#if defined(OEM_ANDROID)
+	DHD_OS_WAKE_LOCK_RX_TIMEOUT_ENABLE(dhdp, DHD_MONITOR_TIMEOUT_MS);
+	DHD_OS_WAKE_LOCK_TIMEOUT(dhdp);
+#endif /* OEM_ANDROID */
 }
 #endif /* WL_MONITOR */
 

@@ -718,7 +718,7 @@ do {									\
 #else
 #define IFACE_MAX_CNT           5
 #endif /* WL_MLO */
-#define WL_SCAN_CONNECT_DWELL_TIME_MS		200
+#define WL_SCAN_CONNECT_DWELL_TIME_MS		100
 #define WL_SCAN_JOIN_PROBE_INTERVAL_MS		20
 #define WL_SCAN_JOIN_ACTIVE_DWELL_TIME_MS	320
 #define WL_BCAST_SCAN_JOIN_ACTIVE_DWELL_TIME_MS	80
@@ -942,7 +942,9 @@ typedef wifi_p2psd_gas_pub_act_frame_t wl_dpp_gas_af_t;
 #define DEFAULT_FULL_ROAM_PRD 0x78u
 #define DEFAULT_ASSOC_RETRY 0x3u
 #define DEFAULT_WNM_CONF 0x505u
+#ifndef DEFAULT_RECREATE_BI_TIMEOUT
 #define DEFAULT_RECREATE_BI_TIMEOUT 20u
+#endif
 
 struct preinit_iov;
 typedef int (*wl_iov_fn) (struct bcm_cfg80211 *cfg, struct net_device *dev, struct preinit_iov *v);
@@ -1290,6 +1292,7 @@ struct net_info {
 	*/
 	u8* passphrase_cfg;
 	u16 passphrase_cfg_len;
+	u8 *qos_up_table;
 };
 
 #ifdef WL_BCNRECV
@@ -1805,7 +1808,7 @@ typedef enum {
 #define SAR_CONFIG_SCENARIO_COUNT	100
 typedef struct wl_sar_config_info {
 	int8 scenario;
-	int8 sar_tx_power_val;
+	uint8 sar_tx_power_val;
 	int8 airplane_mode;
 } wl_sar_config_info_t;
 #endif /* WL_SAR_TX_POWER && WL_SAR_TX_POWER_CONFIG */
@@ -2483,6 +2486,10 @@ wl_dealloc_netinfo_by_wdev(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev)
 				_net_info->passphrase_cfg = NULL;
 			}
 
+			if (_net_info->qos_up_table) {
+				MFREE(cfg->osh, _net_info->qos_up_table, UP_TABLE_MAX);
+				_net_info->qos_up_table = NULL;
+			}
 			list_del(&_net_info->list);
 			cfg->iface_cnt--;
 			MFREE(cfg->osh, _net_info, sizeof(struct net_info));
@@ -3448,10 +3455,11 @@ bool wl_cfg80211_check_in_progress(struct net_device *dev);
 extern int wl_android_set_ncho_mode(struct net_device *dev, int mode);
 #endif /* WES_SUPPORT */
 #ifdef KEEP_ALIVE
-extern int wl_cfg80211_start_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id,
-	uint16 ether_type, uint8 *ip_pkt, uint16 ip_pkt_len, uint8* src_mac_addr,
-	uint8* dst_mac_addr, uint32 period_msec);
-extern int wl_cfg80211_stop_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id);
+extern int wl_cfg80211_start_mkeep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg,
+	uint8 mkeep_alive_id, uint16 ether_type, uint8 *ip_pkt, uint16 ip_pkt_len,
+	uint8* src_mac_addr, uint8* dst_mac_addr, uint32 period_msec);
+extern int wl_cfg80211_stop_mkeep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg,
+	uint8 mkeep_alive_id);
 #endif /* KEEP_ALIVE */
 
 extern s32 wl_cfg80211_handle_macaddr_change(struct net_device *dev, u8 *macaddr);
@@ -3516,7 +3524,7 @@ extern u32 wl_log_level;
 extern u32 wl_cfg80211_debug_data_dump(struct net_device *dev, u8 *buf, u32 buf_len);
 extern void wl_cfg80211_concurrent_roam(struct bcm_cfg80211 *cfg, int enable);
 
-extern void wl_cfg80211_iface_state_ops(struct wireless_dev *wdev, wl_interface_state_t state,
+extern s32 wl_cfg80211_iface_state_ops(struct wireless_dev *wdev, wl_interface_state_t state,
 	wl_iftype_t wl_iftype, u16 wl_mode);
 extern chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy);
 #ifdef SUPPORT_SET_CAC
@@ -3639,6 +3647,10 @@ int wl_cfg80211_set_roam_params(struct net_device *dev, uint32 *data, uint16 dat
 
 extern void wl_cfg80211_wdev_lock(struct wireless_dev *wdev);
 extern void wl_cfg80211_wdev_unlock(struct wireless_dev *wdev);
+
+extern u8 *wl_get_up_table_netinfo(struct bcm_cfg80211 *cfg, struct net_device *ndev);
+extern void wl_store_up_table_netinfo(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, u8 *uptable);
 
 /* Added wl_reassoc_params_cvt_v1 due to mis-sync between DHD and FW
  * Because Dongle use wl_reassoc_params_v1_t for WLC_REASSOC

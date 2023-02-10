@@ -95,5 +95,19 @@ extern uint32 dhd_plat_get_rc_vendor_id(void);
 extern uint32 dhd_plat_get_rc_device_id(void);
 
 extern uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz);
+
+#ifdef WLAN_TRACKER
+enum {
+	CUSTOM_NOTIFY_BUS_SUSPEND,
+	CUSTOM_NOTIFY_STA_CONNECT,
+	CUSTOM_NOTIFY_STA_DISCONNECT,
+	CUSTOM_NOTIFY_TWT_SETUP,
+	CUSTOM_NOTIFY_TWT_TEARDOWN,
+	CUSTOM_NOTIFY_MAX,
+};
+
+extern int dhd_custom_notify(u32 id);
+#endif /* WLAN_TRACKER */
+
 #endif /* __linux__ */
 #endif /* __DHD_PLAT_H__ */

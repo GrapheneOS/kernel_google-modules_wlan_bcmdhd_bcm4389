@@ -219,7 +219,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Enable FIS Dump
 #	DHDCFLAGS += -DDHD_FIS_DUMP
 # Enable System Debug Trace Controller, Embedded Trace Buffer
-	DHDCFLAGS += -DDHD_SDTC_ETB_DUMP
+#	DHDCFLAGS += -DDHD_SDTC_ETB_DUMP
 # Enable SMD/Minidump collection
 	DHDCFLAGS += -DD2H_MINIDUMP
 # ROT and Scan timeout debugging due to Kernel scheduling problem
@@ -284,7 +284,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
         DHDCFLAGS += -DDHD_TX_CPL_BOUND=64
         DHDCFLAGS += -DDHD_TX_POST_BOUND=128
         DHDCFLAGS += -DDHD_RX_CPL_POST_BOUND=156
-        DHDCFLAGS += -DDHD_CTRL_CPL_POST_BOUND=64
+        DHDCFLAGS += -DDHD_CTRL_CPL_POST_BOUND=8
 endif
 
 ifneq ($(CONFIG_FIB_RULES),)
@@ -538,7 +538,9 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_USE_STATIC_CTRLBUF
 #Use coherent pool
 	DHDCFLAGS += -DDHD_USE_COHERENT_MEM_FOR_RING
+ifeq ($(CONFIG_SOC_GS201),)
 	DHDCFLAGS += -DDHD_ALLOC_COHERENT_MEM_FROM_ATOMIC_POOL
+endif
 # Runtime PM feature
 	DHDCFLAGS += -DDHD_PCIE_RUNTIMEPM -DMAX_IDLE_COUNT=5
 
@@ -907,6 +909,8 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 	DHDCFLAGS += -DPOWERUP_MAX_RETRY=0
 	# Explicitly disable Softap 6G
 	DHDCFLAGS += -DWL_DISABLE_SOFTAP_6G
+	# Increase assoc beacon wait time
+	DHDCFLAGS += -DDEFAULT_RECREATE_BI_TIMEOUT=40
 ifneq ($(filter y, $(CONFIG_BCM4389)),)
 	# Add chip specific suffix to the output on customer release
 	BCM_WLAN_CHIP_SUFFIX = 4389
@@ -956,6 +960,11 @@ endif
 	# Dongle init fail
 	DHDCFLAGS += -DPOWERUP_MAX_RETRY=3
 	DHDCFLAGS := $(filter-out -DSIMPLE_MAC_PRINT ,$(DHDCFLAGS))
+endif
+
+ifneq ($(CONFIG_WLAN_TRACKER),)
+  WLAN_TRACKER_DIR=$(BCMDHD_ROOT)/../wlan_ptracker
+  DHDCFLAGS += -I$(WLAN_TRACKER_DIR)/ -DWLAN_TRACKER
 endif
 
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG

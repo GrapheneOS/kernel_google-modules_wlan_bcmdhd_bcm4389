@@ -1441,6 +1441,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 					"intstat=0x%x enab=%d\n", __FUNCTION__,
 					intstatus, bus->cto_enable));
 				bus->cto_triggered = 1;
+				bus->dhd->do_chip_bighammer = TRUE;
 				dhd_bus_dump_imp_cfg_registers(bus);
 				/*
 				 * DAR still accessible
@@ -5407,7 +5408,7 @@ static int
 dhdpcie_mem_dump(dhd_bus_t *bus)
 {
 	dhd_pub_t *dhdp;
-	int ret;
+	int ret = BCME_OK;
 	uint32 dhd_console_ms_prev = 0;
 
 #ifdef GDB_PROXY
@@ -5533,11 +5534,15 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 		return BCME_ERROR;
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
-	ret = dhdpcie_get_mem_dump(bus);
-	if (ret) {
-		DHD_ERROR(("%s: failed to get mem dump, err=%d\n",
-			__FUNCTION__, ret));
-		goto exit;
+	if (dhdp->skip_memdump_map_read == FALSE) {
+		ret = dhdpcie_get_mem_dump(bus);
+		if (ret) {
+			DHD_ERROR(("%s: failed to get mem dump, err=%d\n", __FUNCTION__, ret));
+			goto exit;
+		}
+	} else {
+		DHD_ERROR(("%s: Skipped to get mem dump, err=%d\n", __FUNCTION__, ret));
+		dhdp->skip_memdump_map_read = FALSE;
 	}
 #ifdef DHD_DEBUG_UART
 	bus->dhd->memdump_success = TRUE;
