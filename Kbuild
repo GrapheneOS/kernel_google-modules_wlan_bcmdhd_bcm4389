@@ -384,9 +384,9 @@ DHDCFLAGS += -DWL_P2P_RAND
 #Custom Mapping of DSCP to User Priority
 DHDCFLAGS += -DWL_CUSTOM_MAPPING_OF_DSCP
 # Enable below define for production
-# ifneq ($(CONFIG_SOC_GOOGLE),)
-# DHDCFLAGS += -DMACADDR_PROVISION_ENFORCED
-# endif
+ifneq ($(CONFIG_SOC_GOOGLE),)
+DHDCFLAGS += -DMACADDR_PROVISION_ENFORCED
+endif
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_WAKE_STATUS
 endif
@@ -946,6 +946,9 @@ else ifneq ($(CONFIG_ARCH_HISI),)
 
 	# Allow wl event forwarding as network packet
 	DHDCFLAGS += -DWL_EVENT_ENAB
+
+	# Enable memdump for logset beyond range only internal builds
+	DHDCFLAGS += -DDHD_LOGSET_BEYOND_MEMDUMP
 
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 	# LB RXP Flow control to avoid OOM
