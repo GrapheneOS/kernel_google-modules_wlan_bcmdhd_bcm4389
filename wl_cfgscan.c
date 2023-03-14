@@ -2305,6 +2305,14 @@ wl_cfgscan_handle_scanbusy(struct bcm_cfg80211 *cfg, struct net_device *ndev, s3
 		busy_count = 0;
 	}
 
+	if ((IS_STA_IFACE(ndev_to_wdev(ndev))) &&
+		wl_get_drv_status(cfg, CONNECTED, ndev) &&
+		!wl_get_drv_status(cfg, AUTHORIZED, ndev)) {
+		WL_ERR(("Authorization is in progress,"
+			" so ignore this scan busy until it's completed.\n"));
+		busy_count = 0;
+	}
+
 	if (err == BCME_BUSY || err == BCME_NOTREADY) {
 		WL_ERR(("Scan err = (%d), busy?%d", err, -EBUSY));
 		scanbusy_err = -EBUSY;
