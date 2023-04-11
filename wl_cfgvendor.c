@@ -2112,6 +2112,19 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 					ret));
 				goto free_mem;
 			}
+			ret = nla_put_u32(skb, RTT_ATTRIBUTE_RESULT_FREQ,
+				rtt_result->frequency);
+			if (ret < 0) {
+				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_FREQ, ret:%d\n", ret));
+				goto free_mem;
+			}
+
+			ret = nla_put_u32(skb, RTT_ATTRIBUTE_RESULT_BW,
+				rtt_result->packet_bw);
+			if (ret < 0) {
+				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_CNT, ret:%d\n", ret));
+				goto free_mem;
+			}
 		}
 		nla_nest_end(skb, rtt_nl_hdr);
 		cfg80211_vendor_event(skb, kflags);

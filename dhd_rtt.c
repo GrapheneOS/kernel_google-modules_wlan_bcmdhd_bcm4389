@@ -3698,6 +3698,7 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	uint8 num_ftm = 0;
 	char *ftm_frame_types[] =  FTM_FRAME_TYPES;
 	rtt_report_t *rtt_report = &(rtt_result->report);
+	chanspec_bw_t chspec_bw = 0;
 
 	BCM_REFERENCE(ftm_frame_types);
 	BCM_REFERENCE(dist);
@@ -3711,6 +3712,7 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	BCM_REFERENCE(chanspec);
 	BCM_REFERENCE(session_state);
 	BCM_REFERENCE(ftm_session_state_value_to_logstr);
+	BCM_REFERENCE(chspec_bw);
 
 	NULL_CHECK(rtt_report, "rtt_report is NULL", err);
 	NULL_CHECK(p_data, "p_data is NULL", err);
@@ -3871,6 +3873,36 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 			ftm_tmu_value_to_logstr(ltoh16_ua(&p_data_info->u.burst_duration.tmu))));
 		DHD_RTT(("rtt_report->burst_duration : %d\n", rtt_report->burst_duration));
 	}
+
+	if (p_data_info->num_meas && p_sample_avg->chanspec) {
+		chanspec = ltoh32_ua(&p_sample_avg->chanspec);
+#ifdef WL_CFG80211
+		rtt_result->frequency = wl_channel_to_frequency(wf_chspec_ctlchan(chanspec),
+			CHSPEC_BAND(chanspec));
+#endif /* WL_CFG80211 */
+		chspec_bw = CHSPEC_BW(chanspec);
+	}
+
+	/* Map as per host enums */
+	switch (chspec_bw) {
+		case WL_CHANSPEC_BW_20:
+			rtt_result->packet_bw = WIFI_RTT_BW_20;
+			break;
+		case WL_CHANSPEC_BW_40:
+			rtt_result->packet_bw = WIFI_RTT_BW_40;
+			break;
+		case WL_CHANSPEC_BW_80:
+			rtt_result->packet_bw = WIFI_RTT_BW_80;
+			break;
+		case WL_CHANSPEC_BW_160:
+			rtt_result->packet_bw = WIFI_RTT_BW_160;
+			break;
+		default:
+			rtt_result->packet_bw = WIFI_RTT_BW_UNSPECIFIED;
+			DHD_RTT_ERR(("%s Unspecified bw\n", __FUNCTION__));
+			break;
+	}
+
 	/* display detail if available */
 	num_rtt = ltoh16_ua(&p_data_info->num_rtt);
 	if (num_rtt > 0) {
@@ -4127,6 +4159,7 @@ dhd_rtt_convert_results_to_host_v3(rtt_result_t *rtt_result, const uint8 *p_data
 			ftm_tmu_value_to_logstr(ltoh16_ua(&p_data_info->u.burst_duration.tmu))));
 		DHD_RTT(("rtt_report->burst_duration : %d\n", rtt_report->burst_duration));
 	}
+
 	/* display detail if available */
 	num_rtt = ltoh16_ua(&p_data_info->num_rtt);
 	if (num_rtt > 0) {

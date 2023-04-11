@@ -159,6 +159,18 @@ enum rtt_rate_bw {
 	RTT_RATE_160M
 };
 
+/* RTT Measurement Bandwidth */
+typedef enum wifi_rtt_bw {
+	WIFI_RTT_BW_UNSPECIFIED = 0x00,
+	WIFI_RTT_BW_5           = 0x01,
+	WIFI_RTT_BW_10          = 0x02,
+	WIFI_RTT_BW_20          = 0x04,
+	WIFI_RTT_BW_40          = 0x08,
+	WIFI_RTT_BW_80          = 0x10,
+	WIFI_RTT_BW_160         = 0x20,
+	WIFI_RTT_BW_320         = 0x40
+} wifi_rtt_bw_t;
+
 typedef enum ranging_type {
 	RTT_TYPE_INVALID	=	0,
 	RTT_TYPE_LEGACY		=	1,
@@ -392,6 +404,7 @@ typedef struct rtt_results_header {
 	struct list_head list;
 	struct list_head result_list;
 } rtt_results_header_t;
+
 struct rtt_result_detail {
 	uint8 num_ota_meas;
 	uint32 result_flags;
@@ -403,6 +416,10 @@ typedef struct rtt_result {
 	int32 report_len; /* total length of rtt_report */
 	struct rtt_result_detail rtt_detail;
 	int32 detail_len;
+	/* primary channel frequency (MHz) used for ranging measurements */
+	wifi_channel frequency;
+	/* RTT packet bandwidth is an average BW of the BWs of RTT frames. */
+	uint8 packet_bw;
 } rtt_result_t;
 
 /* RTT Capabilities */
