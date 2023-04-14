@@ -4763,7 +4763,7 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 	case WLC_E_PFN_PARTIAL_RESULT:
 #endif /* WL_SCHED_SCAN */
 	case WLC_E_PFN_SSID_EXT:
-		DHD_EVENT(("PNOEVENT: %s\n", event_name));
+		DHD_EVENT(("PNOEVENT: %s(%d)\n", event_name, event_type));
 		break;
 
 	case WLC_E_PFN_SCAN_BACKOFF:
