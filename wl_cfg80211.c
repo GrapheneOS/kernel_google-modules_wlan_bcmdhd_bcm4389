@@ -6930,6 +6930,11 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 		err = -EINVAL;
 		goto fail;
 	}
+	if (wl_get_drv_status_all(cfg, AP_CREATING)) {
+		WL_ERR(("AP creates in progress, so skip this connection for creating AP.\n"));
+		err = -EBUSY;
+		goto fail;
+	}
 #endif /* WL_DUAL_STA */
 	bzero(&assoc_info, sizeof(wlcfg_assoc_info_t));
 	if ((assoc_info.bssidx = wl_get_bssidx_by_wdev(cfg, dev->ieee80211_ptr)) < 0) {
