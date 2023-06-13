@@ -2270,6 +2270,11 @@ wl_cfg80211_p2p_if_add(struct bcm_cfg80211 *cfg,
 
 			return new_ndev->ieee80211_ptr;
 	}
+	else {
+		WL_ERR(("Virtual interface create fail. "
+			"Checking value timeout [%ld], p2p_status [%x], event_info valid [%x]\n",
+			timeout, wl_get_p2p_status(cfg, IF_ADDING), cfg->if_event_info.valid));
+	}
 
 fail:
 	return NULL;
