@@ -14031,6 +14031,16 @@ void dhd_detach(dhd_pub_t *dhdp)
 	}
 #endif /* CONFIG_HAS_EARLYSUSPEND && DHD_USE_EARLYSUSPEND */
 
+	if (dhdp->dbg) {
+#ifdef DEBUGABILITY
+#ifdef DBG_PKT_MON
+		dhd_os_dbg_detach_pkt_monitor(dhdp);
+		osl_spin_lock_deinit(dhd->pub.osh, dhd->pub.dbg->pkt_mon_lock);
+#endif /* DBG_PKT_MON */
+#endif /* DEBUGABILITY */
+		dhd_os_dbg_detach(dhdp);
+	}
+
 	/* delete all interfaces, start with virtual  */
 	if (dhd->dhd_state & DHD_ATTACH_STATE_ADD_IF) {
 		int i = 1;
@@ -14203,17 +14213,6 @@ void dhd_detach(dhd_pub_t *dhdp)
 		dhdp->dbus = NULL;
 	}
 #endif /* BCMDBUS */
-#ifdef DEBUGABILITY
-	if (dhdp->dbg) {
-#ifdef DBG_PKT_MON
-		dhd_os_dbg_detach_pkt_monitor(dhdp);
-		osl_spin_lock_deinit(dhd->pub.osh, dhd->pub.dbg->pkt_mon_lock);
-#endif /* DBG_PKT_MON */
-	}
-#endif /* DEBUGABILITY */
-	if (dhdp->dbg) {
-		dhd_os_dbg_detach(dhdp);
-	}
 #ifdef DHD_MEM_STATS
 	osl_spin_lock_deinit(dhd->pub.osh, dhd->pub.mem_stats_lock);
 #endif /* DHD_MEM_STATS */
