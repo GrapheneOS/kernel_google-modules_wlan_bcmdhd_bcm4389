@@ -1678,8 +1678,6 @@ wl_cellavoid_validate_param(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *para
 			WL_ERR(("Not supported band %d, channel %d, pwrcap %d\n",
 				param->chan_param[i].band, param->chan_param[i].center_channel,
 				param->chan_param[i].pwr_cap));
-			ret = -EINVAL;
-			goto exit;
 		}
 
 		param->chan_param[i].chspec_bw = bw;
