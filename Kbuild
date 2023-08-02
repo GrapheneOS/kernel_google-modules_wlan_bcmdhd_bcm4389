@@ -302,6 +302,8 @@ else
 DHDCFLAGS += -DDHD_FILE_DUMP_EVENT
 # The debug dump file path is blank in DHD, it is defined in HAL.
 DHDCFLAGS += -DDHD_COMMON_DUMP_PATH="\"/\""
+# Skip coredump for certain health check traps
+DHDCFLAGS += -DDHD_SKIP_COREDUMP_ON_HC
 endif
 DHDCFLAGS := $(filter-out -DDHD_DUMP_FILE_WRITE_FROM_KERNEL ,$(DHDCFLAGS))
 endif
