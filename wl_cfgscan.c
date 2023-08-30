@@ -2315,6 +2315,14 @@ wl_cfgscan_handle_scanbusy(struct bcm_cfg80211 *cfg, struct net_device *ndev, s3
 		scanbusy_err = -EAGAIN;
 	}
 
+	if (wl_get_drv_status_all(cfg, CSA_ACTIVE)) {
+		/* override error to EGAIN to avoid forcing panic as CSA can
+		 * take upto 25secs. Don't limit on number of scans in this case.
+		 */
+		scanbusy_err = -EAGAIN;
+		WL_ERR(("scan busy due to csa in progress\n"));
+	}
+
 	/* if continuous busy state, clear assoc type in FW by disassoc cmd */
 	if (scanbusy_err == -EBUSY) {
 		/* Flush FW preserve buffer logs for checking failure */

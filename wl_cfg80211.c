@@ -15875,6 +15875,7 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 	cfg->evt_handler[WLC_E_NAN_CRITICAL] = wl_cfgnan_notify_nan_status;
 	cfg->evt_handler[WLC_E_NAN_NON_CRITICAL] = wl_cfgnan_notify_nan_status;
 #endif /* WL_NAN */
+	cfg->evt_handler[WLC_E_CSA_START_IND] = wl_cfgvif_csa_start_ind;
 	cfg->evt_handler[WLC_E_CSA_COMPLETE_IND] = wl_csa_complete_ind;
 	cfg->evt_handler[WLC_E_AP_STARTED] = wl_ap_start_ind;
 #ifdef CUSTOM_EVENT_PM_WAKE
@@ -18849,6 +18850,7 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 		wl_clr_drv_status(cfg, AP_CREATING, iter->ndev);
 		wl_clr_drv_status(cfg, NESTED_CONNECT, iter->ndev);
 		wl_clr_drv_status(cfg, CFG80211_CONNECT, iter->ndev);
+		wl_clr_drv_status(cfg, CSA_ACTIVE, iter->ndev);
 	}
 #ifdef WL_CFG80211_MONITOR
 	if (ndev->ieee80211_ptr->iftype != NL80211_IFTYPE_MONITOR)
