@@ -25718,7 +25718,7 @@ int wl_get_usable_channels(struct bcm_cfg80211 *cfg, usable_channel_info_t *u_in
 		}
 
 		/* Supplicant does scan passive channel but not for DFS channel */
-		if (!(chaninfo & WL_CHAN_RADAR) && !ch_160mhz_5g &&
+		if (!restrict_chan && !ch_160mhz_5g &&
 			!CHSPEC_IS6G(chspec) && (!is_unii4)) {
 			mask |= (1 << WIFI_INTERFACE_P2P_CLIENT);
 		}
